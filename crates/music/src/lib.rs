@@ -11,6 +11,7 @@ pub mod lyrics;
 mod models;
 pub mod musixmatch;
 pub mod netease;
+pub mod scrobble;
 mod sink;
 mod spectrum;
 pub mod spotify;
