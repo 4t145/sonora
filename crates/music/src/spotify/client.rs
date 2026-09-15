@@ -8,11 +8,10 @@ use librespot_protocol::playlist4_external::SelectedListContent as RootList;
 use protobuf::Message as _;
 
 use crate::spotify::{
-    albums, artists, collection, collection2, lyrics, pathfinder, playlists, profiles, radio,
-    search, wire,
+    albums, artists, collection, collection2, pathfinder, playlists, profiles, radio, search, wire,
 };
 use crate::{
-    Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, HomeFeed, Lyrics, Playlist,
+    Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, HomeFeed, Playlist,
     PlaylistDetail, SavedArtist, Track, UserDetail, UserProfile,
 };
 
@@ -79,8 +78,8 @@ impl MusicApi for LibrespotClient {
         artists::images(&self.session, &ids).await
     }
 
-    async fn saved_tracks(&self, limit: u32) -> Result<Vec<Track>> {
-        collection::saved_tracks(&self.session, limit).await
+    async fn saved_tracks(&self) -> Result<Vec<Track>> {
+        collection::saved_tracks(&self.session).await
     }
 
     async fn set_track_saved(&self, track_id: &str, saved: bool) -> Result<()> {
@@ -95,20 +94,16 @@ impl MusicApi for LibrespotClient {
         pathfinder::track(&self.session, track_id).await
     }
 
-    async fn track_lyrics(&self, track_id: &str) -> Result<Option<Lyrics>> {
-        lyrics::lyrics(&self.session, track_id).await
-    }
-
-    async fn saved_albums(&self, limit: u32) -> Result<Vec<Album>> {
-        albums::saved_albums(&self.session, limit).await
+    async fn saved_albums(&self) -> Result<Vec<Album>> {
+        albums::saved_albums(&self.session).await
     }
 
     async fn set_album_saved(&self, album_id: &str, saved: bool) -> Result<()> {
         collection2::set_album_saved(&self.session, album_id, saved).await
     }
 
-    async fn saved_artists(&self, limit: u32) -> Result<Vec<SavedArtist>> {
-        artists::saved_artists(&self.session, limit).await
+    async fn saved_artists(&self) -> Result<Vec<SavedArtist>> {
+        artists::saved_artists(&self.session).await
     }
 
     async fn set_artist_saved(&self, artist_id: &str, saved: bool) -> Result<()> {
@@ -227,11 +222,11 @@ impl MusicApi for LibrespotClient {
         pathfinder::library(&self.session, order).await.map(Some)
     }
 
-    async fn playlists(&self, limit: u32) -> Result<Vec<Playlist>> {
+    async fn playlists(&self) -> Result<Vec<Playlist>> {
         let mut playlists = Vec::new();
         let mut offset = 0;
         let mut seen = HashSet::new();
-        while playlists.len() < limit as usize {
+        loop {
             let body = self
                 .session
                 .spclient()
@@ -250,7 +245,6 @@ impl MusicApi for LibrespotClient {
                 break;
             }
         }
-        playlists.truncate(limit as usize);
 
         let owners = playlists
             .iter()

@@ -5,7 +5,7 @@
 //! `state.sqlite` as [`StateValues`]. [`AppSettings`] holds both and saves each on its own
 //! debounce, so a sidebar drag never rewrites the preferences file.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -19,6 +19,7 @@ use gpui::{
 };
 use music::WritingSystem;
 use music::equalizer::{self, Gains};
+use music::scrobble::Account;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use storage::Database;
@@ -277,7 +278,10 @@ struct Values {
     discord_show_paused: bool,
     discord_badge: bool,
     discord_without_details: bool,
+    discord_sonora_button: bool,
+    discord_provider_button: bool,
     lyrics_for_local_files: bool,
+    lyrics_providers: Vec<String>,
     karaoke_lyrics: bool,
     blur_lyrics: bool,
     romanized_lyrics: bool,
@@ -297,6 +301,8 @@ struct Values {
     local_folders: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     hidden_nav: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    scrobbling: BTreeMap<String, Account>,
     appearance: Appearance,
 }
 
@@ -346,7 +352,18 @@ impl Default for Values {
             discord_show_paused: false,
             discord_badge: false,
             discord_without_details: false,
+            discord_sonora_button: true,
+            discord_provider_button: true,
             lyrics_for_local_files: true,
+            lyrics_providers: [
+                "Spotify",
+                "YouTube Music",
+                "Apple Music",
+                "Musixmatch",
+                "LrcLib",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
             karaoke_lyrics: true,
             blur_lyrics: true,
             romanized_lyrics: true,
@@ -362,6 +379,7 @@ impl Default for Values {
             local_folder: None,
             local_folders: Vec::new(),
             hidden_nav: Vec::new(),
+            scrobbling: BTreeMap::new(),
             appearance: Appearance::default(),
         }
     }
@@ -533,6 +551,14 @@ impl AppSettings {
             }
             None => (Values::default(), writable),
         };
+        if values.lyrics_providers.iter().any(|name| name == "native") {
+            values.lyrics_providers.retain(|name| name != "native");
+            for name in ["Spotify", "YouTube Music"] {
+                if !values.lyrics_providers.iter().any(|held| held == name) {
+                    values.lyrics_providers.push(name.to_owned());
+                }
+            }
+        }
         // A single `local_folder` predates multiple local libraries; fold it into
         // `local_folders` once and never write the singular field back out.
         if let Some(folder) = values.local_folder.take()
@@ -616,8 +642,29 @@ impl AppSettings {
         self.values.discord_without_details
     }
 
+    /// Whether the Discord status carries a button that opens the Sonora project page.
+    pub fn discord_sonora_button(&self) -> bool {
+        self.values.discord_sonora_button
+    }
+
+    /// Whether the Discord status carries a button that opens the track on its provider.
+    pub fn discord_provider_button(&self) -> bool {
+        self.values.discord_provider_button
+    }
+
     pub fn lyrics_for_local_files(&self) -> bool {
         self.values.lyrics_for_local_files
+    }
+
+    pub fn lyrics_providers(&self) -> &[String] {
+        &self.values.lyrics_providers
+    }
+
+    pub fn lyrics_provider_enabled(&self, provider: &str) -> bool {
+        self.values
+            .lyrics_providers
+            .iter()
+            .any(|name| name == provider)
     }
 
     pub fn karaoke_lyrics(&self) -> bool {
@@ -658,6 +705,20 @@ impl AppSettings {
 
     pub fn close_to_tray(&self) -> bool {
         self.values.close_to_tray
+    }
+
+    /// Every linked scrobbling account, keyed by its service slug.
+    pub fn scrobbling(&self) -> &BTreeMap<String, Account> {
+        &self.values.scrobbling
+    }
+
+    /// One service's account, blank when it was never linked.
+    pub fn account(&self, service: &str) -> Account {
+        self.values
+            .scrobbling
+            .get(service)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn sidebar_width(&self) -> f32 {
@@ -901,8 +962,27 @@ impl AppSettings {
         self.schedule_save(cx);
     }
 
+    pub fn set_discord_sonora_button(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.values.discord_sonora_button = enabled;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_discord_provider_button(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.values.discord_provider_button = enabled;
+        self.schedule_save(cx);
+    }
+
     pub fn set_lyrics_for_local_files(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.values.lyrics_for_local_files = enabled;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_lyrics_provider(&mut self, provider: &str, enabled: bool, cx: &mut Context<Self>) {
+        self.values.lyrics_providers.retain(|name| name != provider);
+        if enabled {
+            self.values.lyrics_providers.push(provider.to_owned());
+        }
+        self.values.lyrics_providers.sort();
         self.schedule_save(cx);
     }
 
@@ -956,6 +1036,28 @@ impl AppSettings {
 
     pub fn set_close_to_tray(&mut self, close_to_tray: bool, cx: &mut Context<Self>) {
         self.values.close_to_tray = close_to_tray;
+        self.schedule_save(cx);
+    }
+
+    /// Stores a linked account, or forgets the service when the account carries no session.
+    pub fn set_account(&mut self, service: &str, account: Account, cx: &mut Context<Self>) {
+        match account.linked() {
+            true => {
+                self.values.scrobbling.insert(service.to_owned(), account);
+            }
+            false => {
+                self.values.scrobbling.remove(service);
+            }
+        }
+        self.schedule_save(cx);
+    }
+
+    /// Turns submissions to one linked service on or off, leaving the link itself alone.
+    pub fn set_scrobbling(&mut self, service: &str, enabled: bool, cx: &mut Context<Self>) {
+        let Some(account) = self.values.scrobbling.get_mut(service) else {
+            return;
+        };
+        account.enabled = enabled;
         self.schedule_save(cx);
     }
 

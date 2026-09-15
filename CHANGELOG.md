@@ -7,6 +7,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-09-15
+
+### Added
+
+- Sonora is published as an AppImage for `x86_64` and `aarch64`, beside the Flatpak and the
+  plain binaries. Make it executable and run it; it needs no installation and stays a single
+  file, but it does not update itself.
+- On Windows, hovering Sonora's taskbar button puts previous, play/pause and next under the
+  thumbnail preview, so a track can be paused or skipped without raising the window. The glyphs
+  follow the icon pack chosen under Settings > Appearance.
+- Buttons on the Discord status, under Settings, Discord. Pick Provider to link the track on the
+  service it plays from, Sonora to link the project page, or both. Discord shows them to your
+  friends only, never to you, and the provider button stays off while Hide details is on.
+- Sonora scrobbles to Last.fm, Libre.fm, ListenBrainz and Maloja, under Settings > Integrations.
+  Last.fm asks for your own API key and secret, Libre.fm only for approval in the browser,
+  ListenBrainz for a user token and Maloja for a server address and one of its API keys. Connect as
+  many as you like and every one of them gets the listen once you are halfway through a track. Each
+  has its own switch, which stops submissions without disconnecting the account.
+
+### Changed
+
+- Every language Sonora ships is translated in full. German, Spanish, French, Italian, Indonesian,
+  Japanese, Russian, Ukrainian, Polish, Brazilian Portuguese, Chinese and Turkish no longer fall
+  back to English for the equalizer, the sleep timer, the Discord status, pinned items or the
+  fullscreen controls.
+
+### Fixed
+
+- On Linux with an NVIDIA GPU, clicking Sign in on YouTube Music under Wayland closed Sonora with
+  a Wayland protocol error. The sign-in window now paints through shared memory on that driver,
+  the same as setting `WEBKIT_DISABLE_DMABUF_RENDERER=1` by hand. A value you export yourself is
+  left alone.
+- Libraries stopped at 10000 entries: a local folder with more songs than that listed only
+  the first 10000, and the same cap applied to albums, artists, playlists and every streaming
+  provider. Every list now loads in full.
+
 ## [0.35.0] - 2026-09-14
 
 ### Added
@@ -1554,7 +1590,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.35.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sonorahq/sonora/compare/v0.34.4...v0.35.0
 [0.34.4]: https://github.com/sonorahq/sonora/compare/v0.34.3...v0.34.4
 [0.34.3]: https://github.com/sonorahq/sonora/compare/v0.34.2...v0.34.3

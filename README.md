@@ -89,15 +89,36 @@ Add the Sonora repository (updates with `flatpak update`):
 flatpak install --user https://sonorahq.github.io/sonora/sonora.flatpakref
 ```
 
+#### AppImage
+
+Download the `x86_64` AppImage from the
+[latest release](https://github.com/sonorahq/sonora/releases/latest), make it executable and run
+it:
+
+```sh
+chmod +x sonora-*.AppImage
+./sonora-*.AppImage
+```
+
+An `aarch64` build is published beside it. The AppImage carries no Vulkan driver and no ALSA
+bridge, so both still come from your system, and it does not update itself — download a newer one
+over it.
+
 ### Nix
 
-The flake packages the latest tagged release and exposes `programs.sonora` for Home Manager.
+The flake packages the latest tagged release binary or builds from source if unavailable for your platform.
 
 ```nix
 inputs.sonora.url = "github:sonorahq/sonora";
 ```
 
-Home Manager:
+```text
+inputs.sonora.packages.${system}.default
+inputs.sonora.packages.${system}.sonora (build from source)
+inputs.sonora.packages.${system}.sonora-bin (prebuilt, if available)
+```
+
+You can set configuration options via the included Home Manager module under `programs.sonora`:
 
 ```nix
 {
@@ -154,19 +175,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 606/606 | 100% |
-| Deutsch (`de`) | 541/606 | 89% |
-| Español (`es`) | 574/606 | 95% |
-| Français (`fr`) | 498/606 | 82% |
-| Italiano (`it`) | 495/606 | 82% |
-| Bahasa Indonesia (`id`) | 580/606 | 96% |
-| 日本語 (`ja`) | 508/606 | 84% |
-| Русский (`ru`) | 550/606 | 91% |
-| Українська (`uk`) | 596/606 | 98% |
-| Polski (`pl`) | 596/606 | 98% |
-| Português (Brasil) (`pt-BR`) | 514/606 | 85% |
-| 简体中文 (`zh-CN`) | 580/606 | 96% |
-| Türkçe (`tr`) | 548/606 | 90% |
+| English (`en-US`) | 642/642 | 100% |
+| Deutsch (`de`) | 632/642 | 98% |
+| Español (`es`) | 610/642 | 95% |
+| Français (`fr`) | 632/642 | 98% |
+| Italiano (`it`) | 610/642 | 95% |
+| Bahasa Indonesia (`id`) | 610/642 | 95% |
+| 日本語 (`ja`) | 610/642 | 95% |
+| Русский (`ru`) | 642/642 | 100% |
+| Українська (`uk`) | 642/642 | 100% |
+| Polski (`pl`) | 642/642 | 100% |
+| Português (Brasil) (`pt-BR`) | 610/642 | 95% |
+| 简体中文 (`zh-CN`) | 610/642 | 95% |
+| Türkçe (`tr`) | 610/642 | 95% |
 
 <!-- i18n:end -->
 

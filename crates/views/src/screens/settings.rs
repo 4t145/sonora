@@ -13,11 +13,12 @@ use gpui::{
 use gpui::{ScrollHandle, prelude::*, svg};
 use i18n::{Language, t};
 use music::equalizer::{self, Preset};
+use music::scrobble::{Link, Secret};
 use music::{AccountChoice, SignIn, SignInPrompt, WritingSystem};
 use router::{NavEntry, Screen, SettingsTab};
 use state::{
     AppSettings, DiscordName, Failure, FullscreenControlsAutohide, Io, Playback, SYSTEM_FONT,
-    Session, SessionState, Sleep, Sonora,
+    ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
 };
 use ui::{ActiveTheme as _, Scrollbar, Scroller, eyebrow};
 use ui::{
@@ -47,6 +48,7 @@ const TYPEFACE_BATCH: usize = 3;
 const STARTUP: &str = "startup";
 const ENTRIES: &str = "entries";
 const DISCORD_NAME: &str = "discord-name";
+const DISCORD_BUTTONS: &str = "discord-buttons";
 const MOTION: &str = "motion";
 const PACE: &str = "pace";
 const SAVER: &str = "saver";
@@ -71,6 +73,14 @@ impl Row {
             Self::Item(element) | Self::Title(element) => element,
         }
     }
+}
+
+/// One field of the scrobbling link dialog: which hint it carries, what it starts with, and
+/// whether it holds a secret and so is drawn as dots.
+struct Field {
+    hint: &'static str,
+    value: String,
+    masked: bool,
 }
 
 struct Account {
@@ -156,6 +166,11 @@ pub struct SettingsView {
     credentials_for: Option<&'static str>,
     secret: Entity<Input>,
     manual_secret: bool,
+    scrobbling: Entity<Scrobbling>,
+    scrobble_first: Entity<Input>,
+    scrobble_second: Entity<Input>,
+    /// The service whose link dialog is open, by slug.
+    scrobble_prompt: Option<&'static str>,
     languages: SearchPopup,
     typefaces: SearchPopup,
     typeface_faced: RefCell<HashSet<SharedString>>,
@@ -171,7 +186,9 @@ impl SettingsView {
         cx: &mut Context<Self>,
     ) -> Self {
         let settings = Sonora::global(cx).settings.clone();
+        let scrobbling = Sonora::global(cx).scrobbling.clone();
         cx.observe(&session, |_, _, cx| cx.notify()).detach();
+        cx.observe(&scrobbling, |_, _, cx| cx.notify()).detach();
         cx.observe(&settings, |_, _, cx| cx.notify()).detach();
         cx.observe(&playback, |_, _, cx| cx.notify()).detach();
         let me = cx.entity_id();
@@ -207,6 +224,10 @@ impl SettingsView {
             credentials_for: None,
             secret: cx.new(|cx| Input::new("login-cookie-hint", cx)),
             manual_secret: false,
+            scrobbling,
+            scrobble_first: cx.new(|cx| Input::new("settings-scrobble-key", cx)),
+            scrobble_second: cx.new(|cx| Input::new("settings-scrobble-secret", cx)),
+            scrobble_prompt: None,
             languages,
             typefaces,
             typeface_faced: RefCell::new(HashSet::new()),
@@ -277,6 +298,7 @@ impl SettingsView {
                 }
                 rows.extend([
                     self.title("settings-group-lyrics", cx),
+                    Row::Item(self.lyrics_providers_row(cx).into_any_element()),
                     Row::Item(self.karaoke_lyrics_row(cx).into_any_element()),
                     Row::Item(self.romanized_lyrics_row(cx).into_any_element()),
                 ]);
@@ -286,7 +308,12 @@ impl SettingsView {
                 self.title("settings-group-lyrics", cx),
                 Row::Item(self.lyrics_for_local_files_row(cx).into_any_element()),
             ],
-            SettingsTab::Integrations => self.discord_rows(cx),
+            SettingsTab::Integrations => self
+                .discord_rows(cx)
+                .into_iter()
+                .chain([self.title("settings-group-scrobbling", cx)])
+                .chain(self.scrobble_rows(cx))
+                .collect(),
             SettingsTab::About => vec![
                 Row::Item(self.version_row(cx).into_any_element()),
                 Row::Item(self.updates_row(cx).into_any_element()),
@@ -1624,6 +1651,7 @@ impl SettingsView {
             ));
             rows.push(Row::Item(self.discord_badge_row(cx).into_any_element()));
             rows.push(Row::Item(self.discord_anonymous_row(cx).into_any_element()));
+            rows.push(Row::Item(self.discord_buttons_row(cx).into_any_element()));
         }
         rows
     }
@@ -1740,6 +1768,54 @@ impl SettingsView {
         )
     }
 
+    fn discord_buttons_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let settings = self.settings.read(cx);
+        let sonora = settings.discord_sonora_button();
+        let provider = settings.discord_provider_button();
+
+        let picker = Picker::new(
+            DISCORD_BUTTONS,
+            &self.popovers,
+            t!("settings-discord-buttons-pick"),
+        )
+        .width(Picker::NARROW)
+        .sticky()
+        .item(
+            MenuItem::new(
+                "discord-button-provider",
+                t!("settings-discord-name-provider"),
+            )
+            .selected(provider)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.settings.update(cx, |settings, cx| {
+                    settings.set_discord_provider_button(!provider, cx)
+                });
+                cx.notify();
+            })),
+        )
+        .item(
+            MenuItem::new("discord-button-sonora", t!("settings-discord-name-sonora"))
+                .selected(sonora)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings.update(cx, |settings, cx| {
+                        settings.set_discord_sonora_button(!sonora, cx)
+                    });
+                    cx.notify();
+                })),
+        );
+
+        self.row(
+            t!("settings-discord-buttons"),
+            t!("settings-discord-buttons-detail"),
+            muted,
+            small,
+            picker.into_any_element(),
+        )
+    }
+
     fn lyrics_for_local_files_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
@@ -1758,6 +1834,47 @@ impl SettingsView {
                     });
                 }))
                 .into_any_element(),
+        )
+    }
+
+    fn lyrics_providers_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let settings = self.settings.read(cx);
+        let providers = [
+            ("Spotify", "settings-lyrics-provider-spotify"),
+            ("YouTube Music", "settings-lyrics-provider-youtube"),
+            ("Apple Music", "settings-lyrics-provider-apple-music"),
+            ("Musixmatch", "settings-lyrics-provider-musixmatch"),
+            ("LrcLib", "settings-lyrics-provider-lrclib"),
+            ("Kugou", "settings-lyrics-provider-kugou"),
+            ("NetEase", "settings-lyrics-provider-netease"),
+        ];
+        let count = providers
+            .iter()
+            .filter(|(provider, _)| settings.lyrics_provider_enabled(provider))
+            .count();
+        let picker = Picker::new(
+            "lyrics-providers",
+            &self.popovers,
+            t!("settings-lyrics-providers-selected", count = count),
+        )
+        .sticky()
+        .items(providers.map(|(provider, label)| {
+            MenuItem::new(label, i18n::lookup(label, None))
+                .selected(settings.lyrics_provider_enabled(provider))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings.update(cx, |settings, cx| {
+                        let enabled = settings.lyrics_provider_enabled(provider);
+                        settings.set_lyrics_provider(provider, !enabled, cx);
+                    });
+                }))
+        }));
+        self.row(
+            t!("settings-lyrics-providers"),
+            t!("settings-lyrics-providers-detail"),
+            theme.muted_foreground,
+            theme.text(Text::Small),
+            picker.into_any_element(),
         )
     }
 
@@ -1953,6 +2070,227 @@ impl SettingsView {
             .update(cx, |library, cx| {
                 library.remove_local_folder(PathBuf::from(path), cx)
             });
+    }
+
+    /// One row per scrobbling service, in the order `music::scrobble` lists them.
+    fn scrobble_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
+        let services = self.scrobbling.read(cx).rows().len();
+        (0..services)
+            .map(|index| Row::Item(self.scrobble_row(index, cx).into_any_element()))
+            .collect()
+    }
+
+    fn scrobble_row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+
+        let row = &self.scrobbling.read(cx).rows()[index];
+        let service = row.id();
+        let link = row.link();
+        let linked = row.linked();
+        let linking = row.linking();
+        let enabled = row.enabled();
+        let title = i18n::lookup(&format!("settings-{service}"), None);
+        let detail = match row.state() {
+            ScrobbleState::Off => t!("settings-scrobble-off"),
+            ScrobbleState::Linking => t!("settings-scrobble-waiting"),
+            ScrobbleState::On(name) => match name.is_empty() {
+                true => t!("settings-scrobble-on"),
+                false => t!("settings-scrobble-as", name = name.as_ref()),
+            },
+            ScrobbleState::Failed(key) => i18n::lookup(key, None),
+        };
+
+        let action = match linked {
+            true => div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Switch::new(
+                        SharedString::from(format!("scrobble-on-{service}")),
+                        enabled,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.scrobbling.update(cx, |scrobbling, cx| {
+                            scrobbling.set_enabled(service, !enabled, cx)
+                        });
+                    })),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("scrobble-unlink-{service}")))
+                        .label(t!("settings-scrobble-disconnect"))
+                        .small()
+                        .ghost()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.scrobbling
+                                .update(cx, |scrobbling, cx| scrobbling.disconnect(service, cx));
+                        })),
+                )
+                .into_any_element(),
+            false => match linking {
+                true => Button::new(SharedString::from(format!("scrobble-cancel-{service}")))
+                    .label(t!("common-cancel"))
+                    .small()
+                    .outline()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.scrobbling
+                            .update(cx, |scrobbling, cx| scrobbling.cancel(cx));
+                    }))
+                    .into_any_element(),
+                false => Button::new(SharedString::from(format!("scrobble-link-{service}")))
+                    .label(t!("settings-scrobble-connect"))
+                    .small()
+                    .outline()
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.open_scrobble(service, link, cx)),
+                    )
+                    .into_any_element(),
+            },
+        };
+
+        self.row(title, detail, muted, small, action)
+    }
+
+    /// Starts a link. A service with nothing to type goes straight to the browser; the rest put
+    /// up the dialog with whatever was stored last time already in the fields.
+    fn open_scrobble(&mut self, service: &'static str, link: Link, cx: &mut Context<Self>) {
+        let account = self.settings.read(cx).account(service);
+        let (first, second) = match link {
+            Link::Browser => {
+                return self.scrobbling.update(cx, |scrobbling, cx| {
+                    scrobbling.connect(service, Secret::None, cx)
+                });
+            }
+            Link::Keys => (
+                Field {
+                    hint: "settings-scrobble-key",
+                    value: account.key,
+                    masked: false,
+                },
+                Some(Field {
+                    hint: "settings-scrobble-secret",
+                    value: account.secret,
+                    masked: true,
+                }),
+            ),
+            Link::Token => (
+                Field {
+                    hint: "settings-scrobble-token",
+                    value: account.session,
+                    masked: true,
+                },
+                None,
+            ),
+            Link::Server => (
+                Field {
+                    hint: "settings-scrobble-server",
+                    value: account.server,
+                    masked: false,
+                },
+                Some(Field {
+                    hint: "settings-scrobble-key",
+                    value: account.session,
+                    masked: true,
+                }),
+            ),
+        };
+
+        self.scrobble_first.update(cx, |input, cx| {
+            input.set_hint(first.hint, cx);
+            input.set_masked(first.masked, cx);
+            input.set_text(first.value, cx);
+        });
+        if let Some(second) = second {
+            self.scrobble_second.update(cx, |input, cx| {
+                input.set_hint(second.hint, cx);
+                input.set_masked(second.masked, cx);
+                input.set_text(second.value, cx);
+            });
+        }
+        self.scrobble_prompt = Some(service);
+        cx.notify();
+    }
+
+    fn link_scrobble(&mut self, service: &'static str, link: Link, cx: &mut Context<Self>) {
+        let first = self.scrobble_first.read(cx).text().to_string();
+        let second = self.scrobble_second.read(cx).text().to_string();
+        let secret = match link {
+            Link::Browser => Secret::None,
+            Link::Keys => Secret::Keys {
+                key: first,
+                secret: second,
+            },
+            Link::Token => Secret::Token(first),
+            Link::Server => Secret::Server {
+                url: first,
+                key: second,
+            },
+        };
+
+        self.scrobble_prompt = None;
+        self.scrobbling
+            .update(cx, |scrobbling, cx| scrobbling.connect(service, secret, cx));
+    }
+
+    fn scrobble_modal(&self, service: &'static str, cx: &mut Context<Self>) -> impl IntoElement {
+        let row = self
+            .scrobbling
+            .read(cx)
+            .rows()
+            .iter()
+            .find(|row| row.id() == service);
+        let link = row.map(|row| row.link()).unwrap_or(Link::Token);
+        let signup = row.and_then(|row| row.signup());
+        let title = i18n::lookup(&format!("settings-{service}"), None);
+        let request = match link {
+            Link::Token => "settings-scrobble-token-request",
+            _ => "settings-scrobble-request",
+        };
+
+        Modal::new(
+            "settings-scrobble-prompt",
+            t!("settings-scrobble-title", service = title.as_ref()),
+        )
+        .w(px(560.))
+        .detail(i18n::lookup(&format!("settings-{service}-detail"), None))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(self.scrobble_first.clone())
+                .when(link != Link::Token, |this| {
+                    this.child(self.scrobble_second.clone())
+                }),
+        )
+        .when_some(signup, |this, url| {
+            this.action(
+                Button::new("settings-scrobble-request")
+                    .ghost()
+                    .label(i18n::lookup(request, None))
+                    .on_click(move |_, _, cx| cx.open_url(url)),
+            )
+        })
+        .action(
+            Button::new("settings-scrobble-cancel")
+                .ghost()
+                .label(t!("common-cancel"))
+                .on_click(cx.listener(|this, _, _, cx| this.close_scrobble(cx))),
+        )
+        .action(
+            Button::new("settings-scrobble-submit")
+                .primary()
+                .label(t!("settings-scrobble-connect"))
+                .on_click(cx.listener(move |this, _, _, cx| this.link_scrobble(service, link, cx))),
+        )
+        .on_dismiss(cx.listener(|this, _, _, cx| this.close_scrobble(cx)))
+    }
+
+    fn close_scrobble(&mut self, cx: &mut Context<Self>) {
+        self.scrobble_prompt = None;
+        cx.notify();
     }
 
     fn accounts_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2607,6 +2945,9 @@ impl Render for SettingsView {
             })
             .when(self.credentials_for.is_some(), |this| {
                 this.child(self.credentials_prompt(cx).into_any_element())
+            })
+            .when_some(self.scrobble_prompt, |this, service| {
+                this.child(self.scrobble_modal(service, cx).into_any_element())
             })
     }
 }

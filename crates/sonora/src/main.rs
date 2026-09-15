@@ -7,6 +7,8 @@ mod http;
 mod logging;
 mod memory;
 mod single;
+#[cfg(windows)]
+mod thumbbar;
 mod tray;
 
 use std::path::PathBuf;
@@ -96,6 +98,8 @@ fn main() {
                 database.clone(),
             ));
         let lyrics: Vec<Arc<dyn LyricsProvider>> = vec![
+            Arc::new(music::spotify::SpotifyLyrics::from_env()),
+            Arc::new(music::youtube::YouTubeLyrics::new()),
             Arc::new(music::binimum::Binimum::new()),
             Arc::new(music::musixmatch::Musixmatch::new()),
             Arc::new(music::lrclib::LrcLib::new()),
@@ -260,6 +264,7 @@ fn open_window(cx: &mut App) {
         pins: _,
         playback,
         queue,
+        scrobbling: _,
         settings: _,
         updates: _,
         usage: _,
@@ -312,7 +317,12 @@ fn open_window(cx: &mut App) {
                 window,
                 Sonora::global(cx).settings.read(cx).window_rounding(),
             );
-            state::attach_remote(platform_handle(window), cx);
+            let handle = platform_handle(window);
+            state::attach_remote(handle, cx);
+            #[cfg(windows)]
+            if let Some(handle) = handle {
+                thumbbar::install(window.window_handle().window_id(), handle, cx);
+            }
             state::remember_window(window, cx);
             cx.new(|cx| Root::new(session, library, playback, queue, window, cx))
         },
