@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Deezer as a provider: your favorites, playlists, albums and search, with FLAC playback where
   the account allows it.
 
+### Fixed
+
+- On Windows, the window minimizes, restores and closes with the system animations again.
+
 ## [0.36.0] - 2026-09-15
 
 ### Added
