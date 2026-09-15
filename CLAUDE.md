@@ -35,7 +35,7 @@ crates/
   icons/      the icon packs: registry, active pack, path resolution, AssetSource
   embed/      build-script helper that walks a folder and writes include_bytes! literals
   webview/    a native browser window with a throwaway session, for cookie sign-ins
-  widevine/   the system CDM, the pssh box and CENC fMP4 parsing, for any DRM'd provider
+  widevine/   finding the system CDM, the pssh box and CENC fMP4 parsing, for any DRM'd provider
 ```
 
 Dependency direction is strict; do not create a back edge:
@@ -67,6 +67,16 @@ sonora → views → state → music
   `music/widevine` (which forwards to it) is only enabled on Linux. `widevine::licensing()` has
   to be held from challenge to license: the CDM cannot have two exchanges open, and preloading
   the next track is exactly that.
+- **The CDM is never ours to ship, and never ours to fetch.** Google licenses it to browser and
+  device vendors and publishes nothing redistributable, so no release artefact, package or
+  Flatpak may carry one, `about.toml` never gains an entry for it, and nothing in the tree
+  downloads one from Google's component service however easy that is. `widevine::find` uses a
+  copy the machine already has, read in place: `SONORA_WIDEVINE_CDM` first, so a package with a
+  module of its own can say where it is, then whatever a Chromium-family browser bundles or
+  component-updates, then Firefox's copy in the profile that fetched it. Only a successful
+  search is remembered, so a browser installed mid-run is picked up without a restart.
+  `state::Drm` holds that answer and `music::drm` is the only door `state` and `views` use, so
+  neither ever names a provider to ask about protected playback.
 - `ui` depends only on `gpui`, `serde` and `i18n`, plus the per-platform crates `ui::motion` needs
   to read the system reduce-motion preference (`objc2-app-kit`, `windows-sys`, `ashpd`). It must
   never know about `music`, `state`, or playback.

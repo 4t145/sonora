@@ -260,6 +260,7 @@ fn open_window(cx: &mut App) {
     let Sonora {
         session,
         cover: _,
+        drm: _,
         library,
         history: _,
         lyrics: _,
