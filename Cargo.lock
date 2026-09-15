@@ -8859,6 +8859,7 @@ dependencies = [
  "icons",
  "input",
  "jiff",
+ "log",
  "music",
  "router",
  "state",

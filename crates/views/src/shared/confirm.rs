@@ -1,8 +1,9 @@
 use gpui::prelude::*;
 use gpui::{App, Context, Entity, FocusHandle, Global, Render, Window, div};
 use i18n::t;
+use log;
 use music::{Album, SavedArtist, Track};
-use state::{Detail, History, Sonora};
+use state::{Detail, History, Io, Outcome, Sonora, Toasts};
 use ui::{Button, Dismiss, FORM_CONTEXT, Modal, Submit};
 
 #[derive(Clone, Copy)]
@@ -13,6 +14,7 @@ pub(crate) enum Kind {
     Albums(usize),
     Artists(usize),
     Playlists(usize),
+    DeleteTrackFiles(usize),
 }
 
 impl Kind {
@@ -20,6 +22,7 @@ impl Kind {
         match self {
             Self::PlaylistSongs(_) => t!("confirm-remove-playlist-title"),
             Self::History(_) => t!("confirm-remove-history-title"),
+            Self::DeleteTrackFiles(_) => t!("confirm-delete-track-files-title"),
             _ => t!("confirm-remove-library-title"),
         }
     }
@@ -32,6 +35,7 @@ impl Kind {
             Self::Albums(count) => t!("confirm-remove-albums", count = count),
             Self::Artists(count) => t!("confirm-remove-artists", count = count),
             Self::Playlists(count) => t!("confirm-remove-playlists", count = count),
+            Self::DeleteTrackFiles(count) => t!("confirm-delete-track-files", count = count),
         }
     }
 
@@ -177,6 +181,68 @@ impl Confirm {
                         library.remove_playlist_from_library(id, cx);
                     }
                 });
+            },
+            cx,
+        );
+    }
+
+    pub fn delete_track_files(ids: Vec<String>, cx: &mut App) {
+        if ids.is_empty() {
+            return;
+        }
+        Self::ask(
+            Kind::DeleteTrackFiles(ids.len()),
+            move |cx| {
+                let sonora = Sonora::global(cx);
+                let Some(provider) = sonora.session.read(cx).local_client() else {
+                    return;
+                };
+                let library = sonora.library.clone();
+                let playback = sonora.playback.clone();
+                let io = Io::global(cx);
+                cx.spawn(async move |cx| {
+                    let result = io
+                        .spawn(async move {
+                            let mut failed = 0;
+                            let mut deleted = Vec::new();
+                            for id in ids {
+                                match provider.delete_track_file(&id).await {
+                                    Ok(()) => deleted.push(id),
+                                    Err(error) => {
+                                        failed += 1;
+                                        log::warn!(
+                                            "local: cannot delete track file {id}: {error:#}"
+                                        );
+                                    }
+                                }
+                            }
+                            (failed, deleted)
+                        })
+                        .await;
+
+                    if let Ok((_, ref deleted)) = result {
+                        library.update(cx, |library, cx| {
+                            library.hide_local_tracks(deleted, cx)
+                        });
+                        playback
+                            .update(cx, |playback, cx| playback.remove_from_queue(deleted, cx));
+                    }
+                    match result {
+                        Ok((failed, _)) if failed > 0 => {
+                            cx.update(|cx| {
+                                Toasts::show(Outcome::Failed, "toast-local-delete-failed", cx);
+                            });
+                        }
+                        Err(error) => {
+                            log::warn!("local: deletion task failed: {error}");
+                            cx.update(|cx| {
+                                Toasts::show(Outcome::Failed, "toast-local-delete-failed", cx);
+                            });
+                        }
+                        Ok(_) => {}
+                    }
+                })
+                .detach();
             },
             cx,
         );

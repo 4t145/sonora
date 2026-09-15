@@ -122,6 +122,8 @@ menu-remove-tracks-from-history = { $count ->
     [one] Remove { $count } track from history
    *[other] Remove { $count } tracks from history
 }
+menu-delete-track-file = Delete track file
+menu-delete-track-files = Delete { $count } track files
 menu-play-next = Play next
 menu-play-tracks-next = { $count ->
     [one] Play { $count } track next
@@ -192,6 +194,8 @@ confirm-remove-playlists = { $count ->
     [one] Remove this playlist from your library?
    *[other] Remove { $count } playlists from your library?
 }
+confirm-delete-track-files-title = Delete track files?
+confirm-delete-track-files = The file(s) will be permanently deleted from disk. This cannot be undone.
 
 # queue panel
 queue-title = Queue
@@ -692,6 +696,7 @@ saver-strong = Strong ({ $fps } FPS)
 toast-playlist-created = Playlist created
 toast-playlist-renamed = Playlist renamed
 toast-playlist-deleted = Playlist deleted
+toast-local-delete-failed = Some track files could not be deleted
 toast-playlist-added = Playlist added to your library
 toast-playlist-removed = Playlist removed from your library
 toast-playlist-visibility = Playlist visibility changed

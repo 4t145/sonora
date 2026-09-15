@@ -114,6 +114,10 @@ pub trait MusicApi: Send + Sync {
         anyhow::bail!("cannot open arbitrary files")
     }
 
+    /// Delete a track file from disk (only for local provider)
+    async fn delete_track_file(&self, _track_id: &str) -> Result<()> {
+        anyhow::bail!("this provider does not support file deletion")
+    }
     async fn track_playcount(&self, track_id: &str) -> Result<Option<u64>>;
     async fn playlists(&self) -> Result<Vec<Playlist>>;
     /// Change a provider's own library pin, rather than a local sidebar shortcut.
