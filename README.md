@@ -42,6 +42,7 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
 * **Spotify, YouTube Music, Subsonic/OpenSubsonic,** and local playback
 * Gapless playback, audio normalization, shuffle, sleep timer
 * Synced/karaoke lyrics, background vocals, and romanization
+* Scrobbling with LastFM, ListenBrainz, LibreFM, and Maloja
 * Themes, fonts, icons, transparency, blur, and window styling
 * Discord Rich Presence, native file opening
 * macOS, Windows, Linux, and (probably) FreeBSD support
