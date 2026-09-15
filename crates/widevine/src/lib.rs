@@ -1,29 +1,34 @@
-//! Playing Widevine-encrypted fMP4 through the CDM a browser already has.
+//! Playing Widevine-encrypted fMP4 through the CDM the machine has.
 //!
-//! Nothing here is about one service. A provider that streams CENC audio needs the same four
+//! Nothing here is about one service. A provider that streams CENC audio needs the same five
 //! things, and they are all this crate does:
 //!
+//! - [`find`] settles which CDM this process uses, out of the copies the machine already has.
+//!   Google licenses the module to browser and device vendors and publishes nothing anyone else
+//!   may pass on, so Sonora neither ships one nor downloads one.
 //! - [`pssh`] builds the init data a CDM wants from a key id.
-//! - [`Cdm`] drives the system `libwidevinecdm.so`: a license challenge, the license back, and
-//!   samples decrypted. The device key stays sealed inside it and nothing is read out.
+//! - [`Cdm`] drives the system module: a license challenge, the license back, and samples
+//!   decrypted. The device key stays sealed inside it and nothing is read out.
 //! - [`cenc`] reads just enough ISO-BMFF to say where every encrypted sample is, what its IV is
 //!   and where each fragment starts on the media timeline.
 //! - [`cenc::unlock`] relabels the sample entry so an ordinary decoder will open the cleartext.
 //!
-//! Sonora never ships, installs, copies or downloads a CDM. `SONORA_WIDEVINE_CDM` points at one
-//! a browser or a package already has and it is loaded in place, read only. With the variable
-//! unset there is no Widevine playback and nothing else changes.
+//! `SONORA_WIDEVINE_CDM` overrides the search with a path of the user's choosing, which is what
+//! a package with a CDM of its own should set. With no module anywhere there is no Widevine
+//! playback and nothing else changes.
 //!
-//! The `cdm` feature is what links the host. Without it the parsing still compiles and
-//! [`available`] answers false, which is what keeps the C++ shim off the platforms it has no
-//! prebuilt for.
+//! The `cdm` feature is what links the host. Without it the parsing and the search still
+//! compile and [`available`] answers false, which is what keeps the C++ shim off the platforms
+//! it has no prebuilt for.
 
 mod cdm;
 pub mod cenc;
+mod source;
 
 use anyhow::{Result, bail};
 
-pub use cdm::{Cdm, configured};
+pub use cdm::Cdm;
+pub use source::{Found, LIBRARY, Origin, configured, find, installed};
 
 /// The environment variable naming the CDM to load.
 pub const CDM_PATH: &str = "SONORA_WIDEVINE_CDM";
@@ -93,20 +98,26 @@ pub async fn licensing() -> tokio::sync::MutexGuard<'static, ()> {
     LICENSING.lock().await
 }
 
+/// Whether this build has a host for a CDM. It says nothing about whether the machine has a
+/// CDM to open, only whether one could be used if it did.
+pub fn supported() -> bool {
+    cfg!(feature = "cdm")
+}
+
 /// Whether this build and this machine can open a CDM at all. A provider asks before offering
 /// playback, so the answer is a missing feature rather than a failed track.
 pub fn available() -> bool {
-    cfg!(feature = "cdm") && configured().is_some()
+    supported() && find().is_some()
 }
 
 /// Fails with the reason a CDM cannot be had, for a caller that wants to say so once rather
 /// than per track.
 pub fn require() -> Result<()> {
-    if !cfg!(feature = "cdm") {
+    if !supported() {
         bail!("this build carries no widevine host");
     }
-    if configured().is_none() {
-        bail!("{CDM_PATH} is not set to an existing libwidevinecdm.so");
+    if find().is_none() {
+        bail!("no widevine module was found on this machine");
     }
     Ok(())
 }

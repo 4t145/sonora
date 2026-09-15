@@ -9436,6 +9436,7 @@ version = "0.36.0"
 dependencies = [
  "anyhow",
  "cdm-host",
+ "dirs",
  "log",
  "tokio",
 ]

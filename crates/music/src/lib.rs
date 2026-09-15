@@ -3,6 +3,7 @@ mod audio;
 pub mod binimum;
 pub mod credentials;
 pub mod deezer;
+pub mod drm;
 pub mod engine;
 pub mod equalizer;
 pub mod kugou;

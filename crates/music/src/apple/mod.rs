@@ -32,8 +32,6 @@ use crate::{
 pub use client::AppleClient;
 pub use progressive::Media;
 
-pub use widevine::{CDM_PATH, available as widevine_available};
-
 /// The account token a run without a window uses: whatever `SONORA_APPLE_MEDIA_USER_TOKEN`
 /// names, or the one the sign-in window stored.
 pub fn account() -> Option<String> {
@@ -86,10 +84,7 @@ impl AppleProvider {
 fn session(client: AppleClient, profile: crate::UserProfile) -> ProviderSession {
     if !widevine::available() {
         // Metadata still works, so the account is worth keeping; only playback will refuse.
-        log::warn!(
-            "apple: {} is not set to a libwidevinecdm.so, so tracks cannot be decrypted",
-            widevine::CDM_PATH
-        );
+        log::warn!("apple: no widevine module is here yet, so tracks cannot be decrypted");
     }
     ProviderSession {
         profile,
