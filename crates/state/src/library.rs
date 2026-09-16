@@ -313,21 +313,25 @@ impl Library {
             let result = join(io.spawn(S::ask(client, asked, saved))).await;
             this.update(cx, |this, cx| {
                 S::requests(this).remove(&answered);
-                if let Err(error) = result {
-                    let name = match &previous {
-                        Some(previous) => previous.title().to_owned(),
-                        None => item.title().to_owned(),
-                    };
-                    match previous {
-                        Some(previous) => S::hold(this, previous, true),
-                        None => S::hold(this, item, false),
+                match result {
+                    Ok(()) if saved => S::admit(this, item, cx),
+                    Ok(()) => {}
+                    Err(error) => {
+                        let name = match &previous {
+                            Some(previous) => previous.title().to_owned(),
+                            None => item.title().to_owned(),
+                        };
+                        match previous {
+                            Some(previous) => S::hold(this, previous, true),
+                            None => S::hold(this, item, false),
+                        }
+                        log::warn!("library: cannot update the {}: {error:#}", S::TROUBLE);
+                        let key = match saved {
+                            true => "toast-library-add-failed",
+                            false => "toast-library-remove-failed",
+                        };
+                        Toasts::linked(Outcome::Failed, key, name, target, cx);
                     }
-                    log::warn!("library: cannot update the {}: {error:#}", S::TROUBLE);
-                    let key = match saved {
-                        true => "toast-library-add-failed",
-                        false => "toast-library-remove-failed",
-                    };
-                    Toasts::linked(Outcome::Failed, key, name, target, cx);
                 }
                 cx.notify();
             })
@@ -348,6 +352,9 @@ trait Savable: Clone + Send + Sized + 'static {
     fn saved_now(library: &Library, id: &str) -> Option<Self>;
     fn requests(library: &mut Library) -> &mut HashMap<String, Task<()>>;
     fn hold(library: &mut Library, item: Self, saved: bool);
+    /// What else the shelf does once the provider has agreed to the favorite. Nothing for
+    /// most kinds.
+    fn admit(_library: &mut Library, _item: Self, _cx: &mut Context<Library>) {}
     fn ask(
         client: Arc<dyn MusicApi>,
         id: String,
@@ -389,6 +396,26 @@ impl Savable for Track {
 
     fn hold(library: &mut Library, item: Self, saved: bool) {
         library.set_saved(item, saved);
+    }
+
+    /// Puts the track onto the shelf's own pages where the library is a set apart from the
+    /// favorites. Apple Music, the one such provider, adds a favorited song to the library
+    /// itself, so the Songs page lists it without a reload.
+    fn admit(library: &mut Library, track: Self, cx: &mut Context<Library>) {
+        let Some(id) = track.id.clone() else {
+            return;
+        };
+        let shelf = Shelf::of(&id);
+        if !library.session.read(cx).capabilities_of(shelf).library {
+            return;
+        }
+        let Some(ready) = library.held_mut(shelf).ready_mut() else {
+            return;
+        };
+        if ready.tracks.iter().any(|known| known.id == track.id) {
+            return;
+        }
+        ready.tracks.insert(0, track);
     }
 
     async fn ask(client: Arc<dyn MusicApi>, id: String, saved: bool) -> anyhow::Result<()> {

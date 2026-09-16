@@ -486,7 +486,8 @@ impl AppleClient {
 
     /// Favorites or unfavorites one catalog resource, the way the web player's star does: the
     /// id is posted to `/me/favorites` and deleted from there, and neither answer has a body.
-    /// The listener's library is left alone either way.
+    /// Apple itself adds a favorited song to the library when the account's Add Favorite Songs
+    /// to Library setting is on, which it is by default. Removing a favorite never touches it.
     async fn favorite(&self, kind: &str, id: &str, saved: bool) -> Result<()> {
         let key = format!("ids[{kind}]");
         let query = [(key.as_str(), id)];
