@@ -328,6 +328,7 @@ impl SettingsView {
             SettingsTab::About => vec![
                 Row::Item(self.version_row(cx).into_any_element()),
                 Row::Item(self.updates_row(cx).into_any_element()),
+                Row::Item(self.log_row(cx).into_any_element()),
                 self.title("settings-group-project", cx),
                 Row::Item(self.license_row(cx).into_any_element()),
                 Row::Item(self.source_row(cx).into_any_element()),
@@ -1002,8 +1003,8 @@ impl SettingsView {
                     .outline()
                     .on_click(move |_, _, cx| {
                         let path = settings.update(cx, |settings, _| settings.ensure_file());
-                        if let Err(error) = open_settings_file(&path) {
-                            eprintln!("sonora: cannot open {}: {error}", path.display());
+                        if let Err(error) = open_path(&path) {
+                            log::warn!("settings: cannot open {}: {error}", path.display());
                         }
                     }),
             )
@@ -1647,6 +1648,32 @@ impl SettingsView {
                     this.settings
                         .update(cx, |settings, cx| settings.set_check_updates(!on, cx));
                 }))
+                .into_any_element(),
+        )
+    }
+
+    /// The About row that opens the current log file in whatever the system reads text with.
+    /// The button is disabled when the platform names no state or cache folder to log into.
+    fn log_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let path = state::log_file();
+
+        self.row(
+            t!("settings-log"),
+            t!("settings-log-detail"),
+            theme.muted_foreground,
+            theme.text(Text::Small),
+            Button::new("open-log")
+                .label(t!("settings-log-open"))
+                .small()
+                .outline()
+                .disabled(path.is_none())
+                .on_click(move |_, _, _| {
+                    let Some(path) = &path else { return };
+                    if let Err(error) = open_path(path) {
+                        log::warn!("settings: cannot open {}: {error}", path.display());
+                    }
+                })
                 .into_any_element(),
         )
     }
@@ -2921,7 +2948,8 @@ fn samples(pack: &'static icons::Pack, tint: gpui::Hsla) -> impl IntoElement {
         }))
 }
 
-fn open_settings_file(path: &Path) -> std::io::Result<()> {
+/// Hands a file to the system's default application for it, without waiting on that program.
+fn open_path(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     Command::new("cmd")
         .args(["/C", "start", ""])

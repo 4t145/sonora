@@ -786,6 +786,9 @@ update-working = Downloading the update…
 update-failed = The update could not be installed. Try again from the releases page.
 settings-check-updates = Check for updates
 settings-check-updates-detail = Ask GitHub once at startup whether a newer version is out. Sonora installs the update itself on Windows only; elsewhere it points you at what changed
+settings-log = Log file
+settings-log-detail = What Sonora wrote while running. Attach it to a bug report
+settings-log-open = Open log
 
 # tags
 tags-edit-title = Edit tags

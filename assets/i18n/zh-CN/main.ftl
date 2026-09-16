@@ -699,6 +699,9 @@ update-working = 正在下载更新…
 update-failed = 更新无法安装。请从发布页面重试。
 settings-check-updates = 检查更新
 settings-check-updates-detail = 启动时向 GitHub 查询一次是否有新版本。Sonora 仅在 Windows 上自行安装更新；其他平台会指引你查看更新内容
+settings-log = 日志文件
+settings-log-detail = Sonora 运行时写下的内容。请将其附在错误报告中
+settings-log-open = 打开日志
 
 # tags
 tags-edit-title = 编辑标签

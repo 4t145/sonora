@@ -701,6 +701,9 @@ update-working = Mengunduh pembaruan…
 update-failed = Pembaruan tidak dapat dipasang. Coba lagi dari halaman rilis GitHub.
 settings-check-updates = Periksa pembaruan
 settings-check-updates-detail = Periksa ke GitHub saat startup apakah ada versi baru. Sonora memasang pembaruan secara otomatis hanya di Windows; di sistem operasi lain, Anda akan diarahkan ke daftar perubahannya
+settings-log = Berkas log
+settings-log-detail = Apa yang ditulis Sonora saat berjalan. Lampirkan ke laporan bug
+settings-log-open = Buka log
 
 # tags
 tags-edit-title = Edit tag
