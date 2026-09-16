@@ -4,7 +4,6 @@ on:
   push:
     branches: [dev]
   pull_request:
-    branches: [dev]
   workflow_dispatch:
 
 concurrency:
@@ -58,13 +57,21 @@ jobs:
         if: always()
         run: sccache --show-stats
 
-  windows:
+  build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             arch: x64compatible
@@ -75,6 +82,17 @@ jobs:
             setup: Sonora-Setup-arm64
     steps:
       - uses: actions/checkout@v5
+
+      - name: system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake mold \
+            libasound2-dev libfontconfig1-dev libfreetype-dev libsqlite3-dev \
+            libx11-dev libxcb1-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libvulkan-dev libdbus-1-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -101,13 +119,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "target/$TARGET/release/sonora.exe" "dist/sonora-${GITHUB_SHA:0:7}-$TARGET.exe"
+          case "$RUNNER_OS" in
+            Windows) cp "target/$TARGET/release/sonora.exe" "dist/sonora-${GITHUB_SHA:0:7}-$TARGET.exe" ;;
+            *)       cp "target/$TARGET/release/sonora" "dist/sonora-${GITHUB_SHA:0:7}-$TARGET" ;;
+          esac
 
       - name: install Inno Setup
+        if: runner.os == 'Windows'
         shell: pwsh
         run: choco install innosetup --yes --no-progress
 
       - name: build the Windows installer
+        if: runner.os == 'Windows'
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
@@ -121,6 +144,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.target }}
+          name: build-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
