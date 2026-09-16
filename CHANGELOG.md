@@ -19,6 +19,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so window managers like FancyZones can control it again.
 - Lyrics from a provider no longer go missing when its synced sheet carries a timestamp too large
   to read.
+- Opening a file whose link has a `%` before a non-ASCII letter no longer crashes Sonora.
+- On Windows, launching Sonora while it sits in the tray brings the window back even when the
+  running copy was started with administrator privileges.
+- Saving the tag editor keeps the extra genres or artists and the full release date of fields
+  you left alone.
+- The local library no longer fails to load when a folder holds a tagged file whose name is not
+  valid Unicode.
 
 ## [0.36.0] - 2026-09-15
 
