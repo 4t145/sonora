@@ -291,7 +291,7 @@ jobs:
               ;;
 
             *)
-              version="$(git rev-parse --short HEAD)"
+              version="${GITHUB_SHA:0:7}"
               number=""
               ;;
           esac
