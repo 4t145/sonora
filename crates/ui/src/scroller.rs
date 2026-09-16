@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, CursorStyle, Div, ElementId, Entity, Interactivity, MouseButton,
-    MouseMoveEvent, Pixels, ScrollWheelEvent, StyleRefinement, Window, div, px,
+    AnyElement, App, Div, ElementId, Entity, Interactivity, MouseButton, MouseMoveEvent, Pixels,
+    ScrollWheelEvent, StyleRefinement, Window, div, px,
 };
 
 use crate::button::Button;
@@ -76,7 +76,7 @@ impl RenderOnce for Scroller {
         let presentation = bar.read(cx).presentation();
         let gliding = bar.clone();
 
-        let mut surface = middle_scroll(base, &bar, cx)
+        let mut surface = middle_scroll(base, &bar)
             .id(id)
             .size_full()
             .overflow_y_scroll()
@@ -104,8 +104,10 @@ impl RenderOnce for Scroller {
     }
 }
 
-/// Adds browser-style middle-button auto-scrolling to a scrollable surface.
-pub fn middle_scroll(surface: Div, bar: &Entity<Scrollbar>, cx: &mut App) -> Div {
+/// Adds browser-style middle-button auto-scrolling to a scrollable surface. A middle click
+/// turns the mode on until the next press of any button. A middle press that is held and
+/// dragged scrolls only while held, and `Root` ends it on the release.
+pub fn middle_scroll(surface: Div, bar: &Entity<Scrollbar>) -> Div {
     surface
         .capture_any_mouse_down({
             let gliding = bar.clone();
@@ -139,11 +141,6 @@ pub fn middle_scroll(surface: Div, bar: &Entity<Scrollbar>, cx: &mut App) -> Div
                     bar.middle_scroll_move(event.position, window, cx)
                 });
             }
-        })
-        .cursor(if bar.read(cx).middle_scrolling() {
-            CursorStyle::ClosedHand
-        } else {
-            CursorStyle::Arrow
         })
 }
 

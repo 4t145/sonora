@@ -98,12 +98,16 @@ struct Grab {
     offset: Slot<Pixels>,
 }
 
+/// One middle-button auto-scroll: `pointer` is where the button went down and
+/// `current` where it is now. `dragged` remembers that the pointer once left the
+/// deadzone while the button was held, which is what makes the release end the mode.
 #[derive(Clone, Copy)]
 struct MiddleScroll {
     pointer: Pixels,
     current: Pixels,
     last: Instant,
     armed: bool,
+    dragged: bool,
 }
 
 impl Render for Grab {
@@ -287,10 +291,6 @@ impl Scrollbar {
         &self.scroll
     }
 
-    pub fn middle_scrolling(&self) -> bool {
-        self.middle_scroll.is_some()
-    }
-
     /// Starts middle-button auto-scrolling at the pointer's current vertical position.
     pub fn middle_scroll_start(
         &mut self,
@@ -308,6 +308,7 @@ impl Scrollbar {
             current: position.y,
             last: Instant::now(),
             armed: false,
+            dragged: false,
         });
         self.schedule_middle_scroll(window, cx);
         true
@@ -324,11 +325,28 @@ impl Scrollbar {
             return;
         };
         middle.current = position.y;
+        if (middle.current - middle.pointer).abs() > MIDDLE_SCROLL_DEADZONE {
+            middle.dragged = true;
+        }
         self.schedule_middle_scroll(window, cx);
     }
 
     pub fn middle_scroll_cancel(&mut self) {
         self.middle_scroll = None;
+    }
+
+    /// Answers a middle-button release the way a browser does. A press that was
+    /// held and dragged ends with the release, while a plain click leaves the mode
+    /// on until the next press. Returns whether the mode ended.
+    pub fn middle_scroll_release(&mut self) -> bool {
+        let Some(middle) = self.middle_scroll else {
+            return false;
+        };
+        if !middle.dragged {
+            return false;
+        }
+        self.middle_scroll = None;
+        true
     }
 
     fn schedule_middle_scroll(&mut self, window: &mut Window, cx: &Context<Self>) {
@@ -362,7 +380,7 @@ impl Scrollbar {
             return;
         }
 
-        let speed = (distance.as_f32() * MIDDLE_SCROLL_SPEED*2.).min(MIDDLE_SCROLL_MAX_SPEED);
+        let speed = (distance.as_f32() * MIDDLE_SCROLL_SPEED * 2.).min(MIDDLE_SCROLL_MAX_SPEED);
         let target = self.target();
         let hidden = self.maximum.unwrap_or_else(|| target.hidden());
         let offset =
@@ -461,6 +479,21 @@ pub fn cancel_middle_scroll(cx: &mut App) -> bool {
         .update(cx, |scrollbar, _| scrollbar.middle_scroll_cancel())
         .ok();
     true
+}
+
+/// Hands a middle-button release to the active auto-scroll, if any. Returns whether
+/// the release ended it, which only a held-and-dragged press does.
+pub fn release_middle_scroll(cx: &mut App) -> bool {
+    let Some(active) = cx.default_global::<ActiveMiddleScroll>().0.clone() else {
+        return false;
+    };
+    let ended = active
+        .update(cx, |scrollbar, _| scrollbar.middle_scroll_release())
+        .unwrap_or(true);
+    if ended {
+        cx.default_global::<ActiveMiddleScroll>().0 = None;
+    }
+    ended
 }
 
 /// Updates the active middle-button auto-scroll target from a window-level mouse move.

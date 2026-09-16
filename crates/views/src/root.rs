@@ -652,6 +652,11 @@ impl Render for Root {
                     cx.stop_propagation();
                 }
             })
+            .capture_any_mouse_up(|event, window, cx| {
+                if event.button == MouseButton::Middle && ui::release_middle_scroll(cx) {
+                    window.refresh();
+                }
+            })
             .on_mouse_move(|event, window, cx| {
                 ui::update_middle_scroll(event.position, window, cx);
             })
