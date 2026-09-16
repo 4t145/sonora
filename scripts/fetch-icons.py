@@ -98,6 +98,7 @@ MIRROR = {
 }
 
 SLASH = {
+    "library-big-off": "library-big",
     "mic-off": "mic-vocal",
 }
 

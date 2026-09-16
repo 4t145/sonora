@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{App, Context, Entity, SharedString, Task};
-use music::{Album, MusicApi, Playlist, SavedArtist, Shape, Track};
+use music::{Album, MediaKind, MusicApi, Page, Pages, Playlist, SavedArtist, Shape, Track};
 
 use crate::{Io, Outcome, Session, SessionEvent, Target, Toasts, join, mosaic};
 
@@ -60,6 +60,9 @@ struct Held {
     shape: Shape,
     state: LibraryState,
     awaited: Vec<LibraryPart>,
+    /// How many rows each part will have once it has all arrived, for the parts whose
+    /// provider said so on the first page. Absent, the rows so far are the count.
+    expected: HashMap<LibraryPart, usize>,
     starred: Starred,
     tasks: Vec<Task<()>>,
 }
@@ -70,6 +73,7 @@ impl Held {
             shape: Shape::Saved,
             state: LibraryState::Empty,
             awaited: Vec::new(),
+            expected: HashMap::new(),
             starred: Starred::default(),
             tasks: Vec::new(),
         }
@@ -177,41 +181,62 @@ struct PlaylistMutation {
     shelf: Shelf,
 }
 
+/// Puts one part onto the shelf whole: its rows, then the word that it is complete.
 fn place(
     state: &mut LibraryState,
     awaited: &mut Vec<LibraryPart>,
     landed: Landed,
     fatal: &[LibraryPart],
 ) {
-    awaited.retain(|part| *part != landed.part());
+    let part = landed.part();
+    extend(state, landed);
+    settle(state, awaited, part, fatal);
+}
+
+/// Puts one part's rows, or its failure, onto the shelf. A part arriving in pages passes here
+/// once per page, so the rows already there stay and the new ones go behind them.
+fn extend(state: &mut LibraryState, landed: Landed) {
     if !matches!(state, LibraryState::Ready(_)) {
         *state = LibraryState::Ready(Ready::default());
     }
+    let LibraryState::Ready(ready) = state else {
+        return;
+    };
+    let Ready {
+        tracks,
+        playlists,
+        albums,
+        artists,
+        problems,
+    } = ready;
+    let part = landed.part();
+    match landed {
+        Landed::Tracks(result) => tracks.extend(take(part, result, problems)),
+        Landed::Playlists(result) => playlists.extend(take(part, result, problems)),
+        Landed::Albums(result) => albums.extend(take(part, result, problems)),
+        Landed::Artists(result) => artists.extend(take(part, result, problems)),
+    }
+}
 
+/// Marks one part as fully arrived. Once every part has, a shelf whose fatal parts all failed
+/// is failed as a whole.
+fn settle(
+    state: &mut LibraryState,
+    awaited: &mut Vec<LibraryPart>,
+    part: LibraryPart,
+    fatal: &[LibraryPart],
+) {
+    awaited.retain(|waiting| *waiting != part);
+    if !awaited.is_empty() {
+        return;
+    }
     let failure = {
         let LibraryState::Ready(ready) = state else {
             return;
         };
-        let Ready {
-            tracks,
-            playlists,
-            albums,
-            artists,
-            problems,
-        } = ready;
-        let part = landed.part();
-        match landed {
-            Landed::Tracks(result) => *tracks = take(part, result, problems),
-            Landed::Playlists(result) => *playlists = take(part, result, problems),
-            Landed::Albums(result) => *albums = take(part, result, problems),
-            Landed::Artists(result) => *artists = take(part, result, problems),
-        }
-        if !awaited.is_empty() {
-            return;
-        }
         let reasons: Vec<&str> = fatal
             .iter()
-            .filter_map(|part| problems.iter().find(|problem| problem.part == *part))
+            .filter_map(|part| ready.problems.iter().find(|problem| problem.part == *part))
             .map(|problem| problem.reason.as_str())
             .collect();
         (reasons.len() == fatal.len()).then(|| reasons.join("\n"))
@@ -456,7 +481,7 @@ pub enum LibraryEvent {
     TracksHidden(Vec<String>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LibraryPart {
     Tracks,
     Playlists,
@@ -537,6 +562,8 @@ pub struct Library {
     pending: HashMap<String, Task<()>>,
     pending_albums: HashMap<String, Task<()>>,
     pending_artists: HashMap<String, Task<()>>,
+    /// Tracks and albums on their way into or out of the provider's own library, by id.
+    pending_library: HashMap<String, Task<()>>,
     contents: HashMap<String, HashSet<String>>,
     hidden_local_tracks: HashSet<String>,
     reading: HashMap<String, Task<()>>,
@@ -570,6 +597,7 @@ impl Library {
                 this.pending.clear();
                 this.pending_albums.clear();
                 this.pending_artists.clear();
+                this.pending_library.clear();
                 this.held_mut(Shelf::Streaming).clear();
                 cx.notify();
             }
@@ -602,6 +630,7 @@ impl Library {
             pending: HashMap::new(),
             pending_albums: HashMap::new(),
             pending_artists: HashMap::new(),
+            pending_library: HashMap::new(),
             contents: HashMap::new(),
             hidden_local_tracks: HashSet::new(),
             reading: HashMap::new(),
@@ -740,6 +769,12 @@ impl Library {
         self.held(shelf).shape
     }
 
+    /// How many rows a part will have once it has all arrived, when the provider said on the
+    /// first page. Nothing while nothing is known, and the rows so far are the count.
+    pub fn expected(&self, shelf: Shelf, part: LibraryPart) -> Option<usize> {
+        self.held(shelf).expected.get(&part).copied()
+    }
+
     pub fn part_failed(&self, shelf: Shelf, part: LibraryPart) -> bool {
         self.held(shelf)
             .ready()
@@ -833,6 +868,113 @@ impl Library {
             }
             self.toggle_saved(track, cx);
         }
+    }
+
+    /// Whether a track or album is in the shelf's own library, apart from its favorites. Only
+    /// a `Capabilities::library` provider draws the distinction, and there the pages list the
+    /// library, so this is what they list.
+    pub fn in_library(&self, id: &str) -> bool {
+        let state = &self.held(Shelf::of(id)).state;
+        state
+            .tracks()
+            .iter()
+            .any(|track| track.id.as_deref() == Some(id))
+            || state.albums().iter().any(|album| album.id == id)
+    }
+
+    pub fn pending_library(&self, id: &str) -> bool {
+        self.pending_library.contains_key(id)
+    }
+
+    pub fn set_track_in_library(
+        &mut self,
+        mut track: Track,
+        present: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = track.id.clone() else {
+            return;
+        };
+        let name = track.name.clone();
+        track.stamp_added();
+        self.set_in_library(id, MediaKind::Track, name, present, cx, move |ready| {
+            ready.tracks.retain(|known| known.id != track.id);
+            if present {
+                ready.tracks.insert(0, track);
+            }
+        });
+    }
+
+    pub fn set_album_in_library(
+        &mut self,
+        mut album: Album,
+        present: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let id = album.id.clone();
+        let name = album.name.clone();
+        album.stamp_added();
+        self.set_in_library(id, MediaKind::Album, name, present, cx, move |ready| {
+            ready.albums.retain(|known| known.id != album.id);
+            if present {
+                ready.albums.insert(0, album);
+            }
+        });
+    }
+
+    /// Asks the provider to put one item into its library or take it out, and applies
+    /// `place` to the shelf's pages once it agrees, so they follow without a reload. A second
+    /// ask about the same item while the first is out is dropped.
+    fn set_in_library(
+        &mut self,
+        id: String,
+        kind: MediaKind,
+        name: String,
+        present: bool,
+        cx: &mut Context<Self>,
+        place: impl FnOnce(&mut Ready) + 'static,
+    ) {
+        if self.pending_library.contains_key(&id) {
+            return;
+        }
+        let shelf = Shelf::of(&id);
+        let Some(client) = self.session.read(cx).client_of(shelf) else {
+            return;
+        };
+        let asked = id.clone();
+        let answered = id.clone();
+        let io = self.io.clone();
+        let task = cx.spawn(async move |this, cx| {
+            let result =
+                join(io.spawn(async move { client.set_in_library(kind, &asked, present).await }))
+                    .await;
+            this.update(cx, |this, cx| {
+                this.pending_library.remove(&answered);
+                match result {
+                    Ok(()) => {
+                        if let Some(ready) = this.held_mut(shelf).ready_mut() {
+                            place(ready);
+                        }
+                        let done = match present {
+                            true => "toast-library-added",
+                            false => "toast-library-removed",
+                        };
+                        Toasts::show(Outcome::Done, done, cx);
+                    }
+                    Err(error) => {
+                        log::warn!("library: cannot change the library: {error:#}");
+                        let failed = match present {
+                            true => "toast-library-add-failed",
+                            false => "toast-library-remove-failed",
+                        };
+                        Toasts::linked(Outcome::Failed, failed, name, None, cx);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        });
+        self.pending_library.insert(id, task);
     }
 
     pub fn saved_album(&self, album_id: &str) -> bool {
@@ -1489,6 +1631,7 @@ impl Library {
         held.shape = shape;
         held.state = LibraryState::Loading;
         held.awaited = LibraryPart::ALL.to_vec();
+        held.expected.clear();
         held.starred = Starred::default();
         cx.notify();
 
@@ -1497,14 +1640,16 @@ impl Library {
         let albums = client.clone();
         let artists = client.clone();
         let mut tasks = vec![
-            self.fetch(
+            self.stream(
+                shelf,
+                LibraryPart::Tracks,
                 async move {
                     match shape {
-                        Shape::Saved => tracks.saved_tracks().await,
-                        Shape::Catalog => tracks.all_tracks().await,
+                        Shape::Saved => tracks.saved_tracks_paged().await,
+                        Shape::Catalog => tracks.all_tracks_paged().await,
                     }
                 },
-                move |this, loaded, cx| this.land(shelf, Landed::Tracks(loaded), cx),
+                Landed::Tracks,
                 cx,
             ),
             self.fetch(
@@ -1512,24 +1657,28 @@ impl Library {
                 move |this, loaded, cx| this.land(shelf, Landed::Playlists(loaded), cx),
                 cx,
             ),
-            self.fetch(
+            self.stream(
+                shelf,
+                LibraryPart::Albums,
                 async move {
                     match shape {
-                        Shape::Saved => albums.saved_albums().await,
-                        Shape::Catalog => albums.all_albums().await,
+                        Shape::Saved => albums.saved_albums_paged().await,
+                        Shape::Catalog => albums.all_albums_paged().await,
                     }
                 },
-                move |this, loaded, cx| this.land(shelf, Landed::Albums(loaded), cx),
+                Landed::Albums,
                 cx,
             ),
-            self.fetch(
+            self.stream(
+                shelf,
+                LibraryPart::Artists,
                 async move {
                     match shape {
-                        Shape::Saved => artists.saved_artists().await,
-                        Shape::Catalog => artists.all_artists().await,
+                        Shape::Saved => artists.saved_artists_paged().await,
+                        Shape::Catalog => artists.all_artists_paged().await,
                     }
                 },
-                move |this, loaded, cx| this.land(shelf, Landed::Artists(loaded), cx),
+                Landed::Artists,
                 cx,
             ),
         ];
@@ -1567,6 +1716,62 @@ impl Library {
         cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(work)).await;
             this.update(cx, |this, cx| apply(this, loaded, cx)).ok();
+        })
+    }
+
+    /// Loads one part a page at a time. The shelf shows each page as it lands and learns how
+    /// many rows to expect from the first, so a long library reads from its first hundred rows
+    /// rather than its last. A page that fails ends the part with that failure.
+    fn stream<T, R>(
+        &self,
+        shelf: Shelf,
+        part: LibraryPart,
+        work: R,
+        wrap: fn(anyhow::Result<Vec<T>>) -> Landed,
+        cx: &mut Context<Self>,
+    ) -> Task<()>
+    where
+        R: Future<Output = anyhow::Result<Pages<T>>> + Send + 'static,
+        T: Send + 'static,
+    {
+        let io = self.io.clone();
+        cx.spawn(async move |this, cx| {
+            let mut pages = match join(io.spawn(work)).await {
+                Ok(pages) => pages,
+                Err(error) => {
+                    this.update(cx, |this, cx| this.land(shelf, wrap(Err(error)), cx))
+                        .ok();
+                    return;
+                }
+            };
+            while let Some(page) = pages.recv().await {
+                let landed = match page {
+                    Ok(Page { total, items }) => {
+                        let placed = this.update(cx, |this, cx| {
+                            let held = this.held_mut(shelf);
+                            if let Some(total) = total {
+                                held.expected.insert(part, total);
+                            }
+                            extend(&mut held.state, wrap(Ok(items)));
+                            cx.notify();
+                        });
+                        if placed.is_err() {
+                            return;
+                        }
+                        continue;
+                    }
+                    Err(error) => wrap(Err(error)),
+                };
+                this.update(cx, |this, cx| this.land(shelf, landed, cx))
+                    .ok();
+                return;
+            }
+            this.update(cx, |this, cx| {
+                let held = this.held_mut(shelf);
+                settle(&mut held.state, &mut held.awaited, part, shelf.fatal());
+                cx.notify();
+            })
+            .ok();
         })
     }
 

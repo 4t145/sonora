@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::{App, Entity, IntoElement, RenderOnce, Window, div, prelude::*, px};
-use i18n::{lookup, t};
+use i18n::{FluentArgs, Value as _, lookup, t};
 use ui::{ActiveTheme as _, Button, Input, Modal, Text};
 
 use crate::shared::steps::steps;
@@ -9,10 +9,11 @@ use crate::shared::steps::steps;
 type Action = Rc<dyn Fn(&(), &mut Window, &mut App)>;
 
 /// The walkthrough for one provider's manual cookie sign-in: the page to send the user to
-/// and the keys of every string the dialog shows, so one dialog serves every cookie provider.
+/// and the keys of every string the dialog shows. A provider whose sign-in is one cookie
+/// found by name shares the parametrized flow; a provider needing a whole request header
+/// names its own steps, with the title and the opener shared by every provider.
 struct Guide {
     url: &'static str,
-    open: &'static str,
     title: &'static str,
     hint: &'static str,
     steps: [&'static str; 4],
@@ -21,8 +22,7 @@ struct Guide {
 
 const YOUTUBE: Guide = Guide {
     url: "https://music.youtube.com",
-    open: "login-cookie-open",
-    title: "login-cookie-title",
+    title: "login-cookie-header-title",
     hint: "login-cookie-hint",
     steps: [
         "login-cookie-step-1",
@@ -33,41 +33,66 @@ const YOUTUBE: Guide = Guide {
     note: "login-cookie-step-note",
 };
 
-const DEEZER: Guide = Guide {
-    url: "https://www.deezer.com",
-    open: "login-cookie-deezer-open",
-    title: "login-cookie-deezer-title",
-    hint: "login-cookie-deezer-hint",
+const APPLE: Guide = Guide {
+    url: "https://music.apple.com",
+    title: "login-cookie-header-title",
+    hint: "login-cookie-hint",
     steps: [
-        "login-cookie-deezer-step-1",
-        "login-cookie-deezer-step-2",
-        "login-cookie-deezer-step-3",
-        "login-cookie-deezer-step-4",
+        "login-cookie-named-step-1",
+        "login-cookie-step-2",
+        "login-cookie-apple-step-3",
+        "login-cookie-step-4",
     ],
-    note: "login-cookie-deezer-note",
+    note: "login-cookie-apple-note",
 };
 
-/// The guide for a provider slug. YouTube's is the fallback, since it was the only cookie
-/// provider before Deezer and its wording fits any header paste.
+const DEEZER: Guide = Guide {
+    url: "https://www.deezer.com",
+    title: "login-cookie-named-title",
+    hint: "login-cookie-named-hint",
+    steps: [
+        "login-cookie-named-step-1",
+        "login-cookie-named-step-2",
+        "login-cookie-named-step-3",
+        "login-cookie-named-step-4",
+    ],
+    note: "login-cookie-named-note",
+};
+
+/// The guide for a provider slug. YouTube's is the fallback: pasting a whole request header
+/// needs no cookie name, so its wording fits any header paste.
 fn guide(slug: &str) -> &'static Guide {
     match slug {
+        "apple" => &APPLE,
         "deezer" => &DEEZER,
         _ => &YOUTUBE,
+    }
+}
+
+/// The site the devtools show and the cookie to copy, for the flows whose strings name them.
+/// YouTube's header flow needs neither, so it carries no entry here.
+fn named(slug: &str) -> Option<(&'static str, &'static str)> {
+    match slug {
+        "deezer" => Some(("www.deezer.com", "arl")),
+        "apple" => Some(("music.apple.com", "media-user-token")),
+        _ => None,
     }
 }
 
 #[derive(IntoElement)]
 pub(crate) struct CookiePrompt {
     slug: &'static str,
+    provider: &'static str,
     secret: Entity<Input>,
     submit: Option<Action>,
     cancel: Option<Action>,
 }
 
 impl CookiePrompt {
-    pub(crate) fn new(slug: &'static str, secret: Entity<Input>) -> Self {
+    pub(crate) fn new(slug: &'static str, provider: &'static str, secret: Entity<Input>) -> Self {
         Self {
             slug,
+            provider,
             secret,
             submit: None,
             cancel: None,
@@ -101,6 +126,7 @@ impl RenderOnce for CookiePrompt {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self {
             slug,
+            provider,
             secret,
             submit,
             cancel,
@@ -109,19 +135,28 @@ impl RenderOnce for CookiePrompt {
         let theme = *cx.theme();
         let guide = guide(slug);
 
-        Modal::new("cookie-prompt", lookup(guide.title, None))
+        let mut args = FluentArgs::new();
+        args.set("provider", provider.value());
+        if let Some((site, cookie)) = named(slug) {
+            args.set("site", site.value());
+            args.set("cookie", cookie.value());
+        }
+
+        Modal::new("cookie-prompt", lookup(guide.title, Some(&args)))
             .w(px(560.))
             .child(
                 Button::new("open-cookie-provider")
-                    .label(lookup(guide.open, None))
+                    .label(lookup("login-cookie-open", Some(&args)))
                     .icon("icons/external-link.svg")
                     .outline()
                     .on_click(move |_, _, cx| cx.open_url(guide.url)),
             )
-            .child(steps(guide.steps.iter().map(|key| lookup(key, None))))
+            .child(steps(
+                guide.steps.iter().map(|key| lookup(key, Some(&args))),
+            ))
             .child(
                 div()
-                    .child(lookup(guide.note, None))
+                    .child(lookup(guide.note, Some(&args)))
                     .flex_1()
                     .min_w_0()
                     .text_size(theme.text(Text::Small))

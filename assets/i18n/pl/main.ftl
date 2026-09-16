@@ -157,6 +157,18 @@ menu-rename-playlist = Zmień nazwę playlisty
 menu-delete-playlist = Usuń playlistę
 menu-add-playlist-to-library = Dodaj do biblioteki
 menu-remove-playlist-from-library = Usuń z biblioteki
+menu-library-add = Dodaj do biblioteki
+menu-library-add-tracks = { $count ->
+    [one] Dodaj { $count } utwór do biblioteki
+    [few] Dodaj { $count } utwory do biblioteki
+   *[other] Dodaj { $count } utworów do biblioteki
+}
+menu-library-remove = Usuń z biblioteki
+menu-library-remove-tracks = { $count ->
+    [one] Usuń { $count } utwór z biblioteki
+    [few] Usuń { $count } utwory z biblioteki
+   *[other] Usuń { $count } utworów z biblioteki
+}
 menu-make-playlist-public = Ustaw jako publiczną
 menu-make-playlist-private = Ustaw jako prywatną
 menu-open-album = Otwórz album
@@ -276,7 +288,7 @@ login-problem-refused = Spotify odrzucił logowanie. Odczekaj chwilę i spróbuj
 login-problem-premium = Sonora odtwarza muzykę przez Spotify Premium, a to konto go nie ma. Zaloguj się na konto z Premium, aby kontynuować.
 login-sign-in = Zaloguj się przez { $provider }
 login-connect-cookies = Wklej pliki cookie ręcznie
-login-cookie-open = Otwórz YouTube Music
+login-cookie-open = Otwórz { $provider }
 login-cookie-submit = Kontynuuj
 login-cookie-hint = Wklej tutaj nagłówek żądania Cookie
 login-cookie-step-1 = Otwórz music.youtube.com i upewnij się, że jesteś zalogowany. Najlepiej działa okno incognito.
@@ -284,15 +296,16 @@ login-cookie-step-2 = Naciśnij F12, otwórz kartę Sieć i odśwież stronę.
 login-cookie-step-3 = Wybierz dowolne żądanie o nazwie „browse” lub „next”.
 login-cookie-step-4 = Na karcie Nagłówki znajdź Cookie wśród nagłówków żądania, kliknij prawym przyciskiem i skopiuj wartość.
 login-cookie-step-note = Wklej całą wartość: panel Ciasteczka nie wystarczy, bo wartość musi zawierać SAPISID i __Secure-3PAPISID.
-login-cookie-title = Wklej pliki cookie YouTube Music, aby dokończyć logowanie
-login-cookie-deezer-title = Wklej plik cookie arl z Deezer, aby dokończyć logowanie
-login-cookie-deezer-open = Otwórz Deezer
-login-cookie-deezer-hint = Wklej tutaj plik cookie arl
-login-cookie-deezer-step-1 = Otwórz www.deezer.com i upewnij się, że jesteś zalogowany.
-login-cookie-deezer-step-2 = Naciśnij F12 i otwórz kartę Dane w Firefoksie lub Application w Chrome.
-login-cookie-deezer-step-3 = Rozwiń Cookies, wybierz https://www.deezer.com i znajdź plik cookie o nazwie arl.
-login-cookie-deezer-step-4 = Kliknij dwukrotnie jego wartość i skopiuj ją.
-login-cookie-deezer-note = Sama wartość arl wystarczy. Cały nagłówek Cookie skopiowany z karty Sieć też zadziała.
+login-cookie-header-title = Wklej pliki cookie { $provider }, aby dokończyć logowanie
+login-cookie-apple-step-3 = Wybierz dowolne żądanie do { $site }.
+login-cookie-apple-note = Wklej całą wartość: musi zawierać { $cookie }.
+login-cookie-named-title = Wklej plik cookie { $provider }, aby dokończyć logowanie
+login-cookie-named-hint = Wklej tutaj wartość pliku cookie
+login-cookie-named-step-1 = Otwórz { $site } i upewnij się, że jesteś zalogowany.
+login-cookie-named-step-2 = Naciśnij F12 i otwórz kartę Dane w Firefoksie lub Application w Chrome.
+login-cookie-named-step-3 = Rozwiń Cookies, wybierz { $site } i znajdź plik cookie o nazwie { $cookie }.
+login-cookie-named-step-4 = Kliknij dwukrotnie jego wartość i skopiuj ją.
+login-cookie-named-note = Sama wartość { $cookie } wystarczy. Cały nagłówek Cookie skopiowany z karty Sieć też zadziała.
 login-window-title = Logowanie do { $provider }
 login-use = Otwórz { $provider }
 login-guest-title = Tryb gościa
@@ -575,6 +588,30 @@ settings-sleep-configure = Skonfiguruj…
 settings-sleep-off = Wył
 settings-sleep-end-of-track = Na końcu utworu
 settings-sleep-minutes = { $count } min
+settings-widevine = Moduł Widevine
+settings-widevine-detail = Utwory Apple Music są zaszyfrowane i potrzebują modułu Widevine od Google. Sonora używa kopii, którą ma już przeglądarka, albo tej, którą pobrała od Google za Twoją zgodą.
+settings-widevine-none = Utwory Apple Music są zaszyfrowane i potrzebują modułu Widevine od Google. Żadna przeglądarka tutaj go nie ma, więc Sonora może pobrać go od Google za Twoją zgodą.
+settings-widevine-looking = Szukanie…
+settings-widevine-asking = Czekamy na Twoją odpowiedź
+settings-widevine-fetching = Pobieranie…
+settings-widevine-installing = Instalowanie…
+settings-widevine-installed = Znaleziony w przeglądarce
+settings-widevine-fetched = Pobrany od Google
+settings-widevine-missing = Nie zainstalowano
+settings-widevine-configured = Ustawiony przez środowisko
+settings-widevine-fetch = Pobierz
+settings-widevine-uninstall = Odinstaluj
+confirm-uninstall-widevine-title = Odinstalować moduł Widevine?
+confirm-uninstall-widevine = Sonora usunie kopię pobraną od Google. Utwory Apple Music przestaną grać, dopóki moduł nie zostanie pobrany ponownie.
+widevine-prompt-title = Moduł Widevine
+widevine-prompt-wanted = Utwory Apple Music są zaszyfrowane i potrzebują modułu Widevine od Google. Żadna przeglądarka na tym komputerze go nie ma. Sonora może pobrać go z serwerów Google, ten sam plik, który instaluje Chrome, i trzymać w swoim folderze.
+widevine-prompt-downloading = Pobieranie…
+widevine-prompt-terms = Wersja { $version } jest pobrana. Instalacja oznacza akceptację warunków Google dla tego modułu:
+widevine-prompt-installing = Instalowanie…
+widevine-prompt-download = Pobierz
+widevine-prompt-later = Nie teraz
+widevine-prompt-accept = Zaakceptuj i zainstaluj
+widevine-prompt-decline = Odrzuć
 settings-panel-lyrics-size = Rozmiar tekstu utworu (panel)
 settings-panel-lyrics-size-detail = Rozmiar wierszy tekstu utworu w panelu bocznym ponad bazowy rozmiar czcionki
 settings-fullscreen-lyrics-size = Rozmiar tekstu utworu (pełny ekran)
@@ -750,6 +787,8 @@ toast-sign-in-to-play = { $name } udostępnia muzykę tylko po zalogowaniu
 toast-track-unplayable = Nie udało się odtworzyć { $name }
 toast-library-add-failed = Nie udało się dodać { $name } do biblioteki
 toast-library-remove-failed = Nie udało się usunąć { $name } z biblioteki
+toast-library-added = Dodano do biblioteki
+toast-library-removed = Usunięto z biblioteki
 
 # lyrics
 lyrics-title = Tekst

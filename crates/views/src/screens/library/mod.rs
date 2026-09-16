@@ -532,8 +532,18 @@ impl LibraryView {
     fn header(&self, cx: &Context<Self>) -> AnyElement {
         let state = self.tracks().read(cx);
         let delegate = state.delegate();
-        let count = delegate.row_count();
-        let duration: std::time::Duration = (0..count)
+        let listed = delegate.row_count();
+        // While the songs are still arriving, the provider's own total is the count to show,
+        // so it does not climb a page at a time. A filter counts what it kept.
+        let count = match self.table(Section::Songs).filtering(cx) {
+            true => listed,
+            false => self
+                .library
+                .read(cx)
+                .expected(self.shelf, Section::Songs.part())
+                .map_or(listed, |expected| expected.max(listed)),
+        };
+        let duration: std::time::Duration = (0..listed)
             .filter_map(|display| delegate.source().peek(delegate.row(display), cx))
             .map(|track| track.duration)
             .sum();
@@ -636,24 +646,35 @@ impl LibraryView {
         }
         let library = self.library.clone();
         let table = self.albums.clone();
-        Confirm::ask(
-            Kind::Albums(albums.len()),
-            move |cx| {
-                library.update(cx, |library, cx| {
-                    for album in albums {
-                        library.toggle_album(album, cx);
-                    }
-                });
-                table.update(cx, |table, cx| {
-                    table.delegate_mut().clear_selection();
-                    cx.notify();
-                });
-            },
-            cx,
-        );
+        let count = albums.len();
+        let starred = Confirm::unstarring(&albums[0].id, cx);
+        let apply = move |cx: &mut App| {
+            library.update(cx, |library, cx| {
+                for album in albums {
+                    library.toggle_album(album, cx);
+                }
+            });
+            table.update(cx, |table, cx| {
+                table.delegate_mut().clear_selection();
+                cx.notify();
+            });
+        };
+        match starred {
+            true => apply(cx),
+            false => Confirm::ask(Kind::Albums(count), apply, cx),
+        }
     }
 
     fn drop_artists(&mut self, cx: &mut Context<Self>) {
+        // Nothing to unfollow where following is not a thing the provider has.
+        if !Sonora::global(cx)
+            .session
+            .read(cx)
+            .capabilities_of(self.shelf)
+            .follow_artists
+        {
+            return;
+        }
         let rows = self.artists.read(cx).delegate().picked();
         let artists: Vec<_> = {
             let state = self.artists.read(cx);
@@ -665,21 +686,23 @@ impl LibraryView {
         }
         let library = self.library.clone();
         let table = self.artists.clone();
-        Confirm::ask(
-            Kind::Artists(artists.len()),
-            move |cx| {
-                library.update(cx, |library, cx| {
-                    for artist in artists {
-                        library.toggle_artist(artist, cx);
-                    }
-                });
-                table.update(cx, |table, cx| {
-                    table.delegate_mut().clear_selection();
-                    cx.notify();
-                });
-            },
-            cx,
-        );
+        let count = artists.len();
+        let starred = Confirm::unstarring(&artists[0].id, cx);
+        let apply = move |cx: &mut App| {
+            library.update(cx, |library, cx| {
+                for artist in artists {
+                    library.toggle_artist(artist, cx);
+                }
+            });
+            table.update(cx, |table, cx| {
+                table.delegate_mut().clear_selection();
+                cx.notify();
+            });
+        };
+        match starred {
+            true => apply(cx),
+            false => Confirm::ask(Kind::Artists(count), apply, cx),
+        }
     }
 
     fn drop_playlists(&mut self, cx: &mut Context<Self>) {
