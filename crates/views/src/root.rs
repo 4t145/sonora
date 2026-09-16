@@ -653,7 +653,14 @@ impl Render for Root {
                 }
             })
             .capture_any_mouse_up(|event, window, cx| {
-                if event.button == MouseButton::Middle && ui::release_middle_scroll(cx) {
+                if event.button == MouseButton::Middle
+                    && ui::release_middle_scroll(event.position, cx)
+                {
+                    window.refresh();
+                }
+            })
+            .on_mouse_up_out(MouseButton::Middle, |event, window, cx| {
+                if ui::release_middle_scroll(event.position, cx) {
                     window.refresh();
                 }
             })
