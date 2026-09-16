@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The AppImage can be updated through AppImageUpdate or an AppImage manager.
 - Deezer as a provider: your favorites, playlists, albums and search, with FLAC playback where
   the account allows it.
 - Apple Music as a provider: your library, playlists, search and stations.
