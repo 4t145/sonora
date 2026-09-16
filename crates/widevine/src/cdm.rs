@@ -9,17 +9,18 @@ mod host {
     use std::sync::{Mutex, MutexGuard};
 
     use anyhow::{Context as _, Result, bail};
-    use cdm_host::CdmHost;
+
+    use crate::shim::Shim;
 
     /// The one CDM this process has, opened on first use and kept for the rest of the session.
     /// Re-opening would re-initialize the same native instance and take the keys of whatever is
     /// playing with it, so it is opened once.
-    static CDM: Mutex<Option<CdmHost>> = Mutex::new(None);
+    static CDM: Mutex<Option<Shim>> = Mutex::new(None);
 
     /// A handle to the process CDM. Every call takes the same lock, in the order it arrives.
     pub struct Cdm;
 
-    fn held() -> Result<MutexGuard<'static, Option<CdmHost>>> {
+    fn held() -> Result<MutexGuard<'static, Option<Shim>>> {
         CDM.lock()
             .map_err(|_| anyhow::anyhow!("the widevine cdm is poisoned"))
     }
@@ -40,9 +41,7 @@ mod host {
                 found.origin,
                 path.display()
             );
-            // Deliberately `open` and not `install_or_open`: the file is read where it already
-            // is, and the only copy Sonora ever makes is the one it fetched on request.
-            let opened = CdmHost::open(&path)
+            let opened = Shim::open(&path)
                 .with_context(|| format!("cannot open the widevine cdm at {}", path.display()))?;
             *cdm = Some(opened);
             Ok(Self)

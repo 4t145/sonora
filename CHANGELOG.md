@@ -11,7 +11,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Deezer as a provider: your favorites, playlists, albums and search, with FLAC playback where
   the account allows it.
-- Apple Music as a provider on Linux and macOS: your library, playlists, search and stations.
+- Apple Music as a provider: your library, playlists, search and stations.
   Playback needs Google's Widevine module. Sonora uses the copy a browser on your computer has,
   or offers to download it from Google and shows Google's terms first. Settings can remove a
   downloaded module again.

@@ -19,7 +19,7 @@ gpui.workspace = true
 gpui_platform.workspace = true
 i18n.workspace = true
 icons.workspace = true
-music.workspace = true
+music = { workspace = true, features = ["widevine"] }
 state.workspace = true
 storage.workspace = true
 input.workspace = true
@@ -36,12 +36,6 @@ image.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true
 ksni.workspace = true
-
-# The Widevine host's shim is prebuilt for x86_64 linux and compiled from source everywhere
-# else, which the linux and macOS release runners can do. Windows waits on a port of the shim's
-# dlopen calls, so Apple Music playback is off there.
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-music = { workspace = true, features = ["widevine"] }
 
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tray-icon.workspace = true

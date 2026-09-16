@@ -63,10 +63,12 @@ sonora → views → state → music
   same code; do not start a fourth.
 - `widevine` is a leaf that knows nothing about music: the process-wide CDM behind one lock, the
   `pssh` box, the fetch from Google, and enough ISO-BMFF to find every encrypted sample and
-  fragment. Its `cdm` feature is what links the C++ host, prebuilt for
-  `x86_64-unknown-linux-gnu` and compiled from source with `cc` everywhere else, so
-  `music/widevine` (which forwards to it) is enabled on Linux and macOS and stays off on Windows
-  until the shim's `dlopen` calls are ported. `widevine::licensing()` has to be held from
+  fragment. Its `cdm` feature compiles the C++ host in `crates/widevine/shim/` with `cc`: one
+  `shim.cc` that implements `cdm::Host_11` against the vendored Chromium header and loads the
+  module through `dlopen` on Linux and macOS and `LoadLibraryExW` on Windows, with
+  `src/shim.rs` as the Rust side. `music/widevine` forwards to it and `sonora` turns it on for
+  every platform, so a C++ compiler is a build requirement everywhere: `g++` or `clang++`,
+  `cl.exe` on Windows. `widevine::licensing()` has to be held from
   challenge to license: the CDM cannot have two exchanges open, and preloading the next track is
   exactly that.
 - **The CDM is never ours to ship, and it arrives the way Kodi's does.** Google licenses it to
@@ -131,7 +133,9 @@ sonora → views → state → music
 
 The GPUI renderer is Vulkan-based, so a Vulkan ICD is a **runtime** requirement, not just a build
 one. Link-time deps: `vulkan-loader`, `wayland`, `libxkbcommon`, `libxcb`, `libx11`, `libxcursor`,
-`libxi`, `fontconfig`, `freetype`, `alsa-lib`, `dbus`, `sqlite`, plus `pkg-config`.
+`libxi`, `fontconfig`, `freetype`, `alsa-lib`, `dbus`, `sqlite`, plus `pkg-config`. A C++
+compiler too: `crates/widevine` compiles its CDM host from `shim.cc` on every platform, through
+`g++` or `clang++` on Linux and macOS and `cl.exe` on Windows.
 
 webkit2gtk is deliberately **not** on that list: `crates/webview` reaches
 `libwebkit2gtk-4.1.so.0` (or the older `4.0.so.37`) through `dlopen` when a provider signs in with

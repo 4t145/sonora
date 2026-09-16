@@ -5,13 +5,15 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# The host for the CDM. Off by default: it links a C++ shim, prebuilt for x86_64 linux and
-# compiled from source elsewhere, and everything else here is plain parsing that needs no CDM.
-cdm = ["dep:cdm-host"]
+# The host for the CDM. Off by default: it compiles the C++ shim under `shim/`, which wants a
+# C++ compiler, and everything else here is plain parsing that needs no CDM.
+cdm = []
+
+[build-dependencies]
+cc.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-cdm-host = { workspace = true, optional = true }
 dirs.workspace = true
 flate2.workspace = true
 log.workspace = true

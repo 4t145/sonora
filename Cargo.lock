@@ -932,16 +932,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cdm-host"
-version = "0.1.0"
-source = "git+https://github.com/Kopuz-org/cdm-host?rev=0e0d76b6b276b8c750bb0cb277b10071de5bc661#0e0d76b6b276b8c750bb0cb277b10071de5bc661"
-dependencies = [
- "anyhow",
- "base64",
- "cc",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9436,7 +9426,7 @@ name = "widevine"
 version = "0.36.0"
 dependencies = [
  "anyhow",
- "cdm-host",
+ "cc",
  "dirs",
  "flate2",
  "log",

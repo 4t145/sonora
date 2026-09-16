@@ -19,13 +19,15 @@
 //! a package with a CDM of its own should set. With no module anywhere there is no Widevine
 //! playback and nothing else changes.
 //!
-//! The `cdm` feature is what links the host. Without it the parsing, the search and the fetch
-//! still compile and [`available`] answers false, which is what keeps the C++ shim off the
-//! platforms it has not been ported to.
+//! The `cdm` feature is what compiles and links the host, the C++ in `shim/`. Without it the
+//! parsing, the search and the fetch still compile and [`available`] answers false, so a build
+//! with no C++ compiler still has everything but playback.
 
 mod cdm;
 pub mod cenc;
 mod fetch;
+#[cfg(feature = "cdm")]
+mod shim;
 mod source;
 
 use anyhow::{Result, bail};
