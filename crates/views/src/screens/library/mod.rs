@@ -252,10 +252,8 @@ impl LibraryView {
             .with_liked(library.clone())
             .starrable(shelf)
             .table(cx.weak_entity());
-            let mut delegate = TableDelegate::new(source, width, cx);
-            if shelf == Shelf::Streaming {
-                delegate = delegate.with_sort(TrackField::AddedAt, Sort::Descending, cx);
-            }
+            let mut delegate =
+                TableDelegate::new(source, width, cx).with_sort(TrackField::AddedAt, RECENT, cx);
             let (layout, sorting) = stored(Section::Songs, cx);
             delegate.set_layout(layout, cx);
             if let Some(sorting) = sorting {
