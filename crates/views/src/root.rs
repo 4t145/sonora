@@ -664,6 +664,12 @@ impl Render for Root {
                     window.refresh();
                 }
             })
+            .capture_key_down(|event, window, cx| {
+                if event.keystroke.key == "escape" && ui::cancel_middle_scroll(cx) {
+                    window.refresh();
+                    cx.stop_propagation();
+                }
+            })
             .on_mouse_move(|event, window, cx| {
                 ui::update_middle_scroll(event.position, window, cx);
             })
