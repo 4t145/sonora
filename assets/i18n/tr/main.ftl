@@ -682,6 +682,9 @@ update-working = Güncelleme indiriliyor…
 update-failed = Güncelleme kurulamadı. Yayınlar sayfasından yeniden dene.
 settings-check-updates = Güncellemeleri denetle
 settings-check-updates-detail = Açılışta GitHub'a bir kez daha yeni bir sürüm çıktı mı diye sor. Sonora güncellemeyi yalnızca Windows'ta kendi kurar; diğer yerlerde nelerin değiştiğini gösterir
+settings-log = Günlük dosyası
+settings-log-detail = Sonora'nın çalışırken yazdıkları. Hata raporuna ekleyin
+settings-log-open = Günlüğü aç
 
 # tags
 tags-edit-title = Etiketleri düzenle

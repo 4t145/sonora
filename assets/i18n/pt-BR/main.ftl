@@ -699,6 +699,9 @@ update-working = Baixando a atualização…
 update-failed = Não foi possível instalar a atualização. Tente novamente pela página de lançamentos.
 settings-check-updates = Verificar atualizações
 settings-check-updates-detail = Perguntar ao GitHub na inicialização se uma nova versão está disponível. O Sonora instala a atualização sozinho apenas no Windows; em outras plataformas ele te direciona ao que mudou
+settings-log = Arquivo de log
+settings-log-detail = O que o Sonora escreveu enquanto rodava. Anexe-o a um relatório de bug
+settings-log-open = Abrir o log
 
 # tags
 tags-edit-title = Editar tags
