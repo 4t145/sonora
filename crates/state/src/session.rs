@@ -247,11 +247,15 @@ impl Session {
         self.providers().filter(|info| info.stored)
     }
 
-    /// Whether an account is here for a provider whose tracks need the Widevine module.
+    /// Whether the current provider's tracks need the Widevine module and it has an account.
+    /// A protected provider the user signed into but is not on right now does not count, so
+    /// nothing about the module is looked for or shown until they switch to it.
     pub fn wants_drm(&self) -> bool {
-        self.providers
-            .iter()
-            .any(|provider| provider.protected() && provider.stored())
+        let Some(index) = self.active else {
+            return false;
+        };
+        let provider = &self.providers[index];
+        provider.protected() && provider.stored()
     }
 
     pub fn forget(&mut self, slug: &str, cx: &mut Context<Self>) {

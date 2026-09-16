@@ -296,7 +296,7 @@ impl SettingsView {
                     Row::Item(self.gapless_row(cx).into_any_element()),
                     Row::Item(self.sleep_row(cx).into_any_element()),
                 ];
-                if self.drm.read(cx).supported() {
+                if self.drm.read(cx).shown(cx) {
                     rows.push(Row::Item(self.widevine_row(cx).into_any_element()));
                 }
                 rows.extend([
@@ -1556,11 +1556,10 @@ impl SettingsView {
         MenuItem::new("sleep-dial", "").content(dial)
     }
 
-    /// The Widevine module row, which only appears where this build has a host for one.
-    /// Protected tracks cannot play a note without the module. Sonora uses a browser's copy
-    /// when one is here and otherwise offers Google's download once a protected provider has
-    /// an account, so the row says where that stands and offers the download by hand when the
-    /// user said no or nothing asked yet.
+    /// The Widevine module row, which only appears while the current provider is one whose
+    /// tracks need the module and this build has a host for one. Sonora uses a browser's copy
+    /// when one is here and otherwise offers Google's download, so the row says where that
+    /// stands and offers the download by hand when the user said no or nothing asked yet.
     fn widevine_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;

@@ -2,13 +2,14 @@
 //!
 //! Sonora ships no Widevine module: Google publishes nothing anyone may redistribute. It does
 //! what Kodi does instead. A copy a browser on the machine already has is used as it lies.
-//! With none, and only once an account is here for a provider whose tracks need the module,
-//! the user is asked whether to download it from Google, shown Google's terms out of the
-//! downloaded archive, and asked again before it is installed into Sonora's own store. A
-//! module accepted that way is kept current without asking again. With nothing accepted,
-//! protected providers keep their metadata and refuse to play.
+//! Nothing is looked for until the current provider is one whose tracks need the module, so a
+//! Spotify or YouTube run never touches a browser folder. With none found, the user is asked
+//! whether to download it from Google, shown Google's terms out of the downloaded archive, and
+//! asked again before it is installed into Sonora's own store. A module accepted that way is
+//! kept current without asking again. With nothing accepted, protected providers keep their
+//! metadata and refuse to play.
 
-use gpui::{Context, Entity, Task};
+use gpui::{App, Context, Entity, Task};
 use music::drm::{self, Offer, Origin};
 
 use crate::{Io, Session, SessionEvent};
@@ -50,6 +51,9 @@ pub struct Drm {
     session: Entity<Session>,
     io: Io,
     task: Option<Task<()>>,
+    /// Whether the machine has been searched this run. The search happens once, the first
+    /// time a protected provider is the current one, and later switches only reuse its answer.
+    looked: bool,
 }
 
 impl Drm {
@@ -59,22 +63,19 @@ impl Drm {
                 && drm::supported()
                 && session.read(cx).wants_drm()
             {
-                this.ask(cx);
+                this.wanted(cx);
             }
         })
         .detach();
 
-        let mut drm = Self {
+        Self {
             state: CdmState::Missing,
             offer: None,
             session,
             io,
             task: None,
-        };
-        if drm::supported() {
-            drm.look(cx);
+            looked: false,
         }
-        drm
     }
 
     pub fn state(&self) -> &CdmState {
@@ -87,10 +88,26 @@ impl Drm {
         drm::supported()
     }
 
+    /// Whether the module is worth showing the user right now: this build has a host for one
+    /// and the current provider's tracks need it. Settings draws its row on this alone.
+    pub fn shown(&self, cx: &App) -> bool {
+        drm::supported() && self.session.read(cx).wants_drm()
+    }
+
+    /// A protected provider just became the current one. The first time, the machine is
+    /// searched; afterwards the user is asked again only if nothing was found or decided.
+    fn wanted(&mut self, cx: &mut Context<Self>) {
+        match self.looked {
+            false => self.look(cx),
+            true => self.ask(cx),
+        }
+    }
+
     /// Answers from what is already here, off the network. With nothing here and a protected
     /// account present, the user is asked; with a module Sonora fetched before, a newer one is
     /// fetched quietly.
     pub fn look(&mut self, cx: &mut Context<Self>) {
+        self.looked = true;
         self.state = CdmState::Looking;
         cx.notify();
 

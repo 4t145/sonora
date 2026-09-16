@@ -83,9 +83,10 @@ sonora → views → state → music
   browser installed where no fixed path predicts, a Nix store entry above all; a Firefox names
   its profiles in `profiles.ini` and its version in that profile's `prefs.js`; a macOS bundle
   is reached through the framework's `Libraries` symlink, so the version never has to be known.
-  The one folder Sonora reads is its own store. With
-  nothing found, `state::Drm` asks the user, and only once an account is here for a provider
-  whose `protected()` is true: first whether to download, then, with the archive fetched from
+  The one folder Sonora reads is its own store. The search itself waits until the current
+  provider is one whose `protected()` is true and has an account, so a Spotify or YouTube run
+  never looks, and the Settings row (`Drm::shown`) appears only then too. With nothing found,
+  `state::Drm` asks the user: first whether to download, then, with the archive fetched from
   Google's component update service and its sha256 checked, whether Google's terms out of that
   archive are accepted. `widevine::offer` is the download, `Offer::install` the install, and
   `views::shared::widevine` draws the two questions. `SONORA_WIDEVINE_SKIP_BROWSERS` skips the
