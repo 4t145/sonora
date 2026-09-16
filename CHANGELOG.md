@@ -17,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On Windows, the window minimizes, restores and closes with the system animations again.
 - On Windows, Sonora no longer keeps the installer's administrator privileges after an update,
   so window managers like FancyZones can control it again.
+- Lyrics from a provider no longer go missing when its synced sheet carries a timestamp too large
+  to read.
 - Opening a file whose link has a `%` before a non-ASCII letter no longer crashes Sonora.
 - On Windows, launching Sonora while it sits in the tray brings the window back even when the
   running copy was started with administrator privileges.
