@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-17
+
 ### Added
 
 - The AppImage can be updated through AppImageUpdate or an AppImage manager.
@@ -1619,7 +1621,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.36.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/sonorahq/sonora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sonorahq/sonora/compare/v0.34.4...v0.35.0
 [0.34.4]: https://github.com/sonorahq/sonora/compare/v0.34.3...v0.34.4
