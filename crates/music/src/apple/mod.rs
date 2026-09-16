@@ -90,13 +90,17 @@ fn session(client: AppleClient, profile: crate::UserProfile) -> ProviderSession 
         profile,
         api: Arc::new(client.clone()),
         playback: Arc::new(Factory::new(client)),
-        shape: Shape::Saved,
+        // The library is what the listener added, and favorites are a separate set on top of
+        // it, the way a self-hosted server's starred items sit on top of its catalog.
+        shape: Shape::Catalog,
         authenticated: true,
-        // Apple keeps no play counts and has no followed artists at all: a library artist is
-        // one whose music you added. Stations it does have, through the same endpoint the web
-        // player's autoplay uses.
+        // Apple keeps no play counts. Stations it does have, through the same endpoint the web
+        // player's autoplay uses; an artist can be favorited like anything else; and the
+        // library is its own thing, which songs and albums are added to apart from the star.
         capabilities: Capabilities {
             radio: true,
+            follow_artists: true,
+            library: true,
             ..Capabilities::NONE
         },
     }

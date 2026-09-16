@@ -12,17 +12,20 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
 use async_trait::async_trait;
+use futures::future::try_join_all;
+use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use serde_json::Value;
 
 use crate::apple::auth::{self, AGENT};
 use crate::apple::wire;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
-    HomeFeed, LibraryItem, LibraryOrder, MediaKind, MusicApi, Playlist, PlaylistDetail,
-    SavedArtist, Track, UserProfile,
+    HomeFeed, LibraryItem, LibraryOrder, MediaKind, MusicApi, Page, Pages, Playlist,
+    PlaylistDetail, SavedArtist, Track, UserProfile,
 };
 
 /// The API the web player calls.
@@ -41,8 +44,35 @@ const LANDING: usize = 25;
 /// is not something to pull into memory in one go.
 const PAGES: usize = 40;
 
+/// How many pages of one listing are in flight at once, after the first.
+///
+/// A page of the songs library takes Apple over a second to answer whatever else is going on,
+/// so a listing's wait is set by how many pages are asked for in turn, not by how many rows
+/// there are. The first page goes alone, so a small library still costs one request; it comes
+/// back with `meta.total`, and everything behind it goes out together, this many at a time.
+/// The web player fires a whole library at once, so this is not more than Apple expects.
+const FAN: usize = 12;
+
+/// The library listings, and the includes each is read with. Named once so the pages and the
+/// favorites drawn over them ask for the same listing and share one fetch.
+const SONGS: &str = "/me/library/songs";
+const ALBUMS: &str = "/me/library/albums";
+const ARTISTS: &str = "/me/library/artists";
+const SONGS_QUERY: &[(&str, &str)] =
+    &[("include", "catalog"), ("include[songs]", "artists,albums")];
+const CATALOG_QUERY: &[(&str, &str)] = &[("include", "catalog")];
+
+/// How long a fetched listing is kept for the next caller. Long enough for one library load,
+/// whose pages and favorites read the same listings within seconds of each other.
+const LISTING_TTL: Duration = Duration::from_secs(30);
+
 /// How many artist ids one batch of portraits asks about.
 const PORTRAITS: usize = 50;
+
+/// How many library ids one ratings lookup may ask about. Apple sets the ceiling per resource
+/// type and refuses a longer list outright: a hundred albums, but only twenty-five artists.
+const RATED_ALBUMS: usize = 100;
+const RATED_ARTISTS: usize = 25;
 
 /// What the listener is called on their own playlists, until Apple offers a name for them.
 const OWNER: &str = "You";
@@ -64,6 +94,22 @@ pub struct AppleClient {
     /// the same track carries on through that station instead of rolling a new one, which is
     /// what makes a queue that keeps being extended feel like one station rather than several.
     station: Arc<Mutex<Option<(String, String)>>>,
+    /// Listings fetched or being fetched, by path and query, so the library pages and the
+    /// favorites drawn over them walk each listing once between them.
+    listings: Arc<Mutex<HashMap<String, Listing>>>,
+}
+
+/// Where a listing's pages go as they land, and how each row is read on the way: the channel
+/// a paged caller listens on and the reader its rows are turned into items with.
+type Sink<'a, T> = (
+    &'a tokio::sync::mpsc::Sender<Result<Page<T>>>,
+    &'a (dyn Fn(&Value) -> Option<T> + Sync),
+);
+
+/// One listing fetched, or still being fetched, and when it was first asked for.
+struct Listing {
+    at: Instant,
+    rows: Arc<tokio::sync::OnceCell<Arc<Vec<Value>>>>,
 }
 
 impl AppleClient {
@@ -81,6 +127,7 @@ impl AppleClient {
             bearer: bearer.into(),
             storefront: "us".into(),
             station: Arc::default(),
+            listings: Arc::default(),
         };
         let answered = client.get("/me/storefront", &[]).await?;
         let storefront = answered
@@ -136,12 +183,18 @@ impl AppleClient {
             // Apple's gateway refuses a write with no length at all.
             None => request.header(reqwest::header::CONTENT_LENGTH, "0"),
         };
+        let started = Instant::now();
         let response = request
             .send()
             .await
             .with_context(|| format!("cannot reach apple music at {path}"))?;
 
         let status = response.status();
+        // Every wait on a library load is a sum of these, so this is where a slow one shows.
+        log::debug!(
+            "apple: {method} {path} answered {status} in {} ms",
+            started.elapsed().as_millis()
+        );
         let text = response
             .text()
             .await
@@ -150,6 +203,9 @@ impl AppleClient {
             true => Value::Null,
             false => serde_json::from_str(&text).unwrap_or(Value::Null),
         };
+        if method != reqwest::Method::GET {
+            self.forget();
+        }
         if !status.is_success() {
             // Apple says what it disliked in the body, which is the only way to tell a rejected
             // parameter from a rejected account.
@@ -183,9 +239,8 @@ impl AppleClient {
             .map(|_| ())
     }
 
-    /// Walks a paged listing, following the `next` link Apple hands back, and reads every row
-    /// with `read`. Stops at [`PAGES`] pages so one enormous library cannot run away with the
-    /// process.
+    /// Walks a paged listing and reads every row with `read`. The rows come from
+    /// [`listing`](Self::listing), so two walks of one listing close together cost one fetch.
     async fn walk<T, F>(
         &self,
         path: &str,
@@ -196,30 +251,249 @@ impl AppleClient {
     where
         F: Fn(&Value) -> Option<T>,
     {
+        let rows = self.listing(path, page, query).await?;
+        Ok(rows.iter().filter_map(read).collect())
+    }
+
+    /// Every row of a paged listing, fetched once and kept for [`LISTING_TTL`].
+    ///
+    /// The library pages and the favorites drawn over them read the same listings within
+    /// seconds of each other, and a page costs about a second, so a second walk is the
+    /// difference between a library and a wait. Callers asking at the same time share the one
+    /// fetch in flight; a fetch that fails is forgotten, so the next caller tries again.
+    async fn listing(
+        &self,
+        path: &str,
+        page: usize,
+        query: &[(&str, &str)],
+    ) -> Result<Arc<Vec<Value>>> {
+        let cell = self.cell(path, page, query);
+        cell.get_or_try_init(|| async {
+            self.pages::<Value>(path, page, query, None)
+                .await
+                .map(Arc::new)
+        })
+        .await
+        .cloned()
+    }
+
+    /// The memo cell for one listing, made if it is not there or has gone stale.
+    fn cell(
+        &self,
+        path: &str,
+        page: usize,
+        query: &[(&str, &str)],
+    ) -> Arc<tokio::sync::OnceCell<Arc<Vec<Value>>>> {
+        let key = format!("{path}|{page}|{query:?}");
+        let mut listings = self
+            .listings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        listings.retain(|_, listing| listing.at.elapsed() < LISTING_TTL);
+        listings
+            .entry(key)
+            .or_insert_with(|| Listing {
+                at: Instant::now(),
+                rows: Arc::default(),
+            })
+            .rows
+            .clone()
+    }
+
+    /// A listing handed out a page at a time, read through `read`, on a channel that stays
+    /// open until the last page. The first page carries the total when Apple says one.
+    ///
+    /// The rows still go through the memo, so a caller right behind this one, the favorites
+    /// pass behind a library page, reads what this fetched. A listing the memo already holds
+    /// arrives as one page.
+    fn paged<T: Send + 'static>(
+        &self,
+        path: &'static str,
+        page: usize,
+        query: &'static [(&'static str, &'static str)],
+        read: fn(&Value) -> Option<T>,
+    ) -> Pages<T> {
+        let (sink, pages) = tokio::sync::mpsc::channel(FAN);
+        let client = self.clone();
+        tokio::spawn(async move {
+            let cell = client.cell(path, page, query);
+            let streamed = std::sync::atomic::AtomicBool::new(false);
+            let fetched = cell
+                .get_or_try_init(|| async {
+                    streamed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    client
+                        .pages(path, page, query, Some((&sink, &read)))
+                        .await
+                        .map(Arc::new)
+                })
+                .await;
+            match fetched {
+                Ok(rows) if !streamed.load(std::sync::atomic::Ordering::Relaxed) => {
+                    sink.send(Ok(Page {
+                        total: Some(rows.len()),
+                        items: rows.iter().filter_map(read).collect(),
+                    }))
+                    .await
+                    .ok();
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    sink.send(Err(error)).await.ok();
+                }
+            }
+        });
+        pages
+    }
+
+    /// Drops every kept listing. Every write goes through here, since any of them can change
+    /// what a listing would say.
+    fn forget(&self) {
+        if let Ok(mut listings) = self.listings.lock() {
+            listings.clear();
+        }
+    }
+
+    /// Fetches every page of a listing and hands back its rows in order. Stops at [`PAGES`]
+    /// pages so one enormous library cannot run away with the process.
+    ///
+    /// Only the first page is asked for on its own. A library listing answers it with
+    /// `meta.total`, which says exactly how many pages are left, and they all go out together,
+    /// [`FAN`] in flight at a time. A listing that carries no total is asked for up to the cap
+    /// the same way and stops at the first page that comes back short or without a `next`
+    /// link, so at most a fan's worth of pages past the end is ever asked for.
+    ///
+    /// With a `sink`, every page is also read through the given reader and sent on as it
+    /// lands, which is how a library page shows its first rows before its last have arrived.
+    async fn pages<T>(
+        &self,
+        path: &str,
+        page: usize,
+        query: &[(&str, &str)],
+        sink: Option<Sink<'_, T>>,
+    ) -> Result<Vec<Value>> {
         let limit = page.to_string();
         let mut asked: Vec<(&str, &str)> = query.to_vec();
         asked.push(("limit", &limit));
-        let mut collected = Vec::new();
-        let mut offset = 0usize;
-        for _ in 0..PAGES {
-            let at = offset.to_string();
-            let mut page = asked.clone();
-            if offset > 0 {
-                page.push(("offset", &at));
-            }
-            let answered = self.get(path, &page).await?;
-            let rows = answered
-                .get("data")
-                .and_then(Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            collected.extend(rows.iter().filter_map(&read));
-            offset += rows.len();
-            if rows.is_empty() || answered.get("next").is_none() {
-                break;
+        let started = Instant::now();
+
+        let first = self.get(path, &asked).await?;
+        let mut collected: Vec<Value> = rows(&first).to_vec();
+        let got = collected.len();
+        let mut spent = 1usize;
+        let total = first
+            .pointer("/meta/total")
+            .and_then(Value::as_u64)
+            .and_then(|total| usize::try_from(total).ok());
+        if let Some((sink, read)) = sink {
+            let items = collected.iter().filter_map(read).collect();
+            sink.send(Ok(Page { total, items })).await.ok();
+        }
+        if got == page && first.get("next").is_some() {
+            let left = total.map_or(PAGES - 1, |total| {
+                total.saturating_sub(got).div_ceil(page).min(PAGES - 1)
+            });
+            let mut answers = stream::iter(1..=left)
+                .map(|step| {
+                    let at = (step * page).to_string();
+                    let asked = &asked;
+                    async move {
+                        let mut asked: Vec<(&str, &str)> = asked.clone();
+                        asked.push(("offset", at.as_str()));
+                        self.get(path, &asked).await
+                    }
+                })
+                .buffered(FAN);
+            while let Some(answered) = answers.try_next().await? {
+                spent += 1;
+                let rows = rows(&answered);
+                let last = rows.len() < page || answered.get("next").is_none();
+                if let Some((sink, read)) = sink {
+                    let items = rows.iter().filter_map(read).collect();
+                    sink.send(Ok(Page { total, items })).await.ok();
+                }
+                collected.extend_from_slice(rows);
+                if last {
+                    break;
+                }
             }
         }
+        log::debug!(
+            "apple: walked {path}: {} rows over {spent} page(s) in {} ms",
+            collected.len(),
+            started.elapsed().as_millis()
+        );
         Ok(collected)
+    }
+
+    /// The id of the Favorite Songs playlist, found by what it is rather than what it is
+    /// called. The tags that mark it are only sent when asked for.
+    async fn favorites_playlist(&self) -> Result<Option<String>> {
+        let found = self
+            .walk(
+                "/me/library/playlists",
+                PAGE,
+                &[("extend[library-playlists]", "tags")],
+                wire::favorites_playlist,
+            )
+            .await?;
+        Ok(found.into_iter().next())
+    }
+
+    /// Keeps the library resources of one kind the listener has favorited, out of `items`
+    /// paired with their library ids.
+    ///
+    /// Apple keeps a favorite as a personal rating of 1 on the library resource and never
+    /// inlines it into a listing, so it is a second request over the listing's ids, asked
+    /// `batch` at a time: `/me/library?ids[library-albums]=…&fields[library-albums]=personalRating`,
+    /// which is how the web player draws its stars. Only the rated resources come back.
+    async fn rated<T>(&self, kind: &str, batch: usize, items: Vec<(String, T)>) -> Result<Vec<T>> {
+        let key = format!("ids[library-{kind}]");
+        let field = format!("fields[library-{kind}]");
+        let batches: Vec<String> = items
+            .chunks(batch)
+            .map(|batch| {
+                batch
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect();
+        let answers = try_join_all(batches.iter().map(|ids| {
+            let query = [
+                (key.as_str(), ids.as_str()),
+                (field.as_str(), "personalRating"),
+            ];
+            async move { self.get("/me/library", &query).await }
+        }))
+        .await?;
+        let loved: HashSet<String> = answers
+            .iter()
+            .flat_map(|answered| rows(answered).iter())
+            .filter(|row| {
+                row.pointer("/attributes/personalRating")
+                    .and_then(Value::as_i64)
+                    == Some(1)
+            })
+            .filter_map(library_id)
+            .collect();
+        Ok(items
+            .into_iter()
+            .filter(|(id, _)| loved.contains(id))
+            .map(|(_, item)| item)
+            .collect())
+    }
+
+    /// Favorites or unfavorites one catalog resource, the way the web player's star does: the
+    /// id is posted to `/me/favorites` and deleted from there, and neither answer has a body.
+    /// The listener's library is left alone either way.
+    async fn favorite(&self, kind: &str, id: &str, saved: bool) -> Result<()> {
+        let key = format!("ids[{kind}]");
+        let query = [(key.as_str(), id)];
+        match saved {
+            true => self.post("/me/favorites", &query, None).await.map(|_| ()),
+            false => self.delete("/me/favorites", &query).await,
+        }
     }
 
     /// The library id of a catalog resource, if the listener has it. Apple only answers this one
@@ -251,8 +525,9 @@ impl AppleClient {
             .with_context(|| format!("apple music has no song {id}"))
     }
 
-    /// The tracks of a catalog playlist, from the first page or from a continuation.
-    async fn playlist_page(&self, path: &str) -> Result<(Vec<Track>, Option<String>)> {
+    /// The tracks of a playlist, from the first page or from a continuation, with the
+    /// continuation behind them and how many tracks the whole playlist has, when Apple says.
+    async fn playlist_page(&self, path: &str) -> Result<(Vec<Track>, Option<String>, Option<u32>)> {
         let limit = PAGE.to_string();
         let answered = self
             .get(
@@ -267,20 +542,17 @@ impl AppleClient {
         let tracks = answered
             .get("data")
             .and_then(Value::as_array)
-            .map(|rows| {
-                rows.iter()
-                    .filter_map(|row| match row.get("type").and_then(Value::as_str) {
-                        Some("library-songs") => wire::library_song(row),
-                        _ => wire::song(row),
-                    })
-                    .collect()
-            })
+            .map(|rows| rows.iter().filter_map(wire::playlist_track).collect())
             .unwrap_or_default();
         let next = answered
             .get("next")
             .and_then(Value::as_str)
             .map(|next| next.trim_start_matches("/v1").to_owned());
-        Ok((tracks, next))
+        let total = answered
+            .pointer("/meta/total")
+            .and_then(Value::as_u64)
+            .and_then(|total| u32::try_from(total).ok());
+        Ok((tracks, next, total))
     }
 
     /// Whether an id belongs to the listener's own library rather than the catalog.
@@ -485,40 +757,76 @@ impl MusicApi for AppleClient {
 
     /// The songs the listener has added. Only the ones with a catalog id are listed: an upload
     /// has no catalog encode behind it, and this path plays catalog tracks.
+    async fn all_tracks(&self) -> Result<Vec<Track>> {
+        self.walk(SONGS, PAGE, SONGS_QUERY, wire::library_song)
+            .await
+    }
+
+    async fn all_tracks_paged(&self) -> Result<Pages<Track>> {
+        Ok(self.paged(SONGS, PAGE, SONGS_QUERY, wire::library_song))
+    }
+
+    async fn all_albums(&self) -> Result<Vec<Album>> {
+        self.walk(ALBUMS, PAGE, CATALOG_QUERY, wire::library_album)
+            .await
+    }
+
+    async fn all_albums_paged(&self) -> Result<Pages<Album>> {
+        Ok(self.paged(ALBUMS, PAGE, CATALOG_QUERY, wire::library_album))
+    }
+
+    /// Every artist with music in the library. Apple derives this list itself from the songs
+    /// and albums added, so there is no adding to it directly.
+    async fn all_artists(&self) -> Result<Vec<SavedArtist>> {
+        self.walk(ARTISTS, PAGE, CATALOG_QUERY, wire::saved_artist)
+            .await
+    }
+
+    async fn all_artists_paged(&self) -> Result<Pages<SavedArtist>> {
+        Ok(self.paged(ARTISTS, PAGE, CATALOG_QUERY, wire::saved_artist))
+    }
+
+    /// The favorite songs, which Apple keeps as a playlist of its own in the library. Nothing
+    /// when the account has no such playlist yet, which is what an account that has never
+    /// favorited a song looks like.
     async fn saved_tracks(&self) -> Result<Vec<Track>> {
-        self.walk(
-            "/me/library/songs",
-            PAGE,
-            &[("include", "catalog"), ("include[songs]", "artists,albums")],
-            wire::library_song,
-        )
-        .await
+        match self.favorites_playlist().await? {
+            Some(playlist) => self.playlist_tracks(&playlist).await,
+            None => Ok(Vec::new()),
+        }
     }
 
+    /// The favorite albums: the library albums the listener has rated, since a favorite is a
+    /// personal rating and a rating only exists on a library resource. An album favorited from
+    /// the catalog without being added is therefore not here.
     async fn saved_albums(&self) -> Result<Vec<Album>> {
-        self.walk(
-            "/me/library/albums",
-            PAGE,
-            &[("include", "catalog")],
-            wire::library_album,
-        )
-        .await
+        let albums = self
+            .walk(ALBUMS, PAGE, CATALOG_QUERY, |row| {
+                Some((library_id(row)?, wire::library_album(row)?))
+            })
+            .await?;
+        self.rated("albums", RATED_ALBUMS, albums).await
     }
 
+    /// The favorite artists, read the same way as the albums.
     async fn saved_artists(&self) -> Result<Vec<SavedArtist>> {
-        self.walk(
-            "/me/library/artists",
-            PAGE,
-            &[("include", "catalog")],
-            wire::saved_artist,
-        )
-        .await
+        let artists = self
+            .walk(ARTISTS, PAGE, CATALOG_QUERY, |row| {
+                Some((library_id(row)?, wire::saved_artist(row)?))
+            })
+            .await?;
+        self.rated("artists", RATED_ARTISTS, artists).await
     }
 
+    /// The tags are asked for so this and [`favorites_playlist`](Self::favorites_playlist)
+    /// read one listing between them.
     async fn playlists(&self) -> Result<Vec<Playlist>> {
-        self.walk("/me/library/playlists", PAGE, &[], |row| {
-            wire::library_playlist(row, OWNER)
-        })
+        self.walk(
+            "/me/library/playlists",
+            PAGE,
+            &[("extend[library-playlists]", "tags")],
+            |row| wire::library_playlist(row, OWNER),
+        )
         .await
     }
 
@@ -539,41 +847,44 @@ impl MusicApi for AppleClient {
         Ok(Some(items))
     }
 
-    /// Adding works on a catalog id. Removing needs the library id, which only the catalog
-    /// resource can point at, so it is one request to find and one to remove.
     async fn set_track_saved(&self, track_id: &str, saved: bool) -> Result<()> {
-        match saved {
-            true => self
-                .post("/me/library", &[("ids[songs]", track_id)], None)
-                .await
-                .map(|_| ()),
-            false => match self.mine("songs", track_id).await? {
-                Some(mine) => self.delete(&format!("/me/library/songs/{mine}"), &[]).await,
-                None => Ok(()),
-            },
-        }
+        self.favorite("songs", track_id, saved).await
     }
 
     async fn set_album_saved(&self, album_id: &str, saved: bool) -> Result<()> {
-        match saved {
-            true => self
-                .post("/me/library", &[("ids[albums]", album_id)], None)
-                .await
-                .map(|_| ()),
-            false => match self.mine("albums", album_id).await? {
+        self.favorite("albums", album_id, saved).await
+    }
+
+    async fn set_artist_saved(&self, artist_id: &str, saved: bool) -> Result<()> {
+        self.favorite("artists", artist_id, saved).await
+    }
+
+    /// Adding works on a catalog id. Removing needs the library id, which only the catalog
+    /// resource can point at, so it is one request to find and one to remove.
+    async fn set_in_library(&self, kind: MediaKind, id: &str, present: bool) -> Result<()> {
+        let kind = match kind {
+            MediaKind::Track => "songs",
+            MediaKind::Album => "albums",
+            MediaKind::Artist => {
+                bail!("apple music derives the library artists from the music added")
+            }
+            MediaKind::Playlist => bail!("a playlist joins the library through its own call"),
+        };
+        match present {
+            true => {
+                let key = format!("ids[{kind}]");
+                self.post("/me/library", &[(key.as_str(), id)], None)
+                    .await
+                    .map(|_| ())
+            }
+            false => match self.mine(kind, id).await? {
                 Some(mine) => {
-                    self.delete(&format!("/me/library/albums/{mine}"), &[])
+                    self.delete(&format!("/me/library/{kind}/{mine}"), &[])
                         .await
                 }
                 None => Ok(()),
             },
         }
-    }
-
-    /// Apple has no followed artists. A library artist is one whose music the listener added,
-    /// so there is nothing to set that adding an album does not already do.
-    async fn set_artist_saved(&self, _artist_id: &str, _saved: bool) -> Result<()> {
-        bail!("apple music has no followed artists, only artists whose music you added")
     }
 
     async fn album(&self, album_id: &str) -> Result<AlbumDetail> {
@@ -714,10 +1025,12 @@ impl MusicApi for AppleClient {
             false => wire::playlist(found),
         }
         .context("cannot read the apple playlist")?;
-        let (tracks, continuation) = self.playlist_page(&format!("{path}/tracks")).await?;
+        let (tracks, continuation, total) = self.playlist_page(&format!("{path}/tracks")).await?;
+        // The total is what the header shows while the rest of a long playlist is still on its
+        // way, so the count does not climb a page at a time.
         Ok(PlaylistDetail {
             playlist: Playlist {
-                track_count: tracks.len() as u32,
+                track_count: total.unwrap_or(tracks.len() as u32),
                 ..playlist
             },
             tracks,
@@ -725,20 +1038,23 @@ impl MusicApi for AppleClient {
         })
     }
 
+    /// Every track of a playlist, paged the same way as a library listing rather than one
+    /// `next` link at a time: a long playlist is hundreds of rows, and each page is a wait.
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>> {
         let path = match Self::is_mine(playlist_id) {
             true => format!("/me/library/playlists/{playlist_id}/tracks"),
             false => self.catalog(&format!("/playlists/{playlist_id}/tracks")),
         };
-        let mut collected = Vec::new();
-        let mut next = Some(path);
-        for _ in 0..PAGES {
-            let Some(path) = next else { break };
-            let (tracks, following) = self.playlist_page(&path).await?;
-            collected.extend(tracks);
-            next = following;
-        }
-        Ok(collected)
+        self.walk(
+            &path,
+            PAGE,
+            &[
+                ("include[songs]", "artists,albums"),
+                ("include[library-songs]", "catalog"),
+            ],
+            wire::playlist_track,
+        )
+        .await
     }
 
     /// One more page of a playlist. The continuation is the link Apple handed back.
@@ -746,7 +1062,8 @@ impl MusicApi for AppleClient {
         &self,
         continuation: &str,
     ) -> Result<(Vec<Track>, Option<String>)> {
-        self.playlist_page(continuation).await
+        let (tracks, next, _) = self.playlist_page(continuation).await?;
+        Ok((tracks, next))
     }
 
     async fn playlist_covers(&self, playlist_id: &str, wanted: usize) -> Result<Vec<String>> {
@@ -754,7 +1071,7 @@ impl MusicApi for AppleClient {
             true => format!("/me/library/playlists/{playlist_id}/tracks"),
             false => self.catalog(&format!("/playlists/{playlist_id}/tracks")),
         };
-        let (tracks, _) = self.playlist_page(&path).await?;
+        let (tracks, _, _) = self.playlist_page(&path).await?;
         Ok(crate::distinct_covers(&tracks, wanted))
     }
 
@@ -979,6 +1296,20 @@ impl MusicApi for AppleClient {
         log::debug!("apple: station {station} gave {} tracks", tracks.len());
         Ok(tracks)
     }
+}
+
+/// The id of a library row, which is the library's own rather than the catalog's.
+fn library_id(row: &Value) -> Option<String> {
+    row.get("id")?.as_str().map(str::to_owned)
+}
+
+/// The `data` array of an answer, empty when it carries none.
+fn rows(answered: &Value) -> &[Value] {
+    answered
+        .get("data")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
