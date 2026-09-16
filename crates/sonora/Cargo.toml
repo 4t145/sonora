@@ -36,8 +36,11 @@ image.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true
 ksni.workspace = true
-# The Widevine host only ships a prebuilt shim for linux, so Apple Music playback is enabled
-# there and nowhere else.
+
+# The Widevine host's shim is prebuilt for x86_64 linux and compiled from source everywhere
+# else, which the linux and macOS release runners can do. Windows waits on a port of the shim's
+# dlopen calls, so Apple Music playback is off there.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 music = { workspace = true, features = ["widevine"] }
 
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
