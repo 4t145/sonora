@@ -453,6 +453,11 @@ pub trait MusicProvider: Send + Sync {
     fn listening_to(&self) -> &'static str {
         self.name()
     }
+    /// Whether this provider's tracks need the Widevine module to play. The app fetches the
+    /// module once such a provider has an account, and does not go near it otherwise.
+    fn protected(&self) -> bool {
+        false
+    }
     /// Whether the artwork urls this provider hands out can be given to another service. A path
     /// on disk means nothing elsewhere, and a self-hosted url carries the credentials that fetch
     /// it, so the default is no.

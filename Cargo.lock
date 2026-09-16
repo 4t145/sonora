@@ -9437,7 +9437,11 @@ dependencies = [
  "anyhow",
  "cdm-host",
  "dirs",
+ "flate2",
  "log",
+ "reqwest 0.13.4",
+ "serde_json",
+ "sha2",
  "tokio",
 ]
 

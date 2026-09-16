@@ -79,6 +79,7 @@ pub struct ProviderInfo {
     pub name: &'static str,
     pub options: Vec<SignIn>,
     pub web_sign_in: bool,
+    pub protected: bool,
     pub stored: bool,
     pub active: bool,
     pub pending: bool,
@@ -231,6 +232,7 @@ impl Session {
                 // Asked in this order because answering `supported` costs a library load on
                 // Linux, and only a provider that signs in with cookies is worth it.
                 web_sign_in: provider.web_sign_in().is_some() && webview::supported(),
+                protected: provider.protected(),
                 stored: provider.stored(),
                 active: self.active == Some(index),
                 pending: self.awaiting == Some(index),
@@ -243,6 +245,13 @@ impl Session {
 
     pub fn connected(&self) -> impl Iterator<Item = ProviderInfo> + '_ {
         self.providers().filter(|info| info.stored)
+    }
+
+    /// Whether an account is here for a provider whose tracks need the Widevine module.
+    pub fn wants_drm(&self) -> bool {
+        self.providers
+            .iter()
+            .any(|provider| provider.protected() && provider.stored())
     }
 
     pub fn forget(&mut self, slug: &str, cx: &mut Context<Self>) {

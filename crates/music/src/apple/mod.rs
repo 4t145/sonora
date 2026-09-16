@@ -2,8 +2,8 @@
 //!
 //! The account arrives as one cookie, `media-user-token`, from the app's own sign-in window, or
 //! from `SONORA_APPLE_MEDIA_USER_TOKEN` for a headless run. Playback resolves the track through
-//! the web player's own endpoints, asks the system Widevine CDM that `SONORA_WIDEVINE_CDM`
-//! names for a license, and decrypts each CENC sample as the decoder reaches it. What comes out
+//! the web player's own endpoints, asks the Widevine CDM the machine has for a license, and
+//! decrypts each CENC sample as the decoder reaches it. What comes out
 //! is an ordinary clear fMP4, so from `rodio` onwards this is the same path as every other
 //! provider: the equalizer, the volume ramp, the spectrum tap, cpal.
 //!
@@ -128,6 +128,10 @@ impl MusicProvider for AppleProvider {
 
     fn public_art(&self) -> bool {
         // artwork lives on mzstatic, open to anyone with the url
+        true
+    }
+
+    fn protected(&self) -> bool {
         true
     }
 

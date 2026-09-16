@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+use crate::shared::confirm::{Confirm, Kind};
 use crate::shared::local;
 use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_query};
 use gpui::{
@@ -1556,14 +1557,16 @@ impl SettingsView {
     }
 
     /// The Widevine module row, which only appears where this build has a host for one.
-    /// Protected tracks cannot play a note without the module, and Sonora neither ships one nor
-    /// downloads one, so all this row does is say whether the machine has one and what puts one
-    /// there when it does not.
+    /// Protected tracks cannot play a note without the module. Sonora uses a browser's copy
+    /// when one is here and otherwise offers Google's download once a protected provider has
+    /// an account, so the row says where that stands and offers the download by hand when the
+    /// user said no or nothing asked yet.
     fn widevine_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
-        let (detail, note) = match self.drm.read(cx).state() {
+        let state = self.drm.read(cx).state().clone();
+        let (detail, note) = match &state {
             CdmState::Looking => ("settings-widevine-detail", "settings-widevine-looking"),
             CdmState::Ready(Origin::Configured) => {
                 ("settings-widevine-detail", "settings-widevine-configured")
@@ -1571,8 +1574,20 @@ impl SettingsView {
             CdmState::Ready(Origin::Installed) => {
                 ("settings-widevine-detail", "settings-widevine-installed")
             }
-            CdmState::Missing => ("settings-widevine-none", "settings-widevine-missing"),
+            CdmState::Ready(Origin::Fetched) => {
+                ("settings-widevine-detail", "settings-widevine-fetched")
+            }
+            CdmState::Wanted | CdmState::Offered(_) => {
+                ("settings-widevine-none", "settings-widevine-asking")
+            }
+            CdmState::Offering => ("settings-widevine-none", "settings-widevine-fetching"),
+            CdmState::Installing => ("settings-widevine-none", "settings-widevine-installing"),
+            CdmState::Declined | CdmState::Missing => {
+                ("settings-widevine-none", "settings-widevine-missing")
+            }
         };
+        let offerable = matches!(state, CdmState::Declined | CdmState::Missing);
+        let removable = matches!(state, CdmState::Ready(Origin::Fetched));
 
         self.row(
             t!("settings-widevine"),
@@ -1580,9 +1595,39 @@ impl SettingsView {
             muted,
             small,
             div()
+                .flex()
+                .items_center()
+                .gap_2()
                 .text_color(muted)
                 .text_size(small)
                 .child(i18n::lookup(note, None))
+                .when(offerable, |row| {
+                    row.child(
+                        Button::new("fetch-widevine")
+                            .label(t!("settings-widevine-fetch"))
+                            .small()
+                            .outline()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.drm.update(cx, |drm, cx| drm.download(cx));
+                            })),
+                    )
+                })
+                .when(removable, |row| {
+                    row.child(
+                        Button::new("uninstall-widevine")
+                            .label(t!("settings-widevine-uninstall"))
+                            .small()
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let drm = this.drm.clone();
+                                Confirm::ask(
+                                    Kind::Widevine,
+                                    move |cx| drm.update(cx, |drm, cx| drm.uninstall(cx)),
+                                    cx,
+                                );
+                            })),
+                    )
+                })
                 .into_any_element(),
         )
     }

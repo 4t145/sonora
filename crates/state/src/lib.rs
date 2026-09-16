@@ -168,7 +168,7 @@ pub fn init(
         )
     });
     let cover = cx.new(|cx| Cover::new(session.clone(), playback.clone(), io.clone(), cx));
-    let drm = cx.new(|cx| Drm::new(io.clone(), cx));
+    let drm = cx.new(|cx| Drm::new(session.clone(), io.clone(), cx));
     let updates = cx.new(|cx| Updates::new(settings.clone(), io.clone(), cx));
     let usage = cx.new(|cx| Usage::new(session.clone(), database, io.clone(), cx));
     let pins = cx.new(|cx| Pins::new(settings.clone(), library.clone(), session.clone(), cx));

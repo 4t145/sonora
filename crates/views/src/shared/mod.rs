@@ -21,6 +21,7 @@ pub(crate) mod tracks;
 pub(crate) mod transport;
 pub(crate) mod trouble;
 pub(crate) mod visualizer;
+pub(crate) mod widevine;
 
 pub(crate) fn effects() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

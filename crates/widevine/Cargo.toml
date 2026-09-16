@@ -5,13 +5,17 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# The host for the system CDM. Off by default: it links a C++ shim that ships prebuilt for
-# x86_64 linux alone, and everything else here is plain parsing that needs no CDM at all.
+# The host for the CDM. Off by default: it links a C++ shim, prebuilt for x86_64 linux and
+# compiled from source elsewhere, and everything else here is plain parsing that needs no CDM.
 cdm = ["dep:cdm-host"]
 
 [dependencies]
 anyhow.workspace = true
 cdm-host = { workspace = true, optional = true }
 dirs.workspace = true
+flate2.workspace = true
 log.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 tokio = { workspace = true }

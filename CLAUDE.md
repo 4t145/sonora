@@ -35,7 +35,7 @@ crates/
   icons/      the icon packs: registry, active pack, path resolution, AssetSource
   embed/      build-script helper that walks a folder and writes include_bytes! literals
   webview/    a native browser window with a throwaway session, for cookie sign-ins
-  widevine/   finding the system CDM, the pssh box and CENC fMP4 parsing, for any DRM'd provider
+  widevine/   fetching the CDM from Google, the pssh box and CENC fMP4 parsing, for any DRM'd provider
 ```
 
 Dependency direction is strict; do not create a back edge:
@@ -62,21 +62,33 @@ sonora → views → state → music
   CENC index for Apple Music. Subsonic, Deezer and Apple each had their own copy of both, 85% the
   same code; do not start a fourth.
 - `widevine` is a leaf that knows nothing about music: the process-wide CDM behind one lock, the
-  `pssh` box, and enough ISO-BMFF to find every encrypted sample and fragment. Its `cdm` feature
-  is what links the C++ host, which ships prebuilt for `x86_64-unknown-linux-gnu` alone, so
-  `music/widevine` (which forwards to it) is only enabled on Linux. `widevine::licensing()` has
-  to be held from challenge to license: the CDM cannot have two exchanges open, and preloading
-  the next track is exactly that.
-- **The CDM is never ours to ship, and never ours to fetch.** Google licenses it to browser and
-  device vendors and publishes nothing redistributable, so no release artefact, package or
-  Flatpak may carry one, `about.toml` never gains an entry for it, and nothing in the tree
-  downloads one from Google's component service however easy that is. `widevine::find` uses a
-  copy the machine already has, read in place: `SONORA_WIDEVINE_CDM` first, so a package with a
-  module of its own can say where it is, then whatever a Chromium-family browser bundles or
-  component-updates, then Firefox's copy in the profile that fetched it. Only a successful
-  search is remembered, so a browser installed mid-run is picked up without a restart.
-  `state::Drm` holds that answer and `music::drm` is the only door `state` and `views` use, so
-  neither ever names a provider to ask about protected playback.
+  `pssh` box, the fetch from Google, and enough ISO-BMFF to find every encrypted sample and
+  fragment. Its `cdm` feature is what links the C++ host, prebuilt for
+  `x86_64-unknown-linux-gnu` and compiled from source with `cc` everywhere else, so
+  `music/widevine` (which forwards to it) is enabled on Linux and macOS and stays off on Windows
+  until the shim's `dlopen` calls are ported. `widevine::licensing()` has to be held from
+  challenge to license: the CDM cannot have two exchanges open, and preloading the next track is
+  exactly that.
+- **The CDM is never ours to ship, and it arrives the way Kodi's does.** Google licenses it to
+  browser and device vendors and publishes nothing redistributable, so no release artefact,
+  package or Flatpak may carry one and `about.toml` never gains an entry for it.
+  `widevine::find` reads `SONORA_WIDEVINE_CDM` first, so a package with a module of its own can
+  say where it is, then a browser's copy, then the newest version in Sonora's own store,
+  `$XDG_CACHE_HOME/sonora/widevine/<version>/`. The browser search is a fixed list of vendor
+  paths and only ever lists a folder the browser itself owns (its `WidevineCdm` folder for the
+  version, its profile folder, its app bundle); it never lists `~/.config`, `/Applications` or
+  anything shared, since a scan over folders that are not ours is what an antivirus flags. With
+  nothing found, `state::Drm` asks the user, and only once an account is here for a provider
+  whose `protected()` is true: first whether to download, then, with the archive fetched from
+  Google's component update service and its sha256 checked, whether Google's terms out of that
+  archive are accepted. `widevine::offer` is the download, `Offer::install` the install, and
+  `views::shared::widevine` draws the two questions. `SONORA_WIDEVINE_SKIP_BROWSERS` skips the
+  browser search, for trying that download on a machine whose browser already has a copy. A
+  module accepted that way is refreshed
+  through `widevine::fetch` without asking again, and `widevine::uninstall` removes the store
+  from Settings; a CDM already open stays open until the process ends. Only a successful search is remembered, so a
+  module installed mid-run is picked up without a restart. `music::drm` is the only door
+  `state` and `views` use, so neither ever names a provider to ask about protected playback.
 - `ui` depends only on `gpui`, `serde` and `i18n`, plus the per-platform crates `ui::motion` needs
   to read the system reduce-motion preference (`objc2-app-kit`, `windows-sys`, `ashpd`). It must
   never know about `music`, `state`, or playback.

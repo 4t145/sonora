@@ -1,7 +1,6 @@
 use gpui::prelude::*;
 use gpui::{App, Context, Entity, FocusHandle, Global, Render, Window, div};
 use i18n::t;
-use log;
 use music::{Album, SavedArtist, Track};
 use state::{Detail, History, Io, Outcome, Sonora, Toasts};
 use ui::{Button, Dismiss, FORM_CONTEXT, Modal, Submit};
@@ -15,6 +14,7 @@ pub(crate) enum Kind {
     Artists(usize),
     Playlists(usize),
     DeleteTrackFiles(usize),
+    Widevine,
 }
 
 impl Kind {
@@ -23,6 +23,7 @@ impl Kind {
             Self::PlaylistSongs(_) => t!("confirm-remove-playlist-title"),
             Self::History(_) => t!("confirm-remove-history-title"),
             Self::DeleteTrackFiles(_) => t!("confirm-delete-track-files-title"),
+            Self::Widevine => t!("confirm-uninstall-widevine-title"),
             _ => t!("confirm-remove-library-title"),
         }
     }
@@ -36,11 +37,15 @@ impl Kind {
             Self::Artists(count) => t!("confirm-remove-artists", count = count),
             Self::Playlists(count) => t!("confirm-remove-playlists", count = count),
             Self::DeleteTrackFiles(count) => t!("confirm-delete-track-files", count = count),
+            Self::Widevine => t!("confirm-uninstall-widevine"),
         }
     }
 
     fn action(&self) -> gpui::SharedString {
-        t!("common-delete")
+        match self {
+            Self::Widevine => t!("settings-widevine-uninstall"),
+            _ => t!("common-delete"),
+        }
     }
 }
 
@@ -221,11 +226,8 @@ impl Confirm {
                         .await;
 
                     if let Ok((_, ref deleted)) = result {
-                        library.update(cx, |library, cx| {
-                            library.hide_local_tracks(deleted, cx)
-                        });
-                        playback
-                            .update(cx, |playback, cx| playback.remove_from_queue(deleted, cx));
+                        library.update(cx, |library, cx| library.hide_local_tracks(deleted, cx));
+                        playback.update(cx, |playback, cx| playback.remove_from_queue(deleted, cx));
                     }
                     match result {
                         Ok((failed, _)) if failed > 0 => {
