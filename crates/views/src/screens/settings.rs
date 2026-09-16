@@ -168,7 +168,7 @@ pub struct SettingsView {
     password: Entity<Input>,
     credentials_for: Option<&'static str>,
     secret: Entity<Input>,
-    manual_secret: Option<&'static str>,
+    manual_secret: Option<(&'static str, &'static str)>,
     scrobbling: Entity<Scrobbling>,
     scrobble_first: Entity<Input>,
     scrobble_second: Entity<Input>,
@@ -2622,8 +2622,8 @@ impl SettingsView {
             .on_dismiss(cx.listener(|this, _, _, cx| this.abandon_credentials(cx)))
     }
 
-    fn start_manual(&mut self, slug: &'static str, cx: &mut Context<Self>) {
-        self.manual_secret = Some(slug);
+    fn start_manual(&mut self, slug: &'static str, provider: &'static str, cx: &mut Context<Self>) {
+        self.manual_secret = Some((slug, provider));
         let hint = CookiePrompt::hint(slug);
         self.secret.update(cx, |input, cx| input.set_hint(hint, cx));
         self.session
@@ -2645,8 +2645,13 @@ impl SettingsView {
             .update(cx, |session, cx| session.submit_input(text, cx));
     }
 
-    fn secret_prompt(&self, slug: &'static str, cx: &mut Context<Self>) -> impl IntoElement {
-        CookiePrompt::new(slug, self.secret.clone())
+    fn secret_prompt(
+        &self,
+        slug: &'static str,
+        provider: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        CookiePrompt::new(slug, provider, self.secret.clone())
             .on_submit(cx.listener(|this, _, _, cx| this.submit_secret(cx)))
             .on_cancel(cx.listener(|this, _, _, cx| this.abandon(cx)))
     }
@@ -2677,7 +2682,9 @@ impl SettingsView {
                     .small()
                     .outline()
                     .disabled(pending)
-                    .on_click(cx.listener(move |this, _, _, cx| this.start_manual(slug, cx)))
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.start_manual(slug, provider, cx)),
+                    )
                     .into_any_element(),
             );
         }
@@ -3030,8 +3037,8 @@ impl Render for SettingsView {
             .when_some(accounts, |this, accounts| {
                 this.child(self.account_modal(accounts, cx).into_any_element())
             })
-            .when_some(manual_secret, |this, slug| {
-                this.child(self.secret_prompt(slug, cx).into_any_element())
+            .when_some(manual_secret, |this, (slug, provider)| {
+                this.child(self.secret_prompt(slug, provider, cx).into_any_element())
             })
             .when(self.credentials_for.is_some(), |this| {
                 this.child(self.credentials_prompt(cx).into_any_element())

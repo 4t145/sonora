@@ -81,19 +81,29 @@ pub(crate) fn stored() -> bool {
 }
 
 /// Pulls the account token out of what the sign-in window brought back, which is a `Cookie`
-/// header. A bare token is accepted too, so a value pasted by hand works the same way.
+/// header. One value pasted by hand works the same way, bare or still carrying its name, so
+/// copying the cookie out of the devtools storage answers as well as the whole header.
 pub fn user_token(input: &str) -> Result<String> {
     let input = input.trim();
-    let found = input
-        .split(';')
-        .map(str::trim)
-        .filter_map(|pair| pair.split_once('='))
-        .find(|(name, _)| PROOF.contains(name))
-        .map(|(_, value)| value.trim());
-    let token = match found {
-        Some(token) => token,
-        None if !input.is_empty() && !input.contains(['=', ';', ' ']) => input,
-        None => bail!("the cookies carry no media-user-token"),
+    if input.contains(';') {
+        // A whole header holds many cookies: take the segment ours names.
+        let found = input
+            .split(';')
+            .map(str::trim)
+            .filter_map(|pair| pair.split_once('='))
+            .map(|(name, value)| (name.trim(), value.trim()))
+            .find(|(name, _)| PROOF.contains(name))
+            .map(|(_, value)| value);
+        return match found {
+            Some(token) if !token.is_empty() => Ok(token.to_owned()),
+            _ => bail!("the cookies carry no media-user-token"),
+        };
+    }
+    // One value: the token itself. A token can end in `=` padding, so only a leading name
+    // is stripped and the rest is kept untouched.
+    let token = match input.split_once('=') {
+        Some((name, value)) if PROOF.contains(&name.trim()) => value.trim(),
+        _ => input,
     };
     if token.is_empty() {
         bail!("the media-user-token is empty");
