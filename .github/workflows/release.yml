@@ -49,7 +49,7 @@ jobs:
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) version="$GITHUB_REF_NAME" ;;
-            *) version="$(git rev-parse --short HEAD)" ;;
+            *) version="${GITHUB_SHA:0:7}" ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -155,7 +155,7 @@ jobs:
               ;;
 
             *)
-              version="$(git rev-parse --short HEAD)"
+              version="${GITHUB_SHA:0:7}"
               number="0.0.0"
               ;;
           esac
@@ -291,7 +291,7 @@ jobs:
               ;;
 
             *)
-              version="$(git rev-parse --short HEAD)"
+              version="${GITHUB_SHA:0:7}"
               number=""
               ;;
           esac
@@ -469,7 +469,7 @@ jobs:
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) version="$GITHUB_REF_NAME" ;;
-            *) version="$(git rev-parse --short HEAD)" ;;
+            *) version="${GITHUB_SHA:0:7}" ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
