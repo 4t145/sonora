@@ -186,8 +186,9 @@ pub fn library_song(value: &Value) -> Option<Track> {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })?;
-    // The catalog copy is richer when it came along, and the library copy is what carries the
-    // date it was added.
+    // The catalog copy is richer when it came along. Apple puts no date on a library song row,
+    // so the date is the library album's when that was included: the day the first song of
+    // that album joined the library, which is also the order Apple itself sorts songs by.
     let mut track = match catalog(value) {
         Some(found) => song(found)?,
         None => song(value)?,
@@ -196,6 +197,11 @@ pub fn library_song(value: &Value) -> Option<Track> {
     track.added_at = value
         .pointer("/attributes")
         .and_then(|attributes| moment(attributes, "dateAdded"))
+        .or_else(|| {
+            value
+                .pointer("/relationships/albums/data/0/attributes")
+                .and_then(|attributes| moment(attributes, "dateAdded"))
+        })
         .or(track.added_at);
     Some(track)
 }
