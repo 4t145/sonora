@@ -101,8 +101,10 @@ chmod +x sonora-*.AppImage
 ```
 
 An `aarch64` build is published beside it. The AppImage carries no Vulkan driver and no ALSA
-bridge, so both still come from your system, and it does not update itself — download a newer one
-over it.
+bridge, so both still come from your system. It does not update itself, but it carries its update
+information, so [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) or an
+AppImage manager such as [AppManager](https://github.com/kem-a/AppManager) can fetch a new release
+for you.
 
 ### Nix
 
@@ -175,19 +177,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 659/659 | 100% |
-| Deutsch (`de`) | 632/659 | 96% |
-| Español (`es`) | 614/659 | 93% |
-| Français (`fr`) | 632/659 | 96% |
-| Italiano (`it`) | 610/659 | 93% |
-| Bahasa Indonesia (`id`) | 610/659 | 93% |
-| 日本語 (`ja`) | 610/659 | 93% |
-| Русский (`ru`) | 650/659 | 99% |
-| Українська (`uk`) | 650/659 | 99% |
-| Polski (`pl`) | 650/659 | 99% |
-| Português (Brasil) (`pt-BR`) | 610/659 | 93% |
-| 简体中文 (`zh-CN`) | 610/659 | 93% |
-| Türkçe (`tr`) | 610/659 | 93% |
+| English (`en-US`) | 690/690 | 100% |
+| Deutsch (`de`) | 630/690 | 91% |
+| Español (`es`) | 612/690 | 89% |
+| Français (`fr`) | 630/690 | 91% |
+| Italiano (`it`) | 608/690 | 88% |
+| Bahasa Indonesia (`id`) | 608/690 | 88% |
+| 日本語 (`ja`) | 608/690 | 88% |
+| Русский (`ru`) | 681/690 | 99% |
+| Українська (`uk`) | 681/690 | 99% |
+| Polski (`pl`) | 681/690 | 99% |
+| Português (Brasil) (`pt-BR`) | 608/690 | 88% |
+| 简体中文 (`zh-CN`) | 608/690 | 88% |
+| Türkçe (`tr`) | 608/690 | 88% |
 
 <!-- i18n:end -->
 

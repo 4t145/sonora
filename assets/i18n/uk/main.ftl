@@ -155,6 +155,18 @@ menu-rename-playlist = Перейменувати плейлист
 menu-delete-playlist = Видалити плейлист
 menu-add-playlist-to-library = Додати до медіатеки
 menu-remove-playlist-from-library = Вилучити з медіатеки
+menu-library-add = Додати до медіатеки
+menu-library-add-tracks = { $count ->
+    [one] Додати { $count } трек до медіатеки
+    [few] Додати { $count } треки до медіатеки
+   *[other] Додати { $count } треків до медіатеки
+}
+menu-library-remove = Вилучити з медіатеки
+menu-library-remove-tracks = { $count ->
+    [one] Вилучити { $count } трек з медіатеки
+    [few] Вилучити { $count } треки з медіатеки
+   *[other] Вилучити { $count } треків з медіатеки
+}
 menu-make-playlist-public = Зробити публічним
 menu-make-playlist-private = Зробити приватним
 menu-open-album = Відкрити альбом
@@ -274,7 +286,7 @@ login-problem-refused = Spotify відхилив вхід. Зачекайте т
 login-problem-premium = Sonora відтворює музику через Spotify Premium, а цей акаунт його не має. Увійдіть в акаунт з Premium, щоб продовжити.
 login-sign-in = Увійти через { $provider }
 login-connect-cookies = Вставити cookie вручну
-login-cookie-open = Відкрити YouTube Music
+login-cookie-open = Відкрити { $provider }
 login-cookie-submit = Продовжити
 login-cookie-hint = Вставте сюди заголовок запиту Cookie
 login-cookie-step-1 = Відкрийте music.youtube.com і переконайтеся, що ви увійшли в акаунт. Найкраще працює вікно анонімного перегляду.
@@ -282,15 +294,16 @@ login-cookie-step-2 = Натисніть F12, відкрийте вкладку 
 login-cookie-step-3 = Виберіть будь-який запит з назвою «browse» або «next».
 login-cookie-step-4 = На вкладці «Заголовки» знайдіть Cookie серед заголовків запиту, клацніть правою кнопкою та скопіюйте значення.
 login-cookie-step-note = Вставте значення повністю: панелі «Куки» недостатньо, бо значення має містити SAPISID і __Secure-3PAPISID.
-login-cookie-title = Вставте cookie YouTube Music, щоб завершити вхід
-login-cookie-deezer-title = Вставте cookie arl від Deezer, щоб завершити вхід
-login-cookie-deezer-open = Відкрити Deezer
-login-cookie-deezer-hint = Вставте сюди cookie arl
-login-cookie-deezer-step-1 = Відкрийте www.deezer.com і переконайтеся, що ви увійшли в обліковий запис.
-login-cookie-deezer-step-2 = Натисніть F12 і відкрийте вкладку Сховище у Firefox або Application у Chrome.
-login-cookie-deezer-step-3 = Розгорніть Cookies, виберіть https://www.deezer.com і знайдіть cookie з назвою arl.
-login-cookie-deezer-step-4 = Двічі клацніть його значення та скопіюйте його.
-login-cookie-deezer-note = Достатньо самого значення arl. Цілий заголовок Cookie з вкладки Мережа також підійде.
+login-cookie-header-title = Вставте cookie { $provider }, щоб завершити вхід
+login-cookie-apple-step-3 = Виберіть будь-який запит до { $site }.
+login-cookie-apple-note = Вставте значення повністю: воно має містити { $cookie }.
+login-cookie-named-title = Вставте cookie { $provider }, щоб завершити вхід
+login-cookie-named-hint = Вставте сюди значення cookie
+login-cookie-named-step-1 = Відкрийте { $site } і переконайтеся, що ви увійшли в обліковий запис.
+login-cookie-named-step-2 = Натисніть F12 і відкрийте вкладку Сховище у Firefox або Application у Chrome.
+login-cookie-named-step-3 = Розгорніть Cookies, виберіть { $site } і знайдіть cookie з назвою { $cookie }.
+login-cookie-named-step-4 = Двічі клацніть його значення та скопіюйте його.
+login-cookie-named-note = Достатньо самого значення { $cookie }. Цілий заголовок Cookie з вкладки Мережа також підійде.
 login-window-title = Вхід до { $provider }
 login-use = Відкрити { $provider }
 login-guest-title = Гостьовий режим
@@ -573,6 +586,30 @@ settings-sleep-configure = Налаштувати…
 settings-sleep-off = Вимк
 settings-sleep-end-of-track = Наприкінці треку
 settings-sleep-minutes = { $count } хв
+settings-widevine = Модуль Widevine
+settings-widevine-detail = Треки Apple Music зашифровані й потребують модуля Widevine від Google. Sonora бере копію, яка вже є в браузера, або ту, що завантажила від Google з вашої згоди.
+settings-widevine-none = Треки Apple Music зашифровані й потребують модуля Widevine від Google. Жоден браузер тут його не має, тож Sonora може завантажити його від Google з вашої згоди.
+settings-widevine-looking = Пошук…
+settings-widevine-asking = Чекаємо на вашу відповідь
+settings-widevine-fetching = Завантаження…
+settings-widevine-installing = Встановлення…
+settings-widevine-installed = Знайдено в браузері
+settings-widevine-fetched = Завантажено від Google
+settings-widevine-missing = Не встановлено
+settings-widevine-configured = Задано через оточення
+settings-widevine-fetch = Завантажити
+settings-widevine-uninstall = Видалити
+confirm-uninstall-widevine-title = Видалити модуль Widevine?
+confirm-uninstall-widevine = Sonora видалить копію, завантажену від Google. Треки Apple Music перестануть грати, доки модуль не буде завантажено знову.
+widevine-prompt-title = Модуль Widevine
+widevine-prompt-wanted = Треки Apple Music зашифровані й потребують модуля Widevine від Google. Жоден браузер на цьому комп'ютері його не має. Sonora може завантажити його із серверів Google, той самий файл, що встановлює Chrome, і зберігати у власній папці.
+widevine-prompt-downloading = Завантаження…
+widevine-prompt-terms = Версію { $version } завантажено. Встановлення означає згоду з умовами Google для цього модуля:
+widevine-prompt-installing = Встановлення…
+widevine-prompt-download = Завантажити
+widevine-prompt-later = Не зараз
+widevine-prompt-accept = Прийняти й встановити
+widevine-prompt-decline = Відхилити
 settings-panel-lyrics-size = Розмір тексту пісні (панель)
 settings-panel-lyrics-size-detail = Розмір рядків тексту пісні на бічній панелі поверх базового розміру шрифту
 settings-fullscreen-lyrics-size = Розмір тексту пісні (повний екран)
@@ -748,6 +785,8 @@ toast-sign-in-to-play = { $name } віддає музику лише тим, х�
 toast-track-unplayable = Не вдалося відтворити { $name }
 toast-library-add-failed = Не вдалося додати { $name } до медіатеки
 toast-library-remove-failed = Не вдалося вилучити { $name } з медіатеки
+toast-library-added = Додано до медіатеки
+toast-library-removed = Вилучено з медіатеки
 
 # lyrics
 lyrics-title = Текст

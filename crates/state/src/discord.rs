@@ -39,7 +39,7 @@ pub(crate) fn attach(
 enum Shown {
     #[default]
     Off,
-    On(Presence),
+    On(Box<Presence>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -197,7 +197,7 @@ impl Discord {
             name: provider.name(),
         });
         if settings.discord_without_details() {
-            return Shown::On(Presence {
+            return Shown::On(Box::new(Presence {
                 source: named,
                 details: anonymous_details(),
                 state: None,
@@ -206,7 +206,7 @@ impl Discord {
                 started_at: playing.then_some(since),
                 ends_at: None,
                 buttons: buttons(settings, session, None),
-            });
+            }));
         }
 
         let started_at = playing.then(|| {
@@ -215,7 +215,7 @@ impl Discord {
         });
         let duration = track.duration.as_secs() as i64;
         let public_art = provider.is_some_and(|provider| provider.public_art());
-        Shown::On(Presence {
+        Shown::On(Box::new(Presence {
             source: named,
             details: fit_text(&track.name).unwrap_or_else(anonymous_details),
             state: fit_text(&track.artists),
@@ -226,7 +226,7 @@ impl Discord {
                 .filter(|_| duration > 0)
                 .map(|started_at| started_at.saturating_add(duration)),
             buttons: buttons(settings, session, provider.zip(track.id.as_deref())),
-        })
+        }))
     }
 
     /// Cover art for the track, but only from a provider whose art is public. Discord fetches

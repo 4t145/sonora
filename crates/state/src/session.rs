@@ -6,8 +6,8 @@ use anyhow::Error;
 use gpui::{Context, Entity, EventEmitter, Task};
 use i18n::t;
 use music::{
-    MusicApi, MusicProvider, PlaybackFactory, PromptSink, ProviderSession, Shape, SignIn,
-    SignInFailure, SignInProblem, SignInPrompt, UserProfile,
+    Capabilities, MusicApi, MusicProvider, PlaybackFactory, PromptSink, ProviderSession, Shape,
+    SignIn, SignInFailure, SignInProblem, SignInPrompt, UserProfile,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -79,6 +79,7 @@ pub struct ProviderInfo {
     pub name: &'static str,
     pub options: Vec<SignIn>,
     pub web_sign_in: bool,
+    pub protected: bool,
     pub stored: bool,
     pub active: bool,
     pub pending: bool,
@@ -98,7 +99,7 @@ pub struct Session {
     playback: Option<Arc<dyn PlaybackFactory>>,
     shape: Shape,
     authenticated: bool,
-    playcounts: bool,
+    capabilities: Capabilities,
     io: Io,
     task: Option<Task<()>>,
     prompt_task: Option<Task<()>>,
@@ -111,6 +112,7 @@ pub struct Session {
     local_client: Option<Arc<dyn MusicApi>>,
     local_catalog: Option<Arc<CatalogSource>>,
     local_playback: Option<Arc<dyn PlaybackFactory>>,
+    local_capabilities: Capabilities,
     local_task: Option<Task<()>>,
     watch: Option<Task<()>>,
     reconnect: Option<Task<()>>,
@@ -146,7 +148,7 @@ impl Session {
             playback: None,
             shape: Shape::Saved,
             authenticated: false,
-            playcounts: false,
+            capabilities: Capabilities::NONE,
             io,
             task: None,
             prompt_task: None,
@@ -158,6 +160,7 @@ impl Session {
             local_client: None,
             local_catalog: None,
             local_playback: None,
+            local_capabilities: Capabilities::NONE,
             local_task: None,
             watch: None,
             reconnect: None,
@@ -229,6 +232,7 @@ impl Session {
                 // Asked in this order because answering `supported` costs a library load on
                 // Linux, and only a provider that signs in with cookies is worth it.
                 web_sign_in: provider.web_sign_in().is_some() && webview::supported(),
+                protected: provider.protected(),
                 stored: provider.stored(),
                 active: self.active == Some(index),
                 pending: self.awaiting == Some(index),
@@ -241,6 +245,13 @@ impl Session {
 
     pub fn connected(&self) -> impl Iterator<Item = ProviderInfo> + '_ {
         self.providers().filter(|info| info.stored)
+    }
+
+    /// Whether an account is here for a provider whose tracks need the Widevine module.
+    pub fn wants_drm(&self) -> bool {
+        self.providers
+            .iter()
+            .any(|provider| provider.protected() && provider.stored())
     }
 
     pub fn forget(&mut self, slug: &str, cx: &mut Context<Self>) {
@@ -318,8 +329,19 @@ impl Session {
         self.authenticated
     }
 
-    pub fn playcounts(&self) -> bool {
-        self.playcounts
+    /// What the live streaming provider can do beyond listing and playing. Nothing is offered
+    /// while signed out, which is what the empty set means.
+    pub fn capabilities(&self) -> Capabilities {
+        self.capabilities
+    }
+
+    /// The same, for whichever shelf a thing belongs to. Anything that routes by id asks this
+    /// one, since the two shelves can differ: local files keep favorites but seed no station.
+    pub fn capabilities_of(&self, shelf: Shelf) -> Capabilities {
+        match shelf {
+            Shelf::Streaming => self.capabilities,
+            Shelf::Local => self.local_capabilities,
+        }
     }
 
     pub fn is_pending(&self) -> bool {
@@ -574,7 +596,7 @@ impl Session {
         self.playback = None;
         self.shape = Shape::Saved;
         self.authenticated = false;
-        self.playcounts = false;
+        self.capabilities = Capabilities::NONE;
         self.state = SessionState::SignedOut;
         cx.notify();
         cx.emit(SessionEvent::SignedOut);
@@ -600,7 +622,7 @@ impl Session {
         self.playback = Some(session.playback);
         self.shape = session.shape;
         self.authenticated = session.authenticated;
-        self.playcounts = session.playcounts;
+        self.capabilities = session.capabilities;
         self.state = SessionState::SignedIn(session.profile);
         self.attempt = 0;
         self.start_heartbeat(cx);
@@ -614,7 +636,7 @@ impl Session {
         self.playback = None;
         self.shape = Shape::Saved;
         self.authenticated = false;
-        self.playcounts = false;
+        self.capabilities = Capabilities::NONE;
         self.watch = None;
         self.reconnect = None;
         self.reconnecting = false;
@@ -686,7 +708,7 @@ impl Session {
         self.playback = Some(session.playback);
         self.shape = session.shape;
         self.authenticated = session.authenticated;
-        self.playcounts = session.playcounts;
+        self.capabilities = session.capabilities;
         log::debug!("session: reconnected");
         cx.notify();
         cx.emit(SessionEvent::Reconnected);
@@ -770,6 +792,7 @@ impl Session {
             self.local_client = None;
             self.local_catalog = None;
             self.local_playback = None;
+            self.local_capabilities = Capabilities::NONE;
             self.local_task = None;
             cx.notify();
             cx.emit(SessionEvent::LocalChanged);
@@ -838,6 +861,7 @@ impl Session {
         self.local_catalog = Some(Arc::new(CatalogSource::new(session.api.clone())));
         self.local_client = Some(session.api);
         self.local_playback = Some(session.playback);
+        self.local_capabilities = session.capabilities;
         cx.notify();
         cx.emit(SessionEvent::LocalChanged);
     }

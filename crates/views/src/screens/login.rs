@@ -25,7 +25,7 @@ struct Column {
 enum LoginAction {
     SignIn(SignIn),
     Credentials,
-    Cookies,
+    Cookies(&'static str),
 }
 
 struct LoginOption {
@@ -43,7 +43,7 @@ pub struct LoginView {
     username: Entity<Input>,
     password: Entity<Input>,
     credentials_for: Option<&'static str>,
-    manual_secret: Option<&'static str>,
+    manual_secret: Option<(&'static str, &'static str)>,
     tab: usize,
 }
 
@@ -142,9 +142,9 @@ impl LoginView {
             .update(cx, |session, cx| session.sign_in(slug, method, cx));
     }
 
-    fn start_manual(&mut self, slug: &'static str, cx: &mut Context<Self>) {
+    fn start_manual(&mut self, slug: &'static str, provider: &'static str, cx: &mut Context<Self>) {
         self.acted(cx);
-        self.manual_secret = Some(slug);
+        self.manual_secret = Some((slug, provider));
         let hint = CookiePrompt::hint(slug);
         self.secret.update(cx, |input, cx| input.set_hint(hint, cx));
         self.session
@@ -165,7 +165,7 @@ impl LoginView {
     fn option_buttons(
         &self,
         slug: &'static str,
-        provider: &str,
+        provider: &'static str,
         method: &SignIn,
         web_sign_in: bool,
         disabled: bool,
@@ -185,7 +185,7 @@ impl LoginView {
                 options.push(LoginOption {
                     id: format!("sign-in-{slug}-cookies-manual").into(),
                     label: t!("login-connect-cookies"),
-                    action: LoginAction::Cookies,
+                    action: LoginAction::Cookies(provider),
                     primary: false,
                 });
                 options
@@ -247,7 +247,7 @@ impl LoginView {
             .on_click(cx.listener(move |this, _, _, cx| match &option.action {
                 LoginAction::SignIn(method) => this.start(slug, method.clone(), cx),
                 LoginAction::Credentials => this.open_credentials(slug, cx),
-                LoginAction::Cookies => this.start_manual(slug, cx),
+                LoginAction::Cookies(provider) => this.start_manual(slug, provider, cx),
             }));
         match option.primary {
             true => button.primary(),
@@ -405,8 +405,13 @@ impl LoginView {
             .on_dismiss(cx.listener(|this, _, _, cx| this.abandon_credentials(cx)))
     }
 
-    fn secret_prompt(&self, slug: &'static str, cx: &mut Context<Self>) -> impl IntoElement {
-        CookiePrompt::new(slug, self.secret.clone())
+    fn secret_prompt(
+        &self,
+        slug: &'static str,
+        provider: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        CookiePrompt::new(slug, provider, self.secret.clone())
             .on_submit(cx.listener(|this, _, _, cx| this.submit_secret(cx)))
             .on_cancel(cx.listener(|this, _, _, cx| this.abandon(cx)))
     }
@@ -562,8 +567,8 @@ impl Render for LoginView {
                 )
             })
             .when(orphan, |this| this.child(self.consent(cx)))
-            .when_some(manual_secret, |this, slug| {
-                this.child(self.secret_prompt(slug, cx).into_any_element())
+            .when_some(manual_secret, |this, (slug, provider)| {
+                this.child(self.secret_prompt(slug, provider, cx).into_any_element())
             })
             .when(self.credentials_for.is_some(), |this| {
                 this.child(self.credentials_prompt(cx).into_any_element())

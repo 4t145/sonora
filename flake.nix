@@ -396,12 +396,16 @@
               ''
               # gpui_apple compiles its shaders with `xcrun -sdk macosx metal` at build
               # time. The Nix Apple SDK has no Metal toolchain, so hand xcrun back to the
-              # installed Xcode; the Nix clang keeps building against SDKROOT regardless.
+              # installed Xcode. Clang follows DEVELOPER_DIR too and then reads Xcode's C
+              # headers beside the Nix libc++, which breaks any C++ a build script compiles,
+              # so C++ compiles are pinned to the Nix SDK through CXXFLAGS. Only compiles: the
+              # link still has to see Xcode's SDK, which is where libsqlite3 comes from.
               + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
                 # xcode-select echoes DEVELOPER_DIR back when it is set, so ask with it unset.
                 if xcode="$(env -u DEVELOPER_DIR /usr/bin/xcode-select -p 2>/dev/null)"; then
                   export DEVELOPER_DIR="$xcode"
                   export PATH="${xcodeXcrun}/bin:$PATH"
+                  export CXXFLAGS="''${CXXFLAGS:-} -isysroot $SDKROOT"
                 fi
               '';
           };

@@ -4463,7 +4463,9 @@ dependencies = [
  "cpal 0.17.1",
  "deunicode",
  "dirs",
+ "env_logger",
  "flate2",
+ "futures",
  "http",
  "kakasi",
  "librespot-core",
@@ -4490,6 +4492,7 @@ dependencies = [
  "storage",
  "symphonia",
  "tokio",
+ "widevine",
  "ytmusic",
 ]
 
@@ -7306,6 +7309,8 @@ dependencies = [
  "tray-icon",
  "ui",
  "views",
+ "webview",
+ "widestring",
  "windows 0.62.2",
  "windows-sys 0.61.2",
  "winresource",
@@ -9416,6 +9421,21 @@ name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+
+[[package]]
+name = "widevine"
+version = "0.36.0"
+dependencies = [
+ "anyhow",
+ "cc",
+ "dirs",
+ "flate2",
+ "log",
+ "reqwest 0.13.4",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
 
 [[package]]
 name = "winapi"

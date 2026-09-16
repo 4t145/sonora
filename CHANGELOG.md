@@ -9,8 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The AppImage can be updated through AppImageUpdate or an AppImage manager.
 - Deezer as a provider: your favorites, playlists, albums and search, with FLAC playback where
   the account allows it.
+- Apple Music as a provider: your library, playlists, search and stations.
+  Playback needs Google's Widevine module. Sonora uses the copy a browser on your computer has,
+  or offers to download it from Google and shows Google's terms first. Settings can remove a
+  downloaded module again.
 - Local files are a lyrics provider for the synced or plain lyrics embedded in them, and can be
   preferred over the others.
 
@@ -19,6 +24,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On Windows, the window minimizes, restores and closes with the system animations again.
 - On Windows, Sonora no longer keeps the installer's administrator privileges after an update,
   so window managers like FancyZones can control it again.
+- A local album folder named like 10000 Days keeps its name instead of turning into 0 Days from
+  the year 1000.
+- Lyrics from a provider no longer go missing when its synced sheet carries a timestamp too large
+  to read.
+- Opening a file whose link has a `%` before a non-ASCII letter no longer crashes Sonora.
+- On Windows, launching Sonora while it sits in the tray brings the window back even when the
+  running copy was started with administrator privileges.
+- Saving the tag editor keeps the extra genres or artists and the full release date of fields
+  you left alone.
+- The local library no longer fails to load when a folder holds a tagged file whose name is not
+  valid Unicode.
 
 ## [0.36.0] - 2026-09-15
 
