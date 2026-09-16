@@ -19,6 +19,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so window managers like FancyZones can control it again.
 - Saving the tag editor keeps the extra genres or artists and the full release date of fields
   you left alone.
+- The local library no longer fails to load when a folder holds a tagged file whose name is not
+  valid Unicode.
 
 ## [0.36.0] - 2026-09-15
 
