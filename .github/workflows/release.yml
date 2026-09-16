@@ -400,9 +400,11 @@ jobs:
 
           # Given update information, appimagetool embeds it and writes the .zsync that
           # AppImageUpdate diffs against beside the image, with a zsyncmake of its own.
+          # It also copies a VERSION it finds in its environment into X-AppImage-Version,
+          # which would put the tag's v prefix over the bare number the desktop file carries.
           flags=()
           if [ -n "$UPDATE" ]; then flags=(--updateinformation "$UPDATE"); fi
-          ./appimagetool "${flags[@]}" AppDir "dist/$image"
+          env -u VERSION ./appimagetool "${flags[@]}" AppDir "dist/$image"
           if [ -f "$image.zsync" ]; then mv "$image.zsync" dist/; fi
 
       - name: inspect the AppImage
