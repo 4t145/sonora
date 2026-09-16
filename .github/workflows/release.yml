@@ -285,10 +285,31 @@ jobs:
         shell: bash
         run: |
           case "$GITHUB_REF" in
-            refs/tags/*) version="$GITHUB_REF_NAME" ;;
-            *) version="$(git rev-parse --short HEAD)" ;;
+            refs/tags/*)
+              version="$GITHUB_REF_NAME"
+              number="${GITHUB_REF_NAME#v}"
+              ;;
+
+            *)
+              version="$(git rev-parse --short HEAD)"
+              number=""
+              ;;
           esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Only a stable tag embeds where to update from. GitHub's latest release never points
+          # at a prerelease, so a beta would be offered an older stable build, and an untagged
+          # build would be offered a release it was never cut from.
+          update=""
+          case "$number" in
+            "" | *-*) ;;
+            *) update="gh-releases-zsync|${GITHUB_REPOSITORY%/*}|${GITHUB_REPOSITORY#*/}|latest|sonora-*-$ARCH.AppImage.zsync" ;;
+          esac
+
+          {
+            echo "version=$version"
+            echo "number=$number"
+            echo "update=$update"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -301,7 +322,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            patchelf file desktop-file-utils \
+            patchelf file desktop-file-utils zsync \
             libasound2 libfontconfig1 libfreetype6 libsqlite3-0 \
             libx11-6 libxcb1 libxcursor1 libxi6 \
             libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 \
@@ -319,6 +340,8 @@ jobs:
       - name: assemble the AppDir
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+          NUMBER: ${{ steps.meta.outputs.number }}
+          UPDATE: ${{ steps.meta.outputs.update }}
           TARGET: ${{ matrix.variant.target }}
         run: |
           set -euo pipefail
@@ -332,10 +355,24 @@ jobs:
           mkdir -p AppDir/usr/share/icons
           cp -R assets/linux/icons/hicolor AppDir/usr/share/icons/
 
+          # The keys AppImage managers identify and version the app by go into a copy, so the
+          # entry the Flatpak and the distribution packages install stays as it is.
+          homepage="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          mkdir -p desktop
+          cp assets/linux/sonora.desktop desktop/sonora.desktop
+          {
+            echo "X-AppImage-Name=Sonora"
+            echo "X-AppImage-Arch=$ARCH"
+            echo "X-AppImage-Homepage=$homepage"
+            if [ -n "$NUMBER" ]; then echo "X-AppImage-Version=$NUMBER"; fi
+            if [ -n "$UPDATE" ]; then echo "X-AppImage-UpdateURL=$homepage"; fi
+          } >> desktop/sonora.desktop
+          desktop-file-validate desktop/sonora.desktop
+
           ./linuxdeploy \
             --appdir AppDir \
             --executable AppDir/usr/bin/sonora \
-            --desktop-file assets/linux/sonora.desktop \
+            --desktop-file desktop/sonora.desktop \
             --icon-file assets/linux/sonora.svg
 
           # The Vulkan loader has to be the host's: it is what finds the host's ICD, and a loader
@@ -355,20 +392,41 @@ jobs:
       - name: build the AppImage
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+          UPDATE: ${{ steps.meta.outputs.update }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          ./appimagetool AppDir "dist/sonora-$VERSION-$ARCH.AppImage"
+          image="sonora-$VERSION-$ARCH.AppImage"
+
+          # Given update information, appimagetool embeds it and writes the .zsync that
+          # AppImageUpdate diffs against beside the image.
+          flags=()
+          if [ -n "$UPDATE" ]; then flags=(--updateinformation "$UPDATE"); fi
+          ./appimagetool "${flags[@]}" AppDir "dist/$image"
+          if [ -f "$image.zsync" ]; then mv "$image.zsync" dist/; fi
 
       - name: inspect the AppImage
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+          NUMBER: ${{ steps.meta.outputs.number }}
+          UPDATE: ${{ steps.meta.outputs.update }}
         run: |
           set -euo pipefail
           cd dist
-          "./sonora-$VERSION-$ARCH.AppImage" --appimage-extract > /dev/null
+          image="sonora-$VERSION-$ARCH.AppImage"
+          "./$image" --appimage-extract > /dev/null
           test -x squashfs-root/usr/bin/sonora
           test -f squashfs-root/sonora.desktop
+          grep -qx "X-AppImage-Arch=$ARCH" squashfs-root/sonora.desktop
+          if [ -n "$NUMBER" ]; then
+            grep -qx "X-AppImage-Version=$NUMBER" squashfs-root/sonora.desktop
+          fi
+          if [ -n "$UPDATE" ]; then
+            test -f "$image.zsync"
+            test "$("./$image" --appimage-updateinformation)" = "$UPDATE"
+          else
+            test ! -e "$image.zsync"
+          fi
           test -f squashfs-root/usr/share/doc/sonora/THIRD-PARTY.md
           test ! -e squashfs-root/usr/lib/libvulkan.so.1
           ldd squashfs-root/usr/bin/sonora
