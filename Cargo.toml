@@ -98,8 +98,11 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "std",
   "NSAccessibility",
   "NSApplication",
+  "NSMenu",
+  "NSMenuItem",
   "NSResponder",
   "NSRunningApplication",
+  "NSStatusItem",
   "NSWorkspace",
 ] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }

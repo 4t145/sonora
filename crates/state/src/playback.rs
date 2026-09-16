@@ -1185,6 +1185,19 @@ impl Playback {
         cx.notify();
     }
 
+    /// A binary on/off flip for surfaces (tray, dock menu) that do not fit the three-way
+    /// cycle the player bar's button drives; `One` counts as on and flips straight to `Off`.
+    pub fn toggle_repeat(&mut self, cx: &mut Context<Self>) {
+        self.repeat = match self.repeat {
+            Repeat::Off => Repeat::All,
+            Repeat::All | Repeat::One => Repeat::Off,
+        };
+        let repeat = self.repeat;
+        self.settings
+            .update(cx, |settings, cx| settings.set_repeat(repeat, cx));
+        cx.notify();
+    }
+
     /// Decides what follows a track that ended: the same one on repeat-one, the queue's start
     /// on repeat-all, more radio when it is on and the queue ran out, else the next in line.
     fn advance(&mut self, ended: Option<Track>, cx: &mut Context<Self>) {
