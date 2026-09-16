@@ -123,6 +123,9 @@ enum Job<F: Fetch> {
         id: String,
         loaded: F::Loaded,
     },
+    /// Drop whatever is decoding and hold the output silent. A load sends this before it waits
+    /// on the fetch, so the track being replaced cannot be heard again whatever happens next.
+    Stop,
     Resume,
     Pause,
     /// Move within the track being decoded. The bytes are already arriving, so this is local.
@@ -301,6 +304,9 @@ async fn engine_loop<F: Fetch>(
     // whether the listener wants sound. A play or pause during a fetch has to survive it, or
     // pressing play while a track loads would be forgotten by the time it arrives.
     let mut wanted = false;
+    // where the track being fetched will open. A seek while it loads moves this rather than the
+    // decoder, since the decoder for it does not exist yet.
+    let mut hold = Duration::ZERO;
     let (fetched, mut arrivals) = unbounded_channel::<Fetched<F>>();
 
     loop {
@@ -328,8 +334,14 @@ async fn engine_loop<F: Fetch>(
                             handle.abort();
                         }
                         cue.clear();
+                        // The audio thread is still decoding the track this replaces. Clearing
+                        // the queue only silences what is in it; without this the old decoder
+                        // keeps running, and anything that arms the cue before the fetch lands
+                        // puts it back on the output.
+                        jobs.send(Job::Stop).ok();
                         current = Some(id.clone());
                         let position = at.unwrap_or_default();
+                        hold = position;
                         wanted = play;
                         events.send(PlaybackEvent::Loading {
                             id: Some(id.clone()),
@@ -381,14 +393,22 @@ async fn engine_loop<F: Fetch>(
                         jobs.send(Job::Pause).ok();
                     }
                     Command::Seek(position) => {
-                        if let Some(id) = current.clone() {
-                            cue.clear();
-                            announcing = Some(PlaybackEvent::Seeked {
-                                id: Some(id),
-                                at: position,
-                            });
-                            jobs.send(Job::Seek(position)).ok();
+                        let Some(id) = current.clone() else { continue };
+                        // Nothing is decoding this track while its fetch is out, so there is
+                        // nothing to move: what a seek changes is where it will open. Sending
+                        // the audio thread a seek here would land on the track this load
+                        // replaced, which is the one that still holds a decoder.
+                        if awaited.is_some() {
+                            hold = position;
+                            announcing = announcing.map(|event| moved(event, position));
+                            continue;
                         }
+                        cue.clear();
+                        announcing = Some(PlaybackEvent::Seeked {
+                            id: Some(id),
+                            at: position,
+                        });
+                        jobs.send(Job::Seek(position)).ok();
                     }
                     Command::Gain(level) => {
                         jobs.send(Job::Gain(level)).ok();
@@ -416,15 +436,11 @@ async fn engine_loop<F: Fetch>(
                 if awaited == Some(at) && current.as_deref() == Some(id.as_str()) {
                     awaited = None;
                     inflight = None;
-                    let position = announcing
-                        .as_ref()
-                        .and_then(position_of)
-                        .unwrap_or_default();
                     announce_length(&events, &id, fetch.length(&loaded));
                     jobs.send(Job::Play {
                         id,
                         loaded,
-                        at: position,
+                        at: hold,
                         playing: wanted,
                     }).ok();
                     queue_segue(&jobs, &mut waiting);
@@ -485,12 +501,14 @@ fn paused_now(event: PlaybackEvent) -> PlaybackEvent {
     }
 }
 
-fn position_of(event: &PlaybackEvent) -> Option<Duration> {
+/// The same announcement, at another position. A seek before the track has started decoding
+/// moves where it will open, and must leave a paused start paused.
+fn moved(event: PlaybackEvent, to: Duration) -> PlaybackEvent {
     match event {
-        PlaybackEvent::Playing { at, .. }
-        | PlaybackEvent::Paused { at, .. }
-        | PlaybackEvent::Seeked { at, .. } => Some(*at),
-        _ => None,
+        PlaybackEvent::Playing { id, .. } => PlaybackEvent::Playing { id, at: to },
+        PlaybackEvent::Paused { id, .. } => PlaybackEvent::Paused { id, at: to },
+        PlaybackEvent::Seeked { id, .. } => PlaybackEvent::Seeked { id, at: to },
+        held => held,
     }
 }
 
@@ -721,6 +739,15 @@ fn audio_loop<F: Fetch>(
                     }
                 }
                 Job::Queue { id, loaded } => queued = Some((id, loaded)),
+                Job::Stop => {
+                    current = None;
+                    queued = None;
+                    joining = None;
+                    heard = None;
+                    written = 0;
+                    playing = false;
+                    paced.pause();
+                }
                 Job::Resume => {
                     playing = current.is_some();
                     if playing && paced.play().is_err() {

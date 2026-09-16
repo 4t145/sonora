@@ -288,13 +288,18 @@ impl Media {
         self.0.spliced(entry.head, entry.graft)
     }
 
-    /// Where to start reading to land on `at`, if the fragment covering it is indexed.
+    /// Where to start reading to land on `at`, waiting for the fragment that covers it when
+    /// the download has not reached it yet.
+    ///
+    /// The wait is the point. Seeking past what has arrived is ordinary, and the alternative
+    /// to waiting is answering nothing, which starts the track from the beginning instead of
+    /// where the listener asked to be. A plain file waits for the same bytes inside the read
+    /// that follows its seek; a fragmented one has to wait for the index first.
     pub fn entry(&self, at: Duration) -> Option<Entry> {
-        let complete = self.0.done();
-        self.0.with(|cenc, buf| {
+        self.0.awaiting(|cenc, buf, complete| {
             cenc.index(buf);
             cenc.entry(at, complete)
-        })?
+        })
     }
 
     /// The init segment, once it has arrived: `ftyp` and `moov`, with the sample entry already

@@ -11,7 +11,7 @@
 use std::io::{self, Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use tokio::sync::watch;
@@ -212,6 +212,43 @@ impl<B: Body> Stream<B> {
             .lock()
             .map(|state| state.buf.len())
             .unwrap_or(0)
+    }
+
+    /// Reaches the provider's own half of the buffer, and again on every chunk that lands,
+    /// until it answers something or the download ends. The third argument is whether the body
+    /// is complete, so a question with no answer left can say so rather than wait.
+    ///
+    /// This blocks whichever thread asks, bounded by the same patience a read has. It is for a
+    /// question a reader would otherwise have to guess at, where guessing is worse than
+    /// waiting: where in the file a position is, when the download has not reached it yet.
+    pub fn awaiting<T>(
+        &self,
+        mut read: impl FnMut(&mut B, &mut Vec<u8>, bool) -> Option<T>,
+    ) -> Option<T> {
+        let mut state = self.shared.state.lock().ok()?;
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let Buffered {
+                buf,
+                body,
+                complete,
+                failed,
+                ..
+            } = &mut *state;
+            let (complete, broken) = (*complete, failed.is_some());
+            if let Some(found) = read(body, buf, complete) {
+                return Some(found);
+            }
+            if complete || broken {
+                return None;
+            }
+            let left = deadline.checked_duration_since(Instant::now())?;
+            let (held, timed_out) = self.shared.filled.wait_timeout(state, left).ok()?;
+            if timed_out.timed_out() {
+                return None;
+            }
+            state = held;
+        }
     }
 
     /// Reaches the provider's own half of the buffer, for anything it keeps there.
