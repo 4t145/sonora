@@ -294,6 +294,7 @@ impl SettingsView {
                 let mut rows = vec![
                     Row::Item(self.playback_row(cx).into_any_element()),
                     Row::Item(self.gapless_row(cx).into_any_element()),
+                    Row::Item(self.priority_queue_row(cx).into_any_element()),
                     Row::Item(self.sleep_row(cx).into_any_element()),
                 ];
                 if self.drm.read(cx).shown(cx) {
@@ -1353,6 +1354,26 @@ impl SettingsView {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.playback
                         .update(cx, |playback, cx| playback.set_gapless(!on, cx));
+                }))
+                .into_any_element(),
+        )
+    }
+
+    fn priority_queue_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let on = self.playback.read(cx).priority_queue(cx);
+
+        self.row(
+            t!("settings-priority-queue"),
+            t!("settings-priority-queue-detail"),
+            muted,
+            small,
+            Switch::new("priority-queue", on)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.playback
+                        .update(cx, |playback, cx| playback.set_priority_queue(!on, cx));
                 }))
                 .into_any_element(),
         )

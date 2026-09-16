@@ -292,21 +292,18 @@ impl ItemMenu {
                 })
             }
         };
+
+        let queue_menu_item = MenuItem::new(
+            "add-to-queue",
+            counted("menu-add-to-queue", "menu-add-tracks-to-queue", count),
+        )
+        .icon("icons/list-end.svg");
+
         let queue = match queued.is_empty() {
-            true => MenuItem::new(
-                "add-to-queue",
-                counted("menu-add-to-queue", "menu-add-tracks-to-queue", count),
-            )
-            .icon("icons/list-end.svg")
-            .disabled(),
+            true => queue_menu_item.disabled(),
             false => {
                 let queued = queued.clone();
-                MenuItem::new(
-                    "add-to-queue",
-                    counted("menu-add-to-queue", "menu-add-tracks-to-queue", count),
-                )
-                .icon("icons/list-end.svg")
-                .on_click(move |_, _, cx| {
+                queue_menu_item.on_click(move |_, _, cx| {
                     let playback = Sonora::global(cx).playback.clone();
                     playback.update(cx, |playback, cx| match queued.len() {
                         1 => playback.enqueue(queued[0].clone(), cx),

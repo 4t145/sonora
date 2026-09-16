@@ -89,6 +89,7 @@ pub struct FullscreenView {
 impl FullscreenView {
     pub fn new(playback: Entity<Playback>, queue: Entity<Queue>, cx: &mut Context<Self>) -> Self {
         cx.observe(&playback, |_, _, cx| cx.notify()).detach();
+        cx.observe(&queue, |_, _, cx| cx.notify()).detach();
         let cover = Sonora::global(cx).cover.clone();
         cx.observe(&cover, |_, _, cx| cx.notify()).detach();
         let library = Sonora::global(cx).library.clone();
