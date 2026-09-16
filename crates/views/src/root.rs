@@ -646,6 +646,33 @@ impl Render for Root {
             })
             .bg(theme.background)
             .text_color(theme.foreground)
+            .capture_any_mouse_down(|_, window, cx| {
+                if ui::cancel_middle_scroll(cx) {
+                    window.refresh();
+                    cx.stop_propagation();
+                }
+            })
+            .capture_any_mouse_up(|event, window, cx| {
+                if event.button == MouseButton::Middle
+                    && ui::release_middle_scroll(event.position, cx)
+                {
+                    window.refresh();
+                }
+            })
+            .on_mouse_up_out(MouseButton::Middle, |event, window, cx| {
+                if ui::release_middle_scroll(event.position, cx) {
+                    window.refresh();
+                }
+            })
+            .capture_key_down(|event, window, cx| {
+                if event.keystroke.key == "escape" && ui::cancel_middle_scroll(cx) {
+                    window.refresh();
+                    cx.stop_propagation();
+                }
+            })
+            .on_mouse_move(|event, window, cx| {
+                ui::update_middle_scroll(event.position, window, cx);
+            })
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),
                 |_, _, cx| back(cx),
