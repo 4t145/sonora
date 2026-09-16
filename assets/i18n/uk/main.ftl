@@ -155,6 +155,18 @@ menu-rename-playlist = Перейменувати плейлист
 menu-delete-playlist = Видалити плейлист
 menu-add-playlist-to-library = Додати до медіатеки
 menu-remove-playlist-from-library = Вилучити з медіатеки
+menu-library-add = Додати до медіатеки
+menu-library-add-tracks = { $count ->
+    [one] Додати { $count } трек до медіатеки
+    [few] Додати { $count } треки до медіатеки
+   *[other] Додати { $count } треків до медіатеки
+}
+menu-library-remove = Вилучити з медіатеки
+menu-library-remove-tracks = { $count ->
+    [one] Вилучити { $count } трек з медіатеки
+    [few] Вилучити { $count } треки з медіатеки
+   *[other] Вилучити { $count } треків з медіатеки
+}
 menu-make-playlist-public = Зробити публічним
 menu-make-playlist-private = Зробити приватним
 menu-open-album = Відкрити альбом
@@ -772,6 +784,8 @@ toast-sign-in-to-play = { $name } віддає музику лише тим, х�
 toast-track-unplayable = Не вдалося відтворити { $name }
 toast-library-add-failed = Не вдалося додати { $name } до медіатеки
 toast-library-remove-failed = Не вдалося вилучити { $name } з медіатеки
+toast-library-added = Додано до медіатеки
+toast-library-removed = Вилучено з медіатеки
 
 # lyrics
 lyrics-title = Текст

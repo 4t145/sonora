@@ -157,6 +157,18 @@ menu-rename-playlist = Zmień nazwę playlisty
 menu-delete-playlist = Usuń playlistę
 menu-add-playlist-to-library = Dodaj do biblioteki
 menu-remove-playlist-from-library = Usuń z biblioteki
+menu-library-add = Dodaj do biblioteki
+menu-library-add-tracks = { $count ->
+    [one] Dodaj { $count } utwór do biblioteki
+    [few] Dodaj { $count } utwory do biblioteki
+   *[other] Dodaj { $count } utworów do biblioteki
+}
+menu-library-remove = Usuń z biblioteki
+menu-library-remove-tracks = { $count ->
+    [one] Usuń { $count } utwór z biblioteki
+    [few] Usuń { $count } utwory z biblioteki
+   *[other] Usuń { $count } utworów z biblioteki
+}
 menu-make-playlist-public = Ustaw jako publiczną
 menu-make-playlist-private = Ustaw jako prywatną
 menu-open-album = Otwórz album
@@ -774,6 +786,8 @@ toast-sign-in-to-play = { $name } udostępnia muzykę tylko po zalogowaniu
 toast-track-unplayable = Nie udało się odtworzyć { $name }
 toast-library-add-failed = Nie udało się dodać { $name } do biblioteki
 toast-library-remove-failed = Nie udało się usunąć { $name } z biblioteki
+toast-library-added = Dodano do biblioteki
+toast-library-removed = Usunięto z biblioteki
 
 # lyrics
 lyrics-title = Tekst

@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::{App, Context, Entity, FocusHandle, Global, Render, Window, div};
 use i18n::t;
-use music::{Album, SavedArtist, Track};
-use state::{Detail, History, Io, Outcome, Sonora, Toasts};
+use music::{Album, SavedArtist, Shape, Track};
+use state::{Detail, History, Io, Outcome, Shelf, Sonora, Toasts};
 use ui::{Button, Dismiss, FORM_CONTEXT, Modal, Submit};
 
 #[derive(Clone, Copy)]
@@ -81,6 +81,13 @@ impl Confirm {
         cx.global::<Installed>().0.clone()
     }
 
+    /// Whether taking the heart off `id` only unstars it, so no question is worth asking. On a
+    /// `Shape::Catalog` shelf the favorites sit over a library that stays put; on a
+    /// `Shape::Saved` one the heart is the library itself, and the question stands.
+    pub(crate) fn unstarring(id: &str, cx: &App) -> bool {
+        Sonora::global(cx).library.read(cx).shape(Shelf::of(id)) == Shape::Catalog
+    }
+
     pub fn ask(kind: Kind, apply: impl FnOnce(&mut App) + 'static, cx: &mut App) {
         let confirm = Self::entity(cx);
         confirm.update(cx, |this, cx| {
@@ -97,14 +104,19 @@ impl Confirm {
         if tracks.is_empty() {
             return;
         }
-        Self::ask(
-            Kind::LibrarySongs(tracks.len()),
-            move |cx| {
-                let library = Sonora::global(cx).library.clone();
-                library.update(cx, |library, cx| library.save_tracks(tracks, false, cx));
-            },
-            cx,
-        );
+        let tracks_len = tracks.len();
+        let starred = tracks
+            .first()
+            .and_then(|track| track.id.as_deref())
+            .is_some_and(|id| Self::unstarring(id, cx));
+        let apply = move |cx: &mut App| {
+            let library = Sonora::global(cx).library.clone();
+            library.update(cx, |library, cx| library.save_tracks(tracks, false, cx));
+        };
+        match starred {
+            true => apply(cx),
+            false => Self::ask(Kind::LibrarySongs(tracks_len), apply, cx),
+        }
     }
 
     pub fn playlist_songs(ids: Vec<String>, detail: Entity<Detail>, count: usize, cx: &mut App) {
@@ -141,36 +153,44 @@ impl Confirm {
         if albums.is_empty() {
             return;
         }
-        Self::ask(
-            Kind::Albums(albums.len()),
-            move |cx| {
-                let library = Sonora::global(cx).library.clone();
-                library.update(cx, |library, cx| {
-                    for album in albums {
-                        library.toggle_album(album, cx);
-                    }
-                });
-            },
-            cx,
-        );
+        let count = albums.len();
+        let starred = albums
+            .first()
+            .is_some_and(|album| Self::unstarring(&album.id, cx));
+        let apply = move |cx: &mut App| {
+            let library = Sonora::global(cx).library.clone();
+            library.update(cx, |library, cx| {
+                for album in albums {
+                    library.toggle_album(album, cx);
+                }
+            });
+        };
+        match starred {
+            true => apply(cx),
+            false => Self::ask(Kind::Albums(count), apply, cx),
+        }
     }
 
     pub fn artists(artists: Vec<SavedArtist>, cx: &mut App) {
         if artists.is_empty() {
             return;
         }
-        Self::ask(
-            Kind::Artists(artists.len()),
-            move |cx| {
-                let library = Sonora::global(cx).library.clone();
-                library.update(cx, |library, cx| {
-                    for artist in artists {
-                        library.toggle_artist(artist, cx);
-                    }
-                });
-            },
-            cx,
-        );
+        let count = artists.len();
+        let starred = artists
+            .first()
+            .is_some_and(|artist| Self::unstarring(&artist.id, cx));
+        let apply = move |cx: &mut App| {
+            let library = Sonora::global(cx).library.clone();
+            library.update(cx, |library, cx| {
+                for artist in artists {
+                    library.toggle_artist(artist, cx);
+                }
+            });
+        };
+        match starred {
+            true => apply(cx),
+            false => Self::ask(Kind::Artists(count), apply, cx),
+        }
     }
 
     pub fn playlists(ids: Vec<String>, cx: &mut App) {

@@ -74,10 +74,14 @@ sonora → views → state → music
   package or Flatpak may carry one and `about.toml` never gains an entry for it.
   `widevine::find` reads `SONORA_WIDEVINE_CDM` first, so a package with a module of its own can
   say where it is, then a browser's copy, then the newest version in Sonora's own store,
-  `$XDG_CACHE_HOME/sonora/widevine/<version>/`. The browser search is a fixed list of vendor
-  paths and only ever lists a folder the browser itself owns (its `WidevineCdm` folder for the
-  version, its profile folder, its app bundle); it never lists `~/.config`, `/Applications` or
-  anything shared, since a scan over folders that are not ours is what an antivirus flags. With
+  `$XDG_CACHE_HOME/sonora/widevine/<version>/`. The browser search lists no folder at all: it
+  builds exact paths and stats them, since a process walking folders for libraries is what an
+  antivirus flags. A Chromium-family browser records the folder it settled on in its own
+  `WidevineCdm/latest-component-updated-widevine-cdm`, which is also the only way to reach a
+  browser installed where no fixed path predicts, a Nix store entry above all; a Firefox names
+  its profiles in `profiles.ini` and its version in that profile's `prefs.js`; a macOS bundle
+  is reached through the framework's `Libraries` symlink, so the version never has to be known.
+  The one folder Sonora reads is its own store. With
   nothing found, `state::Drm` asks the user, and only once an account is here for a provider
   whose `protected()` is true: first whether to download, then, with the archive fetched from
   Google's component update service and its sha256 checked, whether Google's terms out of that
@@ -691,6 +695,24 @@ with the `saved_*` set loaded beside it for hearts and a Favorites only filter; 
 self-hosted server say so. The `saved_*` methods mean favorites on every provider, and the `all_*`
 methods default to an empty list, so a `Saved` provider never implements them. Spotify and YouTube
 get no filter, since their lists are the favorites already.
+
+**A library page shows its first rows before its last have arrived.** `Library` reads the
+songs, albums and artists of a shelf through the `*_paged` methods of `MusicApi`, which answer a
+`music::Pages<T>`: a channel of `Page { total, items }`, closed after the last page or carrying
+the error a page broke on. Every `*_paged` method defaults to `music::whole(self.all_*().await?)`,
+one page, so a provider that lists in one go writes nothing; Apple answers a real stream, with
+Apple's `meta.total` on the first page. `Library::expected(shelf, part)` is that total, and the
+page header shows it in place of the rows so far while a part is still arriving. A part in
+flight is still `loading`, so a vacancy is never drawn under rows that are only late.
+
+**Favorites and the library can be two things.** `Capabilities::library` says the provider has a
+library apart from its favorites, which a track or an album is put into and taken out of through
+`MusicApi::set_in_library`; Apple has, Spotify has not (its library is the favorites) and a
+self-hosted server has not (its library is fixed). The context menus add an Add to Library entry
+beside the favorites one only where the flag is on, and `Library::in_library` answers from the
+shelf's pages, which on such a provider are the library. Taking the heart off something on a
+`Shape::Catalog` shelf asks nothing, since the library underneath stays put; `Confirm::unstarring`
+is the one place that decides.
 
 **Two shelves, one code path.** `state::Shelf::{Streaming, Local}` names the two providers that can
 be live at once, and `Shelf::of(id)` routes an id by its prefix. `Library` holds one `Held` per
