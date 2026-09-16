@@ -330,8 +330,8 @@ impl<I: Source> Equalized<I> {
             if target != self.target {
                 self.target = target;
                 self.frames_left = self.ramp_frames;
-                for band in 0..BANDS {
-                    self.step[band] = (target[band] - self.current[band]) / self.ramp_frames as f32;
+                for ((step, goal), now) in self.step.iter_mut().zip(target).zip(self.current) {
+                    *step = (goal - now) / self.ramp_frames as f32;
                 }
             }
         }
@@ -343,8 +343,8 @@ impl<I: Source> Equalized<I> {
         match self.frames_left {
             0 => self.current = self.target,
             _ => {
-                for band in 0..BANDS {
-                    self.current[band] += self.step[band];
+                for (now, step) in self.current.iter_mut().zip(self.step) {
+                    *now += step;
                 }
             }
         }

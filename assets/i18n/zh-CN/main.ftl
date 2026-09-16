@@ -261,7 +261,6 @@ login-problem-refused = Spotify 拒绝了登录请求。请稍等片刻后重试
 login-problem-premium = Sonora 通过 Spotify Premium 串流，而此账户没有 Premium。请使用 Premium 账户登录以继续。
 login-sign-in = 使用 { $provider } 登录
 login-connect-cookies = 手动粘贴 Cookies
-login-cookie-open = 打开 YouTube Music
 login-cookie-submit = 继续
 login-cookie-hint = 在此粘贴 Cookie 请求头
 login-cookie-step-1 = 打开 music.youtube.com 并确保你已登录。使用无痕窗口效果最好。
@@ -269,7 +268,6 @@ login-cookie-step-2 = 按 F12，打开网络（Network）标签页并刷新页�
 login-cookie-step-3 = 选择任意名为“browse”或“next”的请求。
 login-cookie-step-4 = 在标头（Headers）中，找到请求标头（Request Headers）下的 Cookie，右键点击并复制其值。
 login-cookie-step-note = 请确保粘贴完整值，包括 SAPISID 和 __Secure-3PAPISID。
-login-cookie-title = 粘贴你的 YouTube Music cookies 以完成登录
 login-window-title = 使用 { $provider } 登录
 login-use = 使用 { $provider }
 login-guest-title = 访客模式
@@ -701,6 +699,9 @@ update-working = 正在下载更新…
 update-failed = 更新无法安装。请从发布页面重试。
 settings-check-updates = 检查更新
 settings-check-updates-detail = 启动时向 GitHub 查询一次是否有新版本。Sonora 仅在 Windows 上自行安装更新；其他平台会指引你查看更新内容
+settings-log = 日志文件
+settings-log-detail = Sonora 运行时写下的内容。请将其附在错误报告中
+settings-log-open = 打开日志
 
 # tags
 tags-edit-title = 编辑标签

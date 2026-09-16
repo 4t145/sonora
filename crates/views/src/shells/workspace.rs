@@ -16,6 +16,7 @@ use crate::chrome::{
 use crate::shared::confirm::Confirm;
 use crate::shared::playlist_editor::PlaylistEditor;
 use crate::shared::tag_editor::TagEditor;
+use crate::shared::widevine::WidevinePrompt;
 use crate::shells::Shell;
 
 #[derive(Clone, Copy)]
@@ -46,6 +47,7 @@ pub(crate) struct Workspace {
     playlist_editor: Entity<PlaylistEditor>,
     tag_editor: Entity<TagEditor>,
     confirm: Entity<Confirm>,
+    widevine: Entity<WidevinePrompt>,
     toasts: Entity<ToastStack>,
     notice: Entity<UpdateNotice>,
     content: AnyView,
@@ -71,6 +73,7 @@ impl Workspace {
             playlist_editor: PlaylistEditor::entity(cx),
             tag_editor: TagEditor::entity(cx),
             confirm: Confirm::entity(cx),
+            widevine: cx.new(WidevinePrompt::new),
             toasts: cx.new(ToastStack::new),
             notice: cx.new(UpdateNotice::new),
             content,
@@ -320,6 +323,7 @@ impl Render for Workspace {
             .child(self.playlist_editor.clone())
             .child(self.tag_editor.clone())
             .child(self.confirm.clone())
+            .child(self.widevine.clone())
             .child(self.notice.clone())
     }
 }

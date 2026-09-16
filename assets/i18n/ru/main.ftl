@@ -155,6 +155,18 @@ menu-rename-playlist = Переименовать плейлист
 menu-delete-playlist = Удалить плейлист
 menu-add-playlist-to-library = Добавить в медиатеку
 menu-remove-playlist-from-library = Удалить из медиатеки
+menu-library-add = Добавить в медиатеку
+menu-library-add-tracks = { $count ->
+    [one] Добавить { $count } трек в медиатеку
+    [few] Добавить { $count } трека в медиатеку
+   *[other] Добавить { $count } треков в медиатеку
+}
+menu-library-remove = Удалить из медиатеки
+menu-library-remove-tracks = { $count ->
+    [one] Удалить { $count } трек из медиатеки
+    [few] Удалить { $count } трека из медиатеки
+   *[other] Удалить { $count } треков из медиатеки
+}
 menu-make-playlist-public = Сделать публичным
 menu-make-playlist-private = Сделать приватным
 menu-open-album = Открыть альбом
@@ -274,7 +286,7 @@ login-problem-refused = Spotify отклонил вход. Подождите н
 login-problem-premium = Sonora воспроизводит музыку через Spotify Premium, а у этого аккаунта его нет. Войдите в аккаунт с Premium, чтобы продолжить.
 login-sign-in = Войти через { $provider }
 login-connect-cookies = Вставить cookie вручную
-login-cookie-open = Открыть YouTube Music
+login-cookie-open = Открыть { $provider }
 login-cookie-submit = Продолжить
 login-cookie-hint = Вставьте сюда заголовок запроса Cookie
 login-cookie-step-1 = Откройте music.youtube.com и убедитесь, что вы вошли в аккаунт. Лучше всего работает окно в режиме инкогнито.
@@ -282,7 +294,16 @@ login-cookie-step-2 = Нажмите F12, откройте вкладку «Се
 login-cookie-step-3 = Выберите любой запрос с именем «browse» или «next».
 login-cookie-step-4 = На вкладке «Заголовки» найдите Cookie в заголовках запроса, щёлкните правой кнопкой и скопируйте значение.
 login-cookie-step-note = Вставьте значение целиком: панели «Куки» недостаточно, потому что значение должно содержать SAPISID и __Secure-3PAPISID.
-login-cookie-title = Вставьте cookie YouTube Music, чтобы завершить вход
+login-cookie-header-title = Вставьте cookie { $provider }, чтобы завершить вход
+login-cookie-apple-step-3 = Выберите любой запрос к { $site }.
+login-cookie-apple-note = Вставьте значение целиком: оно должно содержать { $cookie }.
+login-cookie-named-title = Вставьте cookie { $provider }, чтобы завершить вход
+login-cookie-named-hint = Вставьте сюда значение cookie
+login-cookie-named-step-1 = Откройте { $site } и убедитесь, что вы вошли в аккаунт.
+login-cookie-named-step-2 = Нажмите F12 и откройте вкладку Хранилище в Firefox или Application в Chrome.
+login-cookie-named-step-3 = Раскройте Cookies, выберите { $site } и найдите cookie с именем { $cookie }.
+login-cookie-named-step-4 = Дважды щёлкните по его значению и скопируйте его.
+login-cookie-named-note = Достаточно одного значения { $cookie }. Целый заголовок Cookie из вкладки Сеть тоже подойдёт.
 login-window-title = Вход в { $provider }
 login-use = Открыть { $provider }
 login-guest-title = Гостевой режим
@@ -565,6 +586,30 @@ settings-sleep-configure = Настроить…
 settings-sleep-off = Выкл
 settings-sleep-end-of-track = В конце трека
 settings-sleep-minutes = { $count } мин
+settings-widevine = Модуль Widevine
+settings-widevine-detail = Треки Apple Music зашифрованы и требуют модуля Widevine от Google. Sonora берёт копию, которая уже есть у браузера, или ту, что скачала у Google с вашего согласия.
+settings-widevine-none = Треки Apple Music зашифрованы и требуют модуля Widevine от Google. Ни у одного браузера здесь его нет, поэтому Sonora может скачать его у Google с вашего согласия.
+settings-widevine-looking = Поиск…
+settings-widevine-asking = Ждём вашего ответа
+settings-widevine-fetching = Скачивание…
+settings-widevine-installing = Установка…
+settings-widevine-installed = Найден в браузере
+settings-widevine-fetched = Скачан у Google
+settings-widevine-missing = Не установлен
+settings-widevine-configured = Задан через окружение
+settings-widevine-fetch = Скачать
+settings-widevine-uninstall = Удалить
+confirm-uninstall-widevine-title = Удалить модуль Widevine?
+confirm-uninstall-widevine = Sonora удалит копию, скачанную у Google. Треки Apple Music перестанут играть, пока модуль не будет скачан снова.
+widevine-prompt-title = Модуль Widevine
+widevine-prompt-wanted = Треки Apple Music зашифрованы и требуют модуля Widevine от Google. Ни у одного браузера на этом компьютере его нет. Sonora может скачать его с серверов Google, тот же файл, что ставит Chrome, и хранить в своей папке.
+widevine-prompt-downloading = Скачивание…
+widevine-prompt-terms = Версия { $version } скачана. Установка означает согласие с условиями Google для этого модуля:
+widevine-prompt-installing = Установка…
+widevine-prompt-download = Скачать
+widevine-prompt-later = Не сейчас
+widevine-prompt-accept = Принять и установить
+widevine-prompt-decline = Отклонить
 settings-panel-lyrics-size = Размер текста песни (панель)
 settings-panel-lyrics-size-detail = Размер строк текста песни на боковой панели поверх базового размера шрифта
 settings-fullscreen-lyrics-size = Размер текста песни (полный экран)
@@ -740,6 +785,8 @@ toast-sign-in-to-play = { $name } отдаёт музыку только тем,
 toast-track-unplayable = Не удалось воспроизвести { $name }
 toast-library-add-failed = Не удалось добавить { $name } в медиатеку
 toast-library-remove-failed = Не удалось удалить { $name } из медиатеки
+toast-library-added = Добавлено в медиатеку
+toast-library-removed = Удалено из медиатеки
 
 # lyrics
 lyrics-title = Текст
@@ -762,6 +809,9 @@ update-working = Загружаем обновление…
 update-failed = Не удалось установить обновление. Попробуйте со страницы релизов.
 settings-check-updates = Проверять обновления
 settings-check-updates-detail = Один раз при запуске спрашивать GitHub, вышла ли новая версия. Sonora устанавливает обновление сама только в Windows, в остальных системах показывает, что изменилось
+settings-log = Файл журнала
+settings-log-detail = Что Sonora записала во время работы. Приложите его к отчёту об ошибке
+settings-log-open = Открыть журнал
 tags-edit-title = Изменение тегов
 tags-sheet-song = Трек
 tags-sheet-album = Альбом

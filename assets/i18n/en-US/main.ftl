@@ -122,6 +122,8 @@ menu-remove-tracks-from-history = { $count ->
     [one] Remove { $count } track from history
    *[other] Remove { $count } tracks from history
 }
+menu-delete-track-file = Delete track file
+menu-delete-track-files = Delete { $count } track files
 menu-play-next = Play next
 menu-play-tracks-next = { $count ->
     [one] Play { $count } track next
@@ -148,6 +150,16 @@ menu-rename-playlist = Rename playlist
 menu-delete-playlist = Delete playlist
 menu-add-playlist-to-library = Add to Library
 menu-remove-playlist-from-library = Remove from Library
+menu-library-add = Add to Library
+menu-library-add-tracks = { $count ->
+    [one] Add { $count } track to Library
+   *[other] Add { $count } tracks to Library
+}
+menu-library-remove = Remove from Library
+menu-library-remove-tracks = { $count ->
+    [one] Remove { $count } track from Library
+   *[other] Remove { $count } tracks from Library
+}
 menu-make-playlist-public = Make public
 menu-make-playlist-private = Make private
 menu-open-album = Open album
@@ -192,6 +204,8 @@ confirm-remove-playlists = { $count ->
     [one] Remove this playlist from your library?
    *[other] Remove { $count } playlists from your library?
 }
+confirm-delete-track-files-title = Delete track files?
+confirm-delete-track-files = The file(s) will be permanently deleted from disk. This cannot be undone.
 
 # queue panel
 queue-title = Queue
@@ -261,7 +275,7 @@ login-problem-refused = Spotify turned down the sign-in. Wait a moment and try a
 login-problem-premium = Sonora streams through Spotify Premium, and this account does not have it. Sign in with a Premium account to continue.
 login-sign-in = Sign in with { $provider }
 login-connect-cookies = Paste cookies manually
-login-cookie-open = Open YouTube Music
+login-cookie-open = Open { $provider }
 login-cookie-submit = Continue
 login-cookie-hint = Paste the Cookie request header here
 login-cookie-step-1 = Open music.youtube.com and make sure you are signed in. An incognito window works best.
@@ -269,7 +283,16 @@ login-cookie-step-2 = Press F12, open the Network tab and reload the page.
 login-cookie-step-3 = Select any request named "browse" or "next".
 login-cookie-step-4 = In Headers, find Cookie under Request Headers, right-click it and copy its value.
 login-cookie-step-note = Make sure to paste the whole value, including SAPISID and __Secure-3PAPISID.
-login-cookie-title = Paste your YouTube Music cookies to finish signing in
+login-cookie-header-title = Paste your { $provider } cookies to finish signing in
+login-cookie-apple-step-3 = Select any request to { $site }.
+login-cookie-apple-note = Make sure to paste the whole value, including { $cookie }.
+login-cookie-named-title = Paste your { $provider } cookie to finish signing in
+login-cookie-named-hint = Paste the cookie value here
+login-cookie-named-step-1 = Open { $site } and make sure you are signed in.
+login-cookie-named-step-2 = Press F12 and open the Storage tab in Firefox, or the Application tab in Chrome.
+login-cookie-named-step-3 = Expand Cookies, select { $site } and find the cookie named { $cookie }.
+login-cookie-named-step-4 = Double-click its value and copy it.
+login-cookie-named-note = The { $cookie } value alone is enough. A whole Cookie header copied from the Network tab works too.
 login-window-title = Sign in to { $provider }
 login-use = Use { $provider }
 login-guest-title = Guest mode
@@ -540,6 +563,30 @@ settings-sleep-configure = Configure…
 settings-sleep-off = Off
 settings-sleep-end-of-track = End of track
 settings-sleep-minutes = { $count } mins
+settings-widevine = Widevine module
+settings-widevine-detail = Apple Music tracks are encrypted and need Google's Widevine module. Sonora uses the copy a browser here already has, or one it downloaded from Google with your consent.
+settings-widevine-none = Apple Music tracks are encrypted and need Google's Widevine module. No browser here has one, so Sonora can download it from Google with your consent.
+settings-widevine-looking = Looking…
+settings-widevine-asking = Waiting for your answer
+settings-widevine-fetching = Downloading…
+settings-widevine-installing = Installing…
+settings-widevine-installed = Found in a browser
+settings-widevine-fetched = Downloaded from Google
+settings-widevine-missing = Not installed
+settings-widevine-configured = Set by the environment
+settings-widevine-fetch = Download
+settings-widevine-uninstall = Uninstall
+confirm-uninstall-widevine-title = Uninstall the Widevine module?
+confirm-uninstall-widevine = Sonora deletes the copy it downloaded from Google. Apple Music tracks stop playing until it is downloaded again.
+widevine-prompt-title = Widevine module
+widevine-prompt-wanted = Apple Music tracks are encrypted and need Google's Widevine module. No browser on this computer has one. Sonora can download it from Google's servers, the same file Chrome installs, and keep it in its own folder.
+widevine-prompt-downloading = Downloading…
+widevine-prompt-terms = Version { $version } is downloaded. Installing it means accepting Google's terms for the module:
+widevine-prompt-installing = Installing…
+widevine-prompt-download = Download
+widevine-prompt-later = Not now
+widevine-prompt-accept = Accept and install
+widevine-prompt-decline = Decline
 settings-equalizer = Equalizer
 settings-equalizer-detail = Shapes the sound across ten bands, one per octave
 settings-equalizer-preset = Preset
@@ -692,6 +739,7 @@ saver-strong = Strong ({ $fps } FPS)
 toast-playlist-created = Playlist created
 toast-playlist-renamed = Playlist renamed
 toast-playlist-deleted = Playlist deleted
+toast-local-delete-failed = Some track files could not be deleted
 toast-playlist-added = Playlist added to your library
 toast-playlist-removed = Playlist removed from your library
 toast-playlist-visibility = Playlist visibility changed
@@ -714,6 +762,8 @@ toast-sign-in-to-play = { $name } only streams to a signed-in listener
 toast-track-unplayable = { $name } could not be played
 toast-library-add-failed = { $name } could not be added to your library
 toast-library-remove-failed = { $name } could not be removed from your library
+toast-library-added = Added to your library
+toast-library-removed = Removed from your library
 
 # lyrics
 lyrics-title = Lyrics
@@ -736,6 +786,9 @@ update-working = Downloading the update…
 update-failed = The update could not be installed. Try again from the releases page.
 settings-check-updates = Check for updates
 settings-check-updates-detail = Ask GitHub once at startup whether a newer version is out. Sonora installs the update itself on Windows only; elsewhere it points you at what changed
+settings-log = Log file
+settings-log-detail = What Sonora wrote while running. Attach it to a bug report
+settings-log-open = Open log
 
 # tags
 tags-edit-title = Edit tags

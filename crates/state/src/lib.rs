@@ -3,10 +3,12 @@ mod catalog;
 mod cover;
 mod detail;
 mod discord;
+mod drm;
 mod genre;
 mod history;
 mod home;
 mod library;
+mod logging;
 mod lyrics;
 mod mosaic;
 mod pins;
@@ -29,10 +31,12 @@ mod window_shape;
 pub use artist::ArtistDetail;
 pub use cover::Cover;
 pub use detail::{Collection, Detail, Header};
+pub use drm::{CdmState, Drm};
 pub use genre::{GenreDetails, Genres};
 pub use history::{History, HistoryState};
 pub use home::Home;
 pub use library::{Library, LibraryEvent, LibraryPart, LibraryState, Problem, Ready, Shelf};
+pub use logging::log_file;
 pub use lyrics::{Lyrics, LyricsState};
 pub use pins::{PinSort, Pins};
 pub use playback::{Origin, Playback, PlaybackState, Repeat, Sleep, Whence};
@@ -104,6 +108,7 @@ pub(crate) async fn join<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
 pub struct Sonora {
     pub session: Entity<Session>,
     pub cover: Entity<Cover>,
+    pub drm: Entity<Drm>,
     pub library: Entity<Library>,
     pub history: Entity<History>,
     pub lyrics: Entity<Lyrics>,
@@ -165,6 +170,7 @@ pub fn init(
         )
     });
     let cover = cx.new(|cx| Cover::new(session.clone(), playback.clone(), io.clone(), cx));
+    let drm = cx.new(|cx| Drm::new(session.clone(), io.clone(), cx));
     let updates = cx.new(|cx| Updates::new(settings.clone(), io.clone(), cx));
     let usage = cx.new(|cx| Usage::new(session.clone(), database, io.clone(), cx));
     let pins = cx.new(|cx| Pins::new(settings.clone(), library.clone(), session.clone(), cx));
@@ -180,6 +186,7 @@ pub fn init(
     cx.set_global(Sonora {
         session,
         cover,
+        drm,
         library,
         history,
         lyrics,

@@ -37,6 +37,15 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
     </sub>
 </div>
 
+> [!IMPORTANT]
+> **Sonora is not a piracy tool.**
+>
+> Sonora is not a platform for obtaining or sharing copyrighted material. We will not implement any functions that can be used to export decrypted streams, DRM licenses, content keys, or to convert protected streams into media files.
+>
+> Sonora is not designed to circumvent subscriptions or other restrictions put in place by music streaming platforms. If the service demands that you have a valid subscription in order to play back their tracks, so will Sonora.
+>
+> Features aimed at ripping, downloading, distributing, or gaining access to protected streaming content are out of scope for the project.
+
 ## Features
 
 * **Spotify, YouTube Music, Subsonic/OpenSubsonic,** and local playback
@@ -102,8 +111,10 @@ chmod +x sonora-*.AppImage
 ```
 
 An `aarch64` build is published beside it. The AppImage carries no Vulkan driver and no ALSA
-bridge, so both still come from your system, and it does not update itself — download a newer one
-over it.
+bridge, so both still come from your system. It does not update itself, but it carries its update
+information, so [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) or an
+AppImage manager such as [AppManager](https://github.com/kem-a/AppManager) can fetch a new release
+for you.
 
 ### Nix
 
@@ -176,19 +187,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 642/642 | 100% |
-| Deutsch (`de`) | 632/642 | 98% |
-| Español (`es`) | 610/642 | 95% |
-| Français (`fr`) | 632/642 | 98% |
-| Italiano (`it`) | 610/642 | 95% |
-| Bahasa Indonesia (`id`) | 610/642 | 95% |
-| 日本語 (`ja`) | 610/642 | 95% |
-| Русский (`ru`) | 642/642 | 100% |
-| Українська (`uk`) | 642/642 | 100% |
-| Polski (`pl`) | 642/642 | 100% |
-| Português (Brasil) (`pt-BR`) | 610/642 | 95% |
-| 简体中文 (`zh-CN`) | 610/642 | 95% |
-| Türkçe (`tr`) | 610/642 | 95% |
+| English (`en-US`) | 686/686 | 100% |
+| Deutsch (`de`) | 630/686 | 92% |
+| Español (`es`) | 608/686 | 89% |
+| Français (`fr`) | 630/686 | 92% |
+| Italiano (`it`) | 608/686 | 89% |
+| Bahasa Indonesia (`id`) | 608/686 | 89% |
+| 日本語 (`ja`) | 608/686 | 89% |
+| Русский (`ru`) | 681/686 | 99% |
+| Українська (`uk`) | 681/686 | 99% |
+| Polski (`pl`) | 681/686 | 99% |
+| Português (Brasil) (`pt-BR`) | 608/686 | 89% |
+| 简体中文 (`zh-CN`) | 608/686 | 89% |
+| Türkçe (`tr`) | 608/686 | 89% |
 
 <!-- i18n:end -->
 

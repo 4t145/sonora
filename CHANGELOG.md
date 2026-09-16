@@ -7,6 +7,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-17
+
+### Added
+
+- The AppImage can be updated through AppImageUpdate or an AppImage manager.
+- An Open log button under Settings > About opens the file Sonora logs to, for attaching to a
+  bug report.
+- Deezer as a provider: your favorites, playlists, albums and search, with FLAC playback where
+  the account allows it.
+- Apple Music as a provider: your library, playlists, search and stations.
+  Playback needs Google's Widevine module. Sonora uses the copy a browser on your computer has,
+  or offers to download it from Google and shows Google's terms first. Settings can remove a
+  downloaded module again.
+
+### Fixed
+
+- On Windows, the window minimizes, restores and closes with the system animations again.
+- On Windows, Sonora no longer keeps the installer's administrator privileges after an update,
+  so window managers like FancyZones can control it again.
+- A local album folder named like 10000 Days keeps its name instead of turning into 0 Days from
+  the year 1000.
+- Lyrics from a provider no longer go missing when its synced sheet carries a timestamp too large
+  to read.
+- Opening a file whose link has a `%` before a non-ASCII letter no longer crashes Sonora.
+- On Windows, launching Sonora while it sits in the tray brings the window back even when the
+  running copy was started with administrator privileges.
+- Saving the tag editor keeps the extra genres or artists and the full release date of fields
+  you left alone.
+- The local library no longer fails to load when a folder holds a tagged file whose name is not
+  valid Unicode.
+
 ## [0.36.0] - 2026-09-15
 
 ### Added
@@ -1590,7 +1621,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.36.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/sonorahq/sonora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sonorahq/sonora/compare/v0.34.4...v0.35.0
 [0.34.4]: https://github.com/sonorahq/sonora/compare/v0.34.3...v0.34.4

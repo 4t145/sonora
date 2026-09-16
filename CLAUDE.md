@@ -35,6 +35,7 @@ crates/
   icons/      the icon packs: registry, active pack, path resolution, AssetSource
   embed/      build-script helper that walks a folder and writes include_bytes! literals
   webview/    a native browser window with a throwaway session, for cookie sign-ins
+  widevine/   fetching the CDM from Google, the pssh box and CENC fMP4 parsing, for any DRM'd provider
 ```
 
 Dependency direction is strict; do not create a back edge:
@@ -43,6 +44,7 @@ Dependency direction is strict; do not create a back edge:
 sonora → views → state → music
          state, music → storage
          state → webview
+         music → widevine
          all ui-side crates → ui, router, input → ui → gpui
          every ui-side crate → i18n, icons → gpui
 ```
@@ -51,6 +53,49 @@ sonora → views → state → music
   and the models in its root; each provider lives in a submodule (`music::spotify`,
   `music::youtube`, `music::local`). `state` and `views` see only the root traits and models — never
   a provider module. Only `sonora/src/main.rs` names a concrete provider.
+- **A provider whose tracks are a file to decode writes neither an engine nor a download buffer.**
+  `music::engine` is the one playback engine: two threads, the command queue, the preload, the
+  gapless join, where a position is reported from. A provider implements `engine::Fetch` (how to
+  get a track, how to open a decoder over it) in about a hundred lines and calls `engine::start`.
+  `music::stream` is the one progressive download: a provider implements `stream::Body` for what
+  happens to the bytes, which is nothing at all for Subsonic, a Blowfish stripe for Deezer and a
+  CENC index for Apple Music. Subsonic, Deezer and Apple each had their own copy of both, 85% the
+  same code; do not start a fourth.
+- `widevine` is a leaf that knows nothing about music: the process-wide CDM behind one lock, the
+  `pssh` box, the fetch from Google, and enough ISO-BMFF to find every encrypted sample and
+  fragment. Its `cdm` feature compiles the C++ host in `crates/widevine/shim/` with `cc`: one
+  `shim.cc` that implements `cdm::Host_11` against the vendored Chromium header and loads the
+  module through `dlopen` on Linux and macOS and `LoadLibraryExW` on Windows, with
+  `src/shim.rs` as the Rust side. `music/widevine` forwards to it and `sonora` turns it on for
+  every platform, so a C++ compiler is a build requirement everywhere: `g++` or `clang++`,
+  `cl.exe` on Windows. `widevine::licensing()` has to be held from
+  challenge to license: the CDM cannot have two exchanges open, and preloading the next track is
+  exactly that.
+- **The CDM is never ours to ship, and it arrives the way Kodi's does.** Google licenses it to
+  browser and device vendors and publishes nothing redistributable, so no release artefact,
+  package or Flatpak may carry one and `about.toml` never gains an entry for it.
+  `widevine::find` reads `SONORA_WIDEVINE_CDM` first, so a package with a module of its own can
+  say where it is, then a browser's copy, then the newest version in Sonora's own store,
+  `$XDG_CACHE_HOME/sonora/widevine/<version>/`. The browser search lists no folder at all: it
+  builds exact paths and stats them, since a process walking folders for libraries is what an
+  antivirus flags. A Chromium-family browser records the folder it settled on in its own
+  `WidevineCdm/latest-component-updated-widevine-cdm`, which is also the only way to reach a
+  browser installed where no fixed path predicts, a Nix store entry above all; a Firefox names
+  its profiles in `profiles.ini` and its version in that profile's `prefs.js`; a macOS bundle
+  is reached through the framework's `Libraries` symlink, so the version never has to be known.
+  The one folder Sonora reads is its own store. The search itself waits until the current
+  provider is one whose `protected()` is true and has an account, so a Spotify or YouTube run
+  never looks, and the Settings row (`Drm::shown`) appears only then too. With nothing found,
+  `state::Drm` asks the user: first whether to download, then, with the archive fetched from
+  Google's component update service and its sha256 checked, whether Google's terms out of that
+  archive are accepted. `widevine::offer` is the download, `Offer::install` the install, and
+  `views::shared::widevine` draws the two questions. `SONORA_WIDEVINE_SKIP_BROWSERS` skips the
+  browser search, for trying that download on a machine whose browser already has a copy. A
+  module accepted that way is refreshed
+  through `widevine::fetch` without asking again, and `widevine::uninstall` removes the store
+  from Settings; a CDM already open stays open until the process ends. Only a successful search is remembered, so a
+  module installed mid-run is picked up without a restart. `music::drm` is the only door
+  `state` and `views` use, so neither ever names a provider to ask about protected playback.
 - `ui` depends only on `gpui`, `serde` and `i18n`, plus the per-platform crates `ui::motion` needs
   to read the system reduce-motion preference (`objc2-app-kit`, `windows-sys`, `ashpd`). It must
   never know about `music`, `state`, or playback.
@@ -89,7 +134,9 @@ sonora → views → state → music
 
 The GPUI renderer is Vulkan-based, so a Vulkan ICD is a **runtime** requirement, not just a build
 one. Link-time deps: `vulkan-loader`, `wayland`, `libxkbcommon`, `libxcb`, `libx11`, `libxcursor`,
-`libxi`, `fontconfig`, `freetype`, `alsa-lib`, `dbus`, `sqlite`, plus `pkg-config`.
+`libxi`, `fontconfig`, `freetype`, `alsa-lib`, `dbus`, `sqlite`, plus `pkg-config`. A C++
+compiler too: `crates/widevine` compiles its CDM host from `shim.cc` on every platform, through
+`g++` or `clang++` on Linux and macOS and `cl.exe` on Windows.
 
 webkit2gtk is deliberately **not** on that list: `crates/webview` reaches
 `libwebkit2gtk-4.1.so.0` (or the older `4.0.so.37`) through `dlopen` when a provider signs in with
@@ -654,6 +701,24 @@ self-hosted server say so. The `saved_*` methods mean favorites on every provide
 methods default to an empty list, so a `Saved` provider never implements them. Spotify and YouTube
 get no filter, since their lists are the favorites already.
 
+**A library page shows its first rows before its last have arrived.** `Library` reads the
+songs, albums and artists of a shelf through the `*_paged` methods of `MusicApi`, which answer a
+`music::Pages<T>`: a channel of `Page { total, items }`, closed after the last page or carrying
+the error a page broke on. Every `*_paged` method defaults to `music::whole(self.all_*().await?)`,
+one page, so a provider that lists in one go writes nothing; Apple answers a real stream, with
+Apple's `meta.total` on the first page. `Library::expected(shelf, part)` is that total, and the
+page header shows it in place of the rows so far while a part is still arriving. A part in
+flight is still `loading`, so a vacancy is never drawn under rows that are only late.
+
+**Favorites and the library can be two things.** `Capabilities::library` says the provider has a
+library apart from its favorites, which a track or an album is put into and taken out of through
+`MusicApi::set_in_library`; Apple has, Spotify has not (its library is the favorites) and a
+self-hosted server has not (its library is fixed). The context menus add an Add to Library entry
+beside the favorites one only where the flag is on, and `Library::in_library` answers from the
+shelf's pages, which on such a provider are the library. Taking the heart off something on a
+`Shape::Catalog` shelf asks nothing, since the library underneath stays put; `Confirm::unstarring`
+is the one place that decides.
+
 **Two shelves, one code path.** `state::Shelf::{Streaming, Local}` names the two providers that can
 be live at once, and `Shelf::of(id)` routes an id by its prefix. `Library` holds one `Held` per
 shelf with the same loading, landing and favorites code, and every accessor takes the shelf:
@@ -882,3 +947,7 @@ is incomplete. Cutting a release therefore takes three steps:
 Entries are user-facing sentences under `Added` / `Changed` / `Fixed`, not commit subjects: say what
 someone using Sonora can now do, and leave out work no user can observe. Add to `## [Unreleased]` as
 features land so cutting a release is only a rename.
+
+**Keep every entry to one or two short sentences.** The release notes are posted to Discord and read
+there, so a paragraph per entry is worse than a terse line. Name the change and stop: no setup
+instructions, no rationale, no list of the settings it lives under.

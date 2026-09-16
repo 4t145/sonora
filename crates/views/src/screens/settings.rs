@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+use crate::shared::confirm::{Confirm, Kind};
 use crate::shared::local;
 use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_query};
 use gpui::{
@@ -12,13 +13,14 @@ use gpui::{
 };
 use gpui::{ScrollHandle, prelude::*, svg};
 use i18n::{Language, t};
+use music::drm::Origin;
 use music::equalizer::{self, Preset};
 use music::scrobble::{Link, Secret};
 use music::{AccountChoice, SignIn, SignInPrompt, WritingSystem};
 use router::{NavEntry, Screen, SettingsTab};
 use state::{
-    AppSettings, DiscordName, Failure, FullscreenControlsAutohide, Io, Playback, SYSTEM_FONT,
-    ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
+    AppSettings, CdmState, DiscordName, Drm, Failure, FullscreenControlsAutohide, Io, Playback,
+    SYSTEM_FONT, ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
 };
 use ui::{ActiveTheme as _, Scrollbar, Scroller, eyebrow};
 use ui::{
@@ -151,6 +153,7 @@ const MEMBERS: [Member; 5] = [
 pub struct SettingsView {
     session: Entity<Session>,
     playback: Entity<Playback>,
+    drm: Entity<Drm>,
     settings: Entity<AppSettings>,
     tab: SettingsTab,
     scrollbar: Entity<Scrollbar>,
@@ -165,7 +168,7 @@ pub struct SettingsView {
     password: Entity<Input>,
     credentials_for: Option<&'static str>,
     secret: Entity<Input>,
-    manual_secret: bool,
+    manual_secret: Option<(&'static str, &'static str)>,
     scrobbling: Entity<Scrobbling>,
     scrobble_first: Entity<Input>,
     scrobble_second: Entity<Input>,
@@ -187,6 +190,8 @@ impl SettingsView {
     ) -> Self {
         let settings = Sonora::global(cx).settings.clone();
         let scrobbling = Sonora::global(cx).scrobbling.clone();
+        let drm = Sonora::global(cx).drm.clone();
+        cx.observe(&drm, |_, _, cx| cx.notify()).detach();
         cx.observe(&session, |_, _, cx| cx.notify()).detach();
         cx.observe(&scrobbling, |_, _, cx| cx.notify()).detach();
         cx.observe(&settings, |_, _, cx| cx.notify()).detach();
@@ -208,6 +213,7 @@ impl SettingsView {
         Self {
             session,
             playback,
+            drm,
             settings,
             tab: SettingsTab::General,
             scrollbar: cx.new(|_| Scrollbar::new(ScrollHandle::new()).watching(me)),
@@ -223,7 +229,7 @@ impl SettingsView {
             password: cx.new(|cx| Input::new("login-password-hint", cx).masked()),
             credentials_for: None,
             secret: cx.new(|cx| Input::new("login-cookie-hint", cx)),
-            manual_secret: false,
+            manual_secret: None,
             scrobbling,
             scrobble_first: cx.new(|cx| Input::new("settings-scrobble-key", cx)),
             scrobble_second: cx.new(|cx| Input::new("settings-scrobble-secret", cx)),
@@ -289,9 +295,14 @@ impl SettingsView {
                     Row::Item(self.playback_row(cx).into_any_element()),
                     Row::Item(self.gapless_row(cx).into_any_element()),
                     Row::Item(self.sleep_row(cx).into_any_element()),
+                ];
+                if self.drm.read(cx).shown(cx) {
+                    rows.push(Row::Item(self.widevine_row(cx).into_any_element()));
+                }
+                rows.extend([
                     self.title("settings-group-equalizer", cx),
                     Row::Item(self.equalizer_row(cx).into_any_element()),
-                ];
+                ]);
                 if self.playback.read(cx).equalizer() {
                     rows.push(Row::Item(self.equalizer_preset_row(cx).into_any_element()));
                     rows.push(Row::Item(self.equalizer_bands_row(cx).into_any_element()));
@@ -317,6 +328,7 @@ impl SettingsView {
             SettingsTab::About => vec![
                 Row::Item(self.version_row(cx).into_any_element()),
                 Row::Item(self.updates_row(cx).into_any_element()),
+                Row::Item(self.log_row(cx).into_any_element()),
                 self.title("settings-group-project", cx),
                 Row::Item(self.license_row(cx).into_any_element()),
                 Row::Item(self.source_row(cx).into_any_element()),
@@ -991,8 +1003,8 @@ impl SettingsView {
                     .outline()
                     .on_click(move |_, _, cx| {
                         let path = settings.update(cx, |settings, _| settings.ensure_file());
-                        if let Err(error) = open_settings_file(&path) {
-                            eprintln!("sonora: cannot open {}: {error}", path.display());
+                        if let Err(error) = open_path(&path) {
+                            log::warn!("settings: cannot open {}: {error}", path.display());
                         }
                     }),
             )
@@ -1545,6 +1557,81 @@ impl SettingsView {
         MenuItem::new("sleep-dial", "").content(dial)
     }
 
+    /// The Widevine module row, which only appears while the current provider is one whose
+    /// tracks need the module and this build has a host for one. Sonora uses a browser's copy
+    /// when one is here and otherwise offers Google's download, so the row says where that
+    /// stands and offers the download by hand when the user said no or nothing asked yet.
+    fn widevine_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let state = self.drm.read(cx).state().clone();
+        let (detail, note) = match &state {
+            CdmState::Looking => ("settings-widevine-detail", "settings-widevine-looking"),
+            CdmState::Ready(Origin::Configured) => {
+                ("settings-widevine-detail", "settings-widevine-configured")
+            }
+            CdmState::Ready(Origin::Installed) => {
+                ("settings-widevine-detail", "settings-widevine-installed")
+            }
+            CdmState::Ready(Origin::Fetched) => {
+                ("settings-widevine-detail", "settings-widevine-fetched")
+            }
+            CdmState::Wanted | CdmState::Offered(_) => {
+                ("settings-widevine-none", "settings-widevine-asking")
+            }
+            CdmState::Offering => ("settings-widevine-none", "settings-widevine-fetching"),
+            CdmState::Installing => ("settings-widevine-none", "settings-widevine-installing"),
+            CdmState::Declined | CdmState::Missing => {
+                ("settings-widevine-none", "settings-widevine-missing")
+            }
+        };
+        let offerable = matches!(state, CdmState::Declined | CdmState::Missing);
+        let removable = matches!(state, CdmState::Ready(Origin::Fetched));
+
+        self.row(
+            t!("settings-widevine"),
+            i18n::lookup(detail, None),
+            muted,
+            small,
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_color(muted)
+                .text_size(small)
+                .child(i18n::lookup(note, None))
+                .when(offerable, |row| {
+                    row.child(
+                        Button::new("fetch-widevine")
+                            .label(t!("settings-widevine-fetch"))
+                            .small()
+                            .outline()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.drm.update(cx, |drm, cx| drm.download(cx));
+                            })),
+                    )
+                })
+                .when(removable, |row| {
+                    row.child(
+                        Button::new("uninstall-widevine")
+                            .label(t!("settings-widevine-uninstall"))
+                            .small()
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let drm = this.drm.clone();
+                                Confirm::ask(
+                                    Kind::Widevine,
+                                    move |cx| drm.update(cx, |drm, cx| drm.uninstall(cx)),
+                                    cx,
+                                );
+                            })),
+                    )
+                })
+                .into_any_element(),
+        )
+    }
+
     fn updates_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
@@ -1561,6 +1648,32 @@ impl SettingsView {
                     this.settings
                         .update(cx, |settings, cx| settings.set_check_updates(!on, cx));
                 }))
+                .into_any_element(),
+        )
+    }
+
+    /// The About row that opens the current log file in whatever the system reads text with.
+    /// The button is disabled when the platform names no state or cache folder to log into.
+    fn log_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
+        let path = state::log_file();
+
+        self.row(
+            t!("settings-log"),
+            t!("settings-log-detail"),
+            theme.muted_foreground,
+            theme.text(Text::Small),
+            Button::new("open-log")
+                .label(t!("settings-log-open"))
+                .small()
+                .outline()
+                .disabled(path.is_none())
+                .on_click(move |_, _, _| {
+                    let Some(path) = &path else { return };
+                    if let Err(error) = open_path(path) {
+                        log::warn!("settings: cannot open {}: {error}", path.display());
+                    }
+                })
                 .into_any_element(),
         )
     }
@@ -2535,14 +2648,16 @@ impl SettingsView {
             .on_dismiss(cx.listener(|this, _, _, cx| this.abandon_credentials(cx)))
     }
 
-    fn start_manual(&mut self, slug: &'static str, cx: &mut Context<Self>) {
-        self.manual_secret = true;
+    fn start_manual(&mut self, slug: &'static str, provider: &'static str, cx: &mut Context<Self>) {
+        self.manual_secret = Some((slug, provider));
+        let hint = CookiePrompt::hint(slug);
+        self.secret.update(cx, |input, cx| input.set_hint(hint, cx));
         self.session
             .update(cx, |session, cx| session.sign_in_with_cookies(slug, cx));
     }
 
     fn clear_secret(&mut self, cx: &mut Context<Self>) {
-        self.manual_secret = false;
+        self.manual_secret = None;
         self.secret.update(cx, |input, cx| input.set_text("", cx));
     }
 
@@ -2556,8 +2671,13 @@ impl SettingsView {
             .update(cx, |session, cx| session.submit_input(text, cx));
     }
 
-    fn secret_prompt(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        CookiePrompt::new(self.secret.clone())
+    fn secret_prompt(
+        &self,
+        slug: &'static str,
+        provider: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        CookiePrompt::new(slug, provider, self.secret.clone())
             .on_submit(cx.listener(|this, _, _, cx| this.submit_secret(cx)))
             .on_cancel(cx.listener(|this, _, _, cx| this.abandon(cx)))
     }
@@ -2588,7 +2708,9 @@ impl SettingsView {
                     .small()
                     .outline()
                     .disabled(pending)
-                    .on_click(cx.listener(move |this, _, _, cx| this.start_manual(slug, cx)))
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.start_manual(slug, provider, cx)),
+                    )
                     .into_any_element(),
             );
         }
@@ -2826,7 +2948,8 @@ fn samples(pack: &'static icons::Pack, tint: gpui::Hsla) -> impl IntoElement {
         }))
 }
 
-fn open_settings_file(path: &Path) -> std::io::Result<()> {
+/// Hands a file to the system's default application for it, without waiting on that program.
+fn open_path(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     Command::new("cmd")
         .args(["/C", "start", ""])
@@ -2905,11 +3028,12 @@ impl Render for SettingsView {
             }
             _ => None,
         };
-        let manual_secret = self.manual_secret
-            && matches!(
+        let manual_secret = self.manual_secret.filter(|_| {
+            matches!(
                 self.session.read(cx).state(),
                 SessionState::Authorizing(Some(SignInPrompt::Secret))
-            );
+            )
+        });
 
         div()
             .relative()
@@ -2940,8 +3064,8 @@ impl Render for SettingsView {
             .when_some(accounts, |this, accounts| {
                 this.child(self.account_modal(accounts, cx).into_any_element())
             })
-            .when(manual_secret, |this| {
-                this.child(self.secret_prompt(cx).into_any_element())
+            .when_some(manual_secret, |this, (slug, provider)| {
+                this.child(self.secret_prompt(slug, provider, cx).into_any_element())
             })
             .when(self.credentials_for.is_some(), |this| {
                 this.child(self.credentials_prompt(cx).into_any_element())

@@ -789,6 +789,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "blowfish"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e412e2cd0f2b2d93e02543ceae7917b3c70331573df19ee046bcbc35e45e87d7"
+dependencies = [
+ "byteorder",
+ "cipher",
+]
+
+[[package]]
 name = "borsh"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1906,7 +1916,7 @@ checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
 
 [[package]]
 name = "embed"
-version = "0.36.0"
+version = "0.37.0"
 
 [[package]]
 name = "embed-resource"
@@ -3309,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "i18n"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "fluent-bundle",
  "gpui",
@@ -3344,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "icons"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "embed",
@@ -3530,7 +3540,7 @@ dependencies = [
 
 [[package]]
 name = "input"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "gpui",
  "ui",
@@ -4442,16 +4452,20 @@ dependencies = [
 
 [[package]]
 name = "music"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
+ "blowfish",
  "bytes",
+ "cbc",
  "cpal 0.17.1",
  "deunicode",
  "dirs",
+ "env_logger",
  "flate2",
+ "futures",
  "http",
  "kakasi",
  "librespot-core",
@@ -4478,6 +4492,7 @@ dependencies = [
  "storage",
  "symphonia",
  "tokio",
+ "widevine",
  "ytmusic",
 ]
 
@@ -6451,7 +6466,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "gpui",
  "ui",
@@ -7262,7 +7277,7 @@ dependencies = [
 
 [[package]]
 name = "sonora"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -7294,6 +7309,8 @@ dependencies = [
  "tray-icon",
  "ui",
  "views",
+ "webview",
+ "widestring",
  "windows 0.62.2",
  "windows-sys 0.61.2",
  "winresource",
@@ -7405,7 +7422,7 @@ dependencies = [
 
 [[package]]
 name = "state"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7440,7 +7457,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -8511,7 +8528,7 @@ dependencies = [
 
 [[package]]
 name = "ui"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "ashpd",
  "futures",
@@ -8852,13 +8869,14 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "views"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "gpui",
  "i18n",
  "icons",
  "input",
  "jiff",
+ "log",
  "music",
  "router",
  "state",
@@ -9141,7 +9159,7 @@ dependencies = [
 
 [[package]]
 name = "webview"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -9403,6 +9421,21 @@ name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+
+[[package]]
+name = "widevine"
+version = "0.37.0"
+dependencies = [
+ "anyhow",
+ "cc",
+ "dirs",
+ "flate2",
+ "log",
+ "reqwest 0.13.4",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
 
 [[package]]
 name = "winapi"

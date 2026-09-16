@@ -904,6 +904,16 @@ impl Playback {
         }
     }
 
+    /// Whether the provider that owns `id` can seed a station. Without one there is nothing to
+    /// keep a queue going, so the radio paths leave it alone rather than asking and getting
+    /// nothing back.
+    fn stations(&self, id: &str, cx: &Context<Self>) -> bool {
+        self.session
+            .read(cx)
+            .capabilities_of(crate::Shelf::of(id))
+            .radio
+    }
+
     /// Fetches tracks for the queue on the tokio runtime and places them on arrival. One fetch
     /// at a time; a second request while one runs is dropped.
     fn enqueue_from<F>(
@@ -1020,6 +1030,19 @@ impl Playback {
         self.follow_queue(start, cx);
     }
 
+    /// Removing tracks from queue
+    pub fn remove_from_queue(&mut self, ids: &[String], cx: &mut Context<Self>) {
+        let current_removed = self
+            .queue
+            .update(cx, |queue, cx| queue.remove_tracks(ids, cx));
+        if !current_removed {
+            return;
+        }
+        self.pause(cx);
+        self.track = None;
+        self.next(cx);
+    }
+
     /// Notes a skip and says whether it is part of a burst, which loads only once the skipping
     /// stops.
     fn burst(&mut self) -> Start {
@@ -1108,6 +1131,9 @@ impl Playback {
         let Some(id) = self.seed(cx).and_then(|seed| seed.id) else {
             return self.forget_similar(cx);
         };
+        if !self.stations(&id, cx) {
+            return self.forget_similar(cx);
+        }
         if self.seeded.as_deref() == Some(id.as_str()) {
             return;
         }
@@ -1174,7 +1200,10 @@ impl Playback {
                 }
             }
             _ if self.radio && !self.queue.read(cx).has_next() => {
-                match ended.or_else(|| self.track.clone()) {
+                let seed = ended
+                    .or_else(|| self.track.clone())
+                    .filter(|seed| seed.id.as_deref().is_some_and(|id| self.stations(id, cx)));
+                match seed {
                     Some(seed) => self.extend_radio(&seed, cx),
                     None => self.segue_queue(cx),
                 }

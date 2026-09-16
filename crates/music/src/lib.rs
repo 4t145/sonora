@@ -1,6 +1,10 @@
+pub mod apple;
 mod audio;
 pub mod binimum;
 pub mod credentials;
+pub mod deezer;
+pub mod drm;
+pub mod engine;
 pub mod equalizer;
 pub mod kugou;
 #[cfg(test)]
@@ -15,7 +19,9 @@ pub mod scrobble;
 mod sink;
 mod spectrum;
 pub mod spotify;
+mod stream;
 pub mod subsonic;
+mod trim;
 pub mod youtube;
 
 use std::collections::HashMap;
@@ -91,9 +97,19 @@ pub trait MusicApi: Send + Sync {
     /// library; on a `Shape::Catalog` one it only feeds the hearts and the favorites filter.
     async fn saved_tracks(&self) -> Result<Vec<Track>>;
 
+    /// The favorites a page at a time, for a library page that shows its first rows while the
+    /// rest arrive. A provider that lists in one go leaves the default, which is one page.
+    async fn saved_tracks_paged(&self) -> Result<Pages<Track>> {
+        Ok(whole(self.saved_tracks().await?))
+    }
+
     /// Every track the provider has. Only a `Shape::Catalog` provider answers.
     async fn all_tracks(&self) -> Result<Vec<Track>> {
         Ok(Vec::new())
+    }
+
+    async fn all_tracks_paged(&self) -> Result<Pages<Track>> {
+        Ok(whole(self.all_tracks().await?))
     }
 
     async fn set_track_saved(&self, track_id: &str, saved: bool) -> Result<()>;
@@ -114,6 +130,10 @@ pub trait MusicApi: Send + Sync {
         anyhow::bail!("cannot open arbitrary files")
     }
 
+    /// Delete a track file from disk (only for local provider)
+    async fn delete_track_file(&self, _track_id: &str) -> Result<()> {
+        anyhow::bail!("this provider does not support file deletion")
+    }
     async fn track_playcount(&self, track_id: &str) -> Result<Option<u64>>;
     async fn playlists(&self) -> Result<Vec<Playlist>>;
     /// Change a provider's own library pin, rather than a local sidebar shortcut.
@@ -131,6 +151,13 @@ pub trait MusicApi: Send + Sync {
     async fn delete_playlist(&self, playlist_id: &str) -> Result<()>;
     async fn remove_playlist_from_library(&self, playlist_id: &str) -> Result<()>;
     async fn add_playlist_to_library(&self, playlist_id: &str) -> Result<()>;
+
+    /// Puts a track or an album into the listener's library, or takes it out, on a provider
+    /// whose library is apart from its favorites. Only a `Capabilities::library` provider
+    /// answers. An artist is never added: a library artist is one whose music is there.
+    async fn set_in_library(&self, _kind: MediaKind, _id: &str, _present: bool) -> Result<()> {
+        anyhow::bail!("this provider has no library apart from its favorites")
+    }
     async fn set_playlist_public(&self, playlist_id: &str, public: bool) -> Result<()>;
     async fn add_track_to_playlist(&self, playlist_id: &str, track_id: &str) -> Result<()>;
     async fn remove_track_from_playlist(&self, playlist_id: &str, track_id: &str) -> Result<()>;
@@ -141,12 +168,28 @@ pub trait MusicApi: Send + Sync {
         Ok(Vec::new())
     }
 
+    async fn saved_albums_paged(&self) -> Result<Pages<Album>> {
+        Ok(whole(self.saved_albums().await?))
+    }
+
+    async fn all_albums_paged(&self) -> Result<Pages<Album>> {
+        Ok(whole(self.all_albums().await?))
+    }
+
     async fn set_album_saved(&self, album_id: &str, saved: bool) -> Result<()>;
     async fn saved_artists(&self) -> Result<Vec<SavedArtist>>;
 
     /// Every artist the provider has. Only a `Shape::Catalog` provider answers.
     async fn all_artists(&self) -> Result<Vec<SavedArtist>> {
         Ok(Vec::new())
+    }
+
+    async fn saved_artists_paged(&self) -> Result<Pages<SavedArtist>> {
+        Ok(whole(self.saved_artists().await?))
+    }
+
+    async fn all_artists_paged(&self) -> Result<Pages<SavedArtist>> {
+        Ok(whole(self.all_artists().await?))
     }
 
     async fn set_artist_saved(&self, artist_id: &str, saved: bool) -> Result<()>;
@@ -311,13 +354,53 @@ pub enum Shape {
     Catalog,
 }
 
+/// What a provider can do beyond listing and playing, so a control it has no answer for is
+/// never put in front of the listener.
+///
+/// This is about the service, not the account: something a provider simply does not have, like
+/// a station Apple Music will not list or a play count Deezer does not keep. A capability that
+/// is off hides its button, its menu item and its column, rather than showing one that fails
+/// when pressed. A provider that gains one flips a flag here and the UI follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Capabilities {
+    /// The listener can follow and unfollow an artist.
+    pub follow_artists: bool,
+    /// A track can seed a station, which is what fills the queue behind it.
+    pub radio: bool,
+    /// Tracks carry a play count worth a column of its own.
+    pub playcounts: bool,
+    /// The listener has a library apart from their favorites, which a track or an album can be
+    /// put into and taken out of through `set_in_library`. Off where the library is the
+    /// favorites, as on Spotify, and where it is fixed, as on a self-hosted server.
+    pub library: bool,
+}
+
+impl Capabilities {
+    /// What a full streaming service offers. A library apart from favorites is not among
+    /// them: on most services the two are one thing. We love Apple Music.
+    pub const ALL: Self = Self {
+        follow_artists: true,
+        radio: true,
+        playcounts: true,
+        library: false,
+    };
+
+    /// Nothing beyond listing and playing.
+    pub const NONE: Self = Self {
+        follow_artists: false,
+        radio: false,
+        playcounts: false,
+        library: false,
+    };
+}
+
 pub struct ProviderSession {
     pub profile: UserProfile,
     pub api: Arc<dyn MusicApi>,
     pub playback: Arc<dyn PlaybackFactory>,
     pub shape: Shape,
     pub authenticated: bool,
-    pub playcounts: bool,
+    pub capabilities: Capabilities,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -380,6 +463,29 @@ pub enum SignInPrompt {
 pub type PromptSink = Arc<dyn Fn(SignInPrompt) + Send + Sync>;
 pub type InputSource = tokio::sync::mpsc::UnboundedReceiver<String>;
 
+/// One page of a listing that arrives in pieces. `total` is how long the whole listing will
+/// be, on the pages of a provider that knows before the last one; a page that does not know
+/// carries `None`, and the count so far stands in.
+pub struct Page<T> {
+    pub total: Option<usize>,
+    pub items: Vec<T>,
+}
+
+/// A listing arriving a page at a time, in order. The channel closes after the last page, or
+/// carries the error a page broke on, after which nothing more comes. Dropping it stops the
+/// provider fetching.
+pub type Pages<T> = tokio::sync::mpsc::Receiver<Result<Page<T>>>;
+
+/// A listing that arrived whole, as its one and only page. What a provider that lists in one
+/// go answers the paged calls with.
+pub fn whole<T: Send + 'static>(items: Vec<T>) -> Pages<T> {
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    let total = Some(items.len());
+    // Room for one page was made above, so this never waits and never fails.
+    sender.try_send(Ok(Page { total, items })).ok();
+    receiver
+}
+
 /// A cookie sign-in the app runs in its own browser window. `url` opens first and `landing` scopes
 /// URL-based cookie reads. The user is through once the cookies for `domain` carry one of the
 /// `proof` names. The header those cookies make is what `SignInPrompt::Secret` then receives.
@@ -389,6 +495,11 @@ pub struct WebSignIn {
     pub landing: &'static str,
     pub domain: &'static str,
     pub proof: &'static [&'static str],
+    /// A user agent the window presents instead of its default. Some providers' anti-bot
+    /// checks reject an agent that does not match the engine behind it (a Firefox string on a
+    /// WebKit window); the string must match what the backend's engine would say. Backends
+    /// whose default is already engine-consistent may ignore it.
+    pub agent: Option<&'static str>,
 }
 
 #[async_trait]
@@ -404,6 +515,11 @@ pub trait MusicProvider: Send + Sync {
     /// name; one that is only the user's own files says what the files are instead.
     fn listening_to(&self) -> &'static str {
         self.name()
+    }
+    /// Whether this provider's tracks need the Widevine module to play. The app fetches the
+    /// module once such a provider has an account, and does not go near it otherwise.
+    fn protected(&self) -> bool {
+        false
     }
     /// Whether the artwork urls this provider hands out can be given to another service. A path
     /// on disk means nothing elsewhere, and a self-hosted url carries the credentials that fetch

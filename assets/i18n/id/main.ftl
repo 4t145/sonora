@@ -261,7 +261,6 @@ login-problem-refused = Spotify menolak permintaan masuk. Tunggu beberapa saat d
 login-problem-premium = Sonora memerlukan akun Spotify Premium untuk streaming. Akun ini tidak memiliki langganan Premium. Masuk dengan akun Premium untuk melanjutkan.
 login-sign-in = Masuk dengan { $provider }
 login-connect-cookies = Tempel cookie manual
-login-cookie-open = Buka YouTube Music
 login-cookie-submit = Lanjutkan
 login-cookie-hint = Tempel header Cookie permintaan di sini
 login-cookie-step-1 = Buka music.youtube.com dan pastikan Anda sudah masuk.
@@ -269,7 +268,6 @@ login-cookie-step-2 = Tekan F12, buka tab Network, lalu muat ulang halaman.
 login-cookie-step-3 = Pilih permintaan apa pun yang bernama "browse" atau "next".
 login-cookie-step-4 = Di bagian Headers, cari Cookie di bawah Request Headers, klik kanan, lalu salin nilainya.
 login-cookie-step-note = Pastikan untuk menyalin seluruh isinya, termasuk SAPISID dan __Secure-3PAPISID.
-login-cookie-title = Tempel cookie YouTube Music Anda untuk menyelesaikan proses masuk
 login-window-title = Masuk ke { $provider }
 login-use = Gunakan { $provider }
 login-guest-title = Mode Tamu
@@ -703,6 +701,9 @@ update-working = Mengunduh pembaruan…
 update-failed = Pembaruan tidak dapat dipasang. Coba lagi dari halaman rilis GitHub.
 settings-check-updates = Periksa pembaruan
 settings-check-updates-detail = Periksa ke GitHub saat startup apakah ada versi baru. Sonora memasang pembaruan secara otomatis hanya di Windows; di sistem operasi lain, Anda akan diarahkan ke daftar perubahannya
+settings-log = Berkas log
+settings-log-detail = Apa yang ditulis Sonora saat berjalan. Lampirkan ke laporan bug
+settings-log-open = Buka log
 
 # tags
 tags-edit-title = Edit tag

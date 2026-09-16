@@ -1,5 +1,4 @@
 use std::fs::{self, File, OpenOptions};
-use std::path::PathBuf;
 
 use env_logger::{Env, Logger, Target};
 use log::{Log, Metadata, Record};
@@ -8,7 +7,6 @@ const CONSOLE: &str = "warn,symphonia=error,lofty=error";
 const DISK: &str =
     "warn,symphonia=error,lofty=error,sonora=debug,ui=debug,music=debug,ytmusic=debug";
 const FILTER: &str = "SONORA_LOG";
-const FILE: &str = "sonora.log";
 const PREVIOUS: &str = "sonora.log.1";
 const LIMIT: u64 = 8 * 1024 * 1024;
 
@@ -39,14 +37,8 @@ pub fn init() {
     log::debug!("logging: sonora {} started", env!("CARGO_PKG_VERSION"));
 }
 
-fn path() -> Option<PathBuf> {
-    let root = dirs::state_dir().or_else(dirs::cache_dir)?;
-
-    Some(root.join("sonora").join(FILE))
-}
-
 fn open() -> Option<File> {
-    let path = path()?;
+    let path = state::log_file()?;
     let folder = path.parent()?;
     fs::create_dir_all(folder).ok()?;
 

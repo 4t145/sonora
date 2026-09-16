@@ -261,7 +261,6 @@ login-problem-refused = O Spotify recusou o login. Aguarde um momento e tente no
 login-problem-premium = O Sonora usa o Spotify Premium para reproduzir, e esta conta não possui o plano. Faça login com uma conta Premium para continuar.
 login-sign-in = Entrar com { $provider }
 login-connect-cookies = Colar cookies manualmente
-login-cookie-open = Abrir YouTube Music
 login-cookie-submit = Continuar
 login-cookie-hint = Cole o cabeçalho Cookie aqui
 login-cookie-step-1 = Acesse music.youtube.com e certifique-se de estar conectado. Funciona melhor em uma janela anônima.
@@ -269,7 +268,6 @@ login-cookie-step-2 = Pressione F12, abra a guia Rede e recarregue a página.
 login-cookie-step-3 = Selecione qualquer requisição chamada "browse" ou "next".
 login-cookie-step-4 = Em Cabeçalhos, encontre Cookie em Cabeçalhos da Requisição, clique com o botão direito e copie o valor.
 login-cookie-step-note = Cole o valor completo abaixo: o painel Cookies da requisição não é suficiente, pois o valor precisa conter SAPISID e __Secure-3PAPISID.
-login-cookie-title = Cole seus cookies do YouTube Music para finalizar o login
 login-window-title = Entrar no { $provider }
 login-use = Usar { $provider }
 login-guest-title = Modo convidado
@@ -701,6 +699,9 @@ update-working = Baixando a atualização…
 update-failed = Não foi possível instalar a atualização. Tente novamente pela página de lançamentos.
 settings-check-updates = Verificar atualizações
 settings-check-updates-detail = Perguntar ao GitHub na inicialização se uma nova versão está disponível. O Sonora instala a atualização sozinho apenas no Windows; em outras plataformas ele te direciona ao que mudou
+settings-log = Arquivo de log
+settings-log-detail = O que o Sonora escreveu enquanto rodava. Anexe-o a um relatório de bug
+settings-log-open = Abrir o log
 
 # tags
 tags-edit-title = Editar tags

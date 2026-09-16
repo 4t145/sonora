@@ -267,7 +267,14 @@ impl Root {
             return (view.clone(), detail.clone());
         }
 
-        let detail = cx.new(|cx| ArtistDetail::new(self.session.clone(), self.io.clone(), cx));
+        let detail = cx.new(|cx| {
+            ArtistDetail::new(
+                self.session.clone(),
+                Sonora::global(cx).library.clone(),
+                self.io.clone(),
+                cx,
+            )
+        });
         let view = cx.new(|cx| ArtistView::new(detail.clone(), self.playback.clone(), cx));
         self.screens.artist = Some(view.clone());
         self.screens.artist_detail = Some(detail.clone());
@@ -292,7 +299,7 @@ impl Root {
         if let (Some(view), Some(detail)) = (&self.screens.album, &self.screens.album_detail) {
             return (view.clone(), detail.clone());
         }
-        let playcounts = self.session.read(cx).playcounts();
+        let playcounts = self.session.read(cx).capabilities().playcounts;
         let detail = cx.new(|cx| {
             Detail::new(
                 self.session.clone(),
@@ -639,6 +646,33 @@ impl Render for Root {
             })
             .bg(theme.background)
             .text_color(theme.foreground)
+            .capture_any_mouse_down(|_, window, cx| {
+                if ui::cancel_middle_scroll(cx) {
+                    window.refresh();
+                    cx.stop_propagation();
+                }
+            })
+            .capture_any_mouse_up(|event, window, cx| {
+                if event.button == MouseButton::Middle
+                    && ui::release_middle_scroll(event.position, cx)
+                {
+                    window.refresh();
+                }
+            })
+            .on_mouse_up_out(MouseButton::Middle, |event, window, cx| {
+                if ui::release_middle_scroll(event.position, cx) {
+                    window.refresh();
+                }
+            })
+            .capture_key_down(|event, window, cx| {
+                if event.keystroke.key == "escape" && ui::cancel_middle_scroll(cx) {
+                    window.refresh();
+                    cx.stop_propagation();
+                }
+            })
+            .on_mouse_move(|event, window, cx| {
+                ui::update_middle_scroll(event.position, window, cx);
+            })
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),
                 |_, _, cx| back(cx),

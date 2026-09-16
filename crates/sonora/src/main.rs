@@ -89,6 +89,8 @@ fn main() {
             Arc::new(music::spotify::SpotifyProvider::from_env()),
             Arc::new(music::youtube::YouTubeProvider::new()),
             Arc::new(music::subsonic::SubsonicProvider::new()),
+            Arc::new(music::deezer::DeezerProvider::new()),
+            Arc::new(music::apple::AppleProvider::new()),
         ];
         let local_provider: Arc<dyn music::MusicProvider> =
             Arc::new(music::local::LocalProvider::new(
@@ -227,7 +229,8 @@ fn percent_decode(value: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(byte) = u8::from_str_radix(&value[i + 1..i + 3], 16)
+            && let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3])
+            && let Ok(byte) = u8::from_str_radix(hex, 16)
         {
             out.push(byte);
             i += 3;
@@ -258,6 +261,7 @@ fn open_window(cx: &mut App) {
     let Sonora {
         session,
         cover: _,
+        drm: _,
         library,
         history: _,
         lyrics: _,
@@ -376,19 +380,25 @@ fn platform_handle(window: &gpui::Window) -> Option<*mut std::ffi::c_void> {
     Some(handle)
 }
 
+// DWM draws the caption buttons behind the client area, where an opaque window hides them
+// and a transparent or blurred one shows them beside Sonora's own. They come with
+// `WS_SYSMENU`, so that is the style to drop: `WS_CAPTION` has to stay, because DWM only
+// animates minimize, restore and close on a window that carries it. Alt+F4 and the taskbar
+// still close the window; only the Alt+Space menu goes, and Sonora's title bar has no use
+// for it.
 #[cfg(target_os = "windows")]
 fn hide_system_caption(handle: *mut std::ffi::c_void) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GWL_STYLE, GetWindowLongPtrW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WS_CAPTION,
+        SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WS_SYSMENU,
     };
 
     unsafe {
         let style = GetWindowLongPtrW(handle, GWL_STYLE);
-        if style & WS_CAPTION as isize == 0 {
+        if style & WS_SYSMENU as isize == 0 {
             return;
         }
-        SetWindowLongPtrW(handle, GWL_STYLE, style & !(WS_CAPTION as isize));
+        SetWindowLongPtrW(handle, GWL_STYLE, style & !(WS_SYSMENU as isize));
         SetWindowPos(
             handle,
             std::ptr::null_mut(),
@@ -446,4 +456,16 @@ unsafe extern "system" fn work_area(
 #[cfg(not(target_os = "windows"))]
 fn platform_handle(_window: &gpui::Window) -> Option<*mut std::ffi::c_void> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_percent_before_a_multibyte_letter_stays_in_the_path() {
+        assert_eq!(percent_decode("%가나"), "%가나");
+        assert_eq!(percent_decode("%a가"), "%a가");
+        assert_eq!(percent_decode("a%20b%EA%B0%80"), "a b가");
+    }
 }

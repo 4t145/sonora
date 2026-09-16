@@ -246,7 +246,6 @@ login-problem-refused = Spotify oturum açma isteğini geri çevirdi. Biraz bekl
 login-problem-premium = Sonora, Spotify Premium üzerinden yayın yapar ve bu hesapta Premium yok. Sürdürmek için Premium bir hesapla oturum aç.
 login-sign-in = { $provider } ile oturum aç
 login-connect-cookies = Çerezleri elle yapıştır
-login-cookie-open = YouTube Music'i aç
 login-cookie-submit = Sürdür
 login-cookie-hint = Cookie istek başlığını buraya yapıştır
 login-cookie-step-1 = music.youtube.com adresini aç ve oturumunun açık olduğundan emin ol. En iyi sonucu gizli pencerede alırsın.
@@ -254,7 +253,6 @@ login-cookie-step-2 = F12'ye bas, Network sekmesini aç ve sayfayı yeniden yük
 login-cookie-step-3 = "browse" ya da "next" adlı herhangi bir isteği seç.
 login-cookie-step-4 = Headers içinde Request Headers altındaki Cookie'yi bul, sağ tıklayıp değerini kopyala.
 login-cookie-step-note = SAPISID ve __Secure-3PAPISID dahil olmak üzere değerin tamamını yapıştırdığından emin ol.
-login-cookie-title = Oturum açmayı bitirmek için YouTube Music çerezlerini yapıştır
 login-window-title = { $provider } oturumu aç
 login-use = { $provider } kullan
 login-guest-title = Konuk modu
@@ -684,6 +682,9 @@ update-working = Güncelleme indiriliyor…
 update-failed = Güncelleme kurulamadı. Yayınlar sayfasından yeniden dene.
 settings-check-updates = Güncellemeleri denetle
 settings-check-updates-detail = Açılışta GitHub'a bir kez daha yeni bir sürüm çıktı mı diye sor. Sonora güncellemeyi yalnızca Windows'ta kendi kurar; diğer yerlerde nelerin değiştiğini gösterir
+settings-log = Günlük dosyası
+settings-log-detail = Sonora'nın çalışırken yazdıkları. Hata raporuna ekleyin
+settings-log-open = Günlüğü aç
 
 # tags
 tags-edit-title = Etiketleri düzenle

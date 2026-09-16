@@ -224,7 +224,6 @@ login-problem-refused = Spotify がサインインを拒否しました。しば
 login-problem-premium = Sonora は Spotify Premium でストリーミングしますが、このアカウントは Premium プランに加入していません。続けるには Premium アカウントでサインインしてください。
 login-sign-in = { $provider } でサインイン
 login-connect-cookies = Cookie を手動で貼り付け
-login-cookie-open = YouTube Music を開く
 login-cookie-submit = 続行
 login-cookie-hint = Cookie リクエストヘッダーをここに貼り付け
 login-cookie-step-1 = music.youtube.com を開き、サインインしていることを確認します。シークレット ウィンドウが最適です。
@@ -232,7 +231,6 @@ login-cookie-step-2 = F12 を押して Network タブを開き、ページを再
 login-cookie-step-3 = 「browse」または「next」という名前のリクエストを選択します。
 login-cookie-step-4 = Headers の Request Headers にある Cookie を右クリックし、その値をコピーします。
 login-cookie-step-note = 値全体を貼り付けてください。リクエストの Cookies パネルでは不十分で、値に SAPISID と __Secure-3PAPISID が含まれている必要があります。
-login-cookie-title = YouTube Music の Cookie を貼り付けてサインインを完了
 login-window-title = { $provider } にサインイン
 login-use = { $provider } を使う
 login-guest-title = ゲストモード
@@ -659,6 +657,9 @@ update-working = 更新をダウンロードしています…
 update-failed = 更新をインストールできませんでした。リリースページからもう一度お試しください。
 settings-check-updates = 更新を確認
 settings-check-updates-detail = 起動時に一度、新しいバージョンがあるか GitHub に確認する。Sonora が自動で更新するのは Windows のみで、他の環境では変更点を案内する
+settings-log = ログファイル
+settings-log-detail = Sonora が実行中に書き出した内容。バグ報告に添付してください
+settings-log-open = ログを開く
 
 # tags
 tags-edit-title = タグを編集
