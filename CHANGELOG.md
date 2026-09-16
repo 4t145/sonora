@@ -17,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On Windows, the window minimizes, restores and closes with the system animations again.
 - On Windows, Sonora no longer keeps the installer's administrator privileges after an update,
   so window managers like FancyZones can control it again.
+- Saving the tag editor keeps the extra genres or artists and the full release date of fields
+  you left alone.
 - The local library no longer fails to load when a folder holds a tagged file whose name is not
   valid Unicode.
 
