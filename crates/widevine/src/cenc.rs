@@ -1,22 +1,49 @@
-//! Just enough ISO-BMFF to decrypt one Apple Music fMP4.
+//! Just enough ISO-BMFF to decrypt a CENC fragmented MP4.
 //!
-//! An Apple `28:ctrp256` asset is a single fragmented MP4: an init segment (`ftyp` then `moov`)
-//! whose sample entry is `enca` rather than `mp4a`, followed by `moof`/`mdat` pairs. Every
-//! encrypted sample carries its own IV in its fragment's `senc` box, and CENC is size
-//! preserving, so a sample can be decrypted on its own, in place, once its fragment has
-//! arrived. That is what lets playback start on the first fragment.
+//! CENC is ISO/IEC 23001-7, the container encryption every Widevine stream uses, so nothing
+//! here belongs to one service: a CENC fMP4 is an init segment (`ftyp` then `moov`) whose
+//! sample entry is `enca` rather than `mp4a`, followed by `moof`/`mdat` pairs. Every encrypted
+//! sample carries its own IV in its fragment's `senc` box, and CENC is size preserving, so a
+//! sample can be decrypted on its own, in place, once its fragment has arrived. That is what
+//! lets playback start on the first fragment rather than the last.
 //!
 //! This is not a general MP4 reader. It finds the init segment, the sample entries to relabel,
 //! and the position, IV and subsample layout of every encrypted sample. Every read is bounds
 //! checked against the box it came from, because the bytes arrive from the network.
+//!
+//! Apple Music's `28:ctrp256` asset is the only stream this reads today, so the shapes it does
+//! not handle are the ones that asset never uses: a `moof` whose media is not the box behind
+//! it, and a box size of zero meaning "to the end of the file".
 
 /// The Widevine sample entry this relabels, and the AAC one it relabels it to.
 const ENCA: &[u8; 4] = b"enca";
 const MP4A: &[u8; 4] = b"mp4a";
 
 /// How many samples one fragment may declare. A `trun` claiming more than this is malformed
-/// rather than long: at Apple's 1024 frames a sample it is already over four hours.
+/// rather than long: at 1024 frames a sample it is already over four hours.
 const SAMPLE_LIMIT: usize = 1 << 20;
+
+/// The flag bits of a `FullBox`, whose first word is one version byte and three flag bytes.
+const FLAGS: u32 = 0x00ff_ffff;
+
+/// `tfhd` flags, from ISO/IEC 14496-12. Each field is in the box only when its flag is set,
+/// so reading one means stepping over every set flag before it.
+const TFHD_BASE_DATA_OFFSET: u32 = 0x01;
+const TFHD_SAMPLE_DESCRIPTION_INDEX: u32 = 0x02;
+const TFHD_DEFAULT_SAMPLE_DURATION: u32 = 0x08;
+const TFHD_DEFAULT_SAMPLE_SIZE: u32 = 0x10;
+
+/// `trun` flags, the same way. The first two say what the box header carries, the rest what
+/// each of its per-sample records does.
+const TRUN_DATA_OFFSET: u32 = 0x0001;
+const TRUN_FIRST_SAMPLE_FLAGS: u32 = 0x0004;
+const TRUN_SAMPLE_DURATION: u32 = 0x0100;
+const TRUN_SAMPLE_SIZE: u32 = 0x0200;
+const TRUN_SAMPLE_FLAGS: u32 = 0x0400;
+const TRUN_COMPOSITION_OFFSET: u32 = 0x0800;
+
+/// The `senc` flag, from ISO/IEC 23001-7, that puts a subsample layout after each sample's IV.
+const SENC_SUBSAMPLES: u32 = 0x02;
 
 /// One box: its four-character kind, where its body sits, and how long the whole box is.
 #[derive(Clone, Copy, Debug)]
@@ -259,7 +286,7 @@ pub fn read_fragment(data: &[u8], at: usize, tracks: &[Encrypted]) -> Step {
     if &mdat.kind != b"mdat" {
         // A moof whose media is not the box behind it is not a shape Apple's assets use, and
         // skipping its samples is better than guessing where they live.
-        log::warn!("apple: a moof at {at} is not followed by its mdat");
+        log::warn!("cenc: a moof at {at} is not followed by its mdat");
         return Step::Other { next: moof.end };
     }
 
@@ -323,7 +350,7 @@ fn read_traf(
         .and_then(|start| usize::try_from(start).ok())
         .filter(|start| *start >= mdat.body && *start <= mdat.end)
     else {
-        log::warn!("apple: a trun points its samples outside the mdat behind it");
+        log::warn!("cenc: a trun points its samples outside the mdat behind it");
         return Vec::new();
     };
 
@@ -331,7 +358,7 @@ fn read_traf(
         .map(|senc| read_senc(data, &senc, encrypted.iv_size, run.sizes.len()))
         .unwrap_or_default();
     if ivs.is_empty() && encrypted.iv_size != 0 {
-        log::warn!("apple: a fragment carries no per-sample ivs");
+        log::warn!("cenc: a fragment carries no per-sample ivs");
         return Vec::new();
     }
 
@@ -345,7 +372,7 @@ fn read_traf(
         }
         let end = at.saturating_add(len);
         if end > mdat.end {
-            log::warn!("apple: a fragment's samples run past its mdat");
+            log::warn!("cenc: a fragment's samples run past its mdat");
             break;
         }
         if len > 0 {
@@ -369,23 +396,25 @@ struct Tfhd {
     default_size: Option<u32>,
 }
 
+/// Reads the two `tfhd` fields this needs, stepping over the ones in front of them. The box
+/// body is the flag word and the track id, then whichever optional fields the flags named.
 fn read_tfhd(data: &[u8], tfhd: &Bx) -> Tfhd {
-    let Some(flags) = be32(data, tfhd.body).map(|word| word & 0x00ff_ffff) else {
+    let Some(flags) = be32(data, tfhd.body).map(|word| word & FLAGS) else {
         return Tfhd::default();
     };
     let mut at = tfhd.body + 8;
     let mut found = Tfhd::default();
-    if flags & 0x01 != 0 {
+    if flags & TFHD_BASE_DATA_OFFSET != 0 {
         found.base = be64(data, at);
         at += 8;
     }
-    if flags & 0x02 != 0 {
+    if flags & TFHD_SAMPLE_DESCRIPTION_INDEX != 0 {
         at += 4;
     }
-    if flags & 0x08 != 0 {
+    if flags & TFHD_DEFAULT_SAMPLE_DURATION != 0 {
         at += 4;
     }
-    if flags & 0x10 != 0 {
+    if flags & TFHD_DEFAULT_SAMPLE_SIZE != 0 {
         found.default_size = be32(data, at).filter(|size| *size > 0);
     }
     found
@@ -397,15 +426,18 @@ struct Trun {
     sizes: Vec<u32>,
 }
 
+/// Reads a `trun`: the header fields its flags named, then one record per sample, of which
+/// only the size is wanted. A record's fields are fixed width, so the ones that are not read
+/// are stepped over.
 fn read_trun(data: &[u8], trun: &Bx, tfhd: &Tfhd) -> Option<Trun> {
-    let flags = be32(data, trun.body)? & 0x00ff_ffff;
+    let flags = be32(data, trun.body)? & FLAGS;
     let count = be32(data, trun.body + 4)? as usize;
     if count > SAMPLE_LIMIT {
-        log::warn!("apple: a trun declares {count} samples, which is not a real fragment");
+        log::warn!("cenc: a trun declares {count} samples, which is not a real fragment");
         return None;
     }
     let mut at = trun.body + 8;
-    let offset = match flags & 0x01 != 0 {
+    let offset = match flags & TRUN_DATA_OFFSET != 0 {
         true => {
             let offset = i64::from(be32(data, at)? as i32);
             at += 4;
@@ -413,26 +445,26 @@ fn read_trun(data: &[u8], trun: &Bx, tfhd: &Tfhd) -> Option<Trun> {
         }
         false => 0,
     };
-    if flags & 0x04 != 0 {
+    if flags & TRUN_FIRST_SAMPLE_FLAGS != 0 {
         at += 4;
     }
 
     let mut sizes = Vec::with_capacity(count.min(4096));
     for _ in 0..count {
-        if flags & 0x0100 != 0 {
+        if flags & TRUN_SAMPLE_DURATION != 0 {
             at += 4;
         }
-        match flags & 0x0200 != 0 {
+        match flags & TRUN_SAMPLE_SIZE != 0 {
             true => {
                 sizes.push(be32(data, at)?);
                 at += 4;
             }
             false => sizes.push(tfhd.default_size?),
         }
-        if flags & 0x0400 != 0 {
+        if flags & TRUN_SAMPLE_FLAGS != 0 {
             at += 4;
         }
-        if flags & 0x0800 != 0 {
+        if flags & TRUN_COMPOSITION_OFFSET != 0 {
             at += 4;
         }
         if at > trun.end {
@@ -449,30 +481,30 @@ type Senc = (Vec<[u8; 16]>, Vec<Vec<(u32, u32)>>);
 /// that does not account for the box exactly. A wrong size produces IVs that are silently
 /// wrong rather than an error, so the length check is what makes this safe.
 fn read_senc(data: &[u8], senc: &Bx, declared: u8, samples: usize) -> Senc {
-    let Some(flags) = be32(data, senc.body).map(|word| word & 0x00ff_ffff) else {
+    let Some(flags) = be32(data, senc.body).map(|word| word & FLAGS) else {
         return Senc::default();
     };
     let Some(count) = be32(data, senc.body + 4).map(|count| count as usize) else {
         return Senc::default();
     };
     if count > SAMPLE_LIMIT.min(samples.max(1) * 2) {
-        log::warn!("apple: a senc declares {count} ivs for a run of {samples} samples");
+        log::warn!("cenc: a senc declares {count} ivs for a run of {samples} samples");
         return Senc::default();
     }
     let Some(raw) = data.get(senc.body + 8..senc.end) else {
         return Senc::default();
     };
-    let subsampled = flags & 0x02 != 0;
+    let subsampled = flags & SENC_SUBSAMPLES != 0;
 
     for size in [declared, 16, 8, 0] {
         if let Some(read) = fit_senc(raw, size, count, subsampled) {
             if size != declared {
-                log::debug!("apple: senc read with an inferred iv size of {size}");
+                log::debug!("cenc: senc read with an inferred iv size of {size}");
             }
             return read;
         }
     }
-    log::warn!("apple: cannot read a senc box with any iv size");
+    log::warn!("cenc: cannot read a senc box with any iv size");
     Senc::default()
 }
 
