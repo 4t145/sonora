@@ -1,0 +1,126 @@
+name: ci
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+  RUST_BACKTRACE: 1
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+
+jobs:
+  check:
+    name: fmt, clippy and tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake mold \
+            libasound2-dev libfontconfig1-dev libfreetype-dev libsqlite3-dev \
+            libx11-dev libxcb1-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libvulkan-dev libdbus-1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ci-check
+          cache-on-failure: true
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: tests
+        run: cargo test --workspace --locked
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+  windows:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            arch: x64compatible
+            setup: Sonora-Setup
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            arch: arm64
+            setup: Sonora-Setup-arm64
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          cache-targets: false
+          cache-on-failure: true
+
+      - name: build
+        run: cargo build --release --locked --package sonora --target ${{ matrix.target }}
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      - name: stage the executable
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/$TARGET/release/sonora.exe" "dist/sonora-${GITHUB_SHA:0:7}-$TARGET.exe"
+
+      - name: install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: build the Windows installer
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          SONORA_ARCH: ${{ matrix.arch }}
+          SONORA_SETUP: ${{ matrix.setup }}
+        run: |
+          $env:SONORA_VERSION = "0.0.0"
+          $env:SONORA_EXE = (Resolve-Path "target/$env:TARGET/release/sonora.exe").Path
+          $env:SONORA_DIST = (Resolve-Path "dist").Path
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "scripts/windows/sonora.iss"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
