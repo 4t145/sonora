@@ -269,7 +269,6 @@ struct Values {
     normalisation: bool,
     gapless: bool,
     equalizer: bool,
-    priority_queue: bool,
     /// Per band gains in decibels, lowest band first. Kept even while `equalizer` is off, so
     /// turning it back on restores the curve.
     equalizer_bands: Vec<f32>,
@@ -382,7 +381,6 @@ impl Default for Values {
             hidden_nav: Vec::new(),
             scrobbling: BTreeMap::new(),
             appearance: Appearance::default(),
-            priority_queue: false,
         }
     }
 }
@@ -617,10 +615,6 @@ impl AppSettings {
 
     pub fn sleep_timer(&self) -> bool {
         self.values.sleep_timer
-    }
-
-    pub fn priority_queue(&self) -> bool {
-        self.values.priority_queue
     }
 
     /// Whether the playing track is published to a local Discord client.
@@ -916,14 +910,6 @@ impl AppSettings {
 
     pub fn set_gapless(&mut self, gapless: bool, cx: &mut Context<Self>) {
         self.values.gapless = gapless;
-        self.schedule_save(cx);
-    }
-
-    pub fn set_priority_queue(&mut self, priority_queue: bool, cx: &mut Context<Self>) {
-        if self.values.priority_queue == priority_queue {
-            return;
-        }
-        self.values.priority_queue = priority_queue;
         self.schedule_save(cx);
     }
 

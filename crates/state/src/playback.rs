@@ -57,12 +57,14 @@ enum Intent {
 /// Where fetched tracks go in the queue.
 #[derive(Clone, Copy)]
 enum QueuePlacement {
+    /// Right after the current track.
     Next,
+    /// After the tracks queued by hand, ahead of the rest of the source.
     End,
+    /// After everything, once the source has run out.
+    Last,
     /// After this many upcoming tracks; a gap past the end appends.
     Gap(usize),
-    /// After this many priority tracks; a gap past the end appends.
-    PriorityGap(usize),
 }
 
 impl QueuePlacement {
@@ -71,7 +73,8 @@ impl QueuePlacement {
         match self {
             Self::Next => Some(format!("toast-next-{source}")),
             Self::End => Some(format!("toast-queued-{source}")),
-            Self::Gap(_) | Self::PriorityGap(_) => None,
+            Self::Last => Some(format!("toast-last-{source}")),
+            Self::Gap(_) => None,
         }
     }
 }
@@ -407,12 +410,8 @@ impl Playback {
             }
         })
         .detach();
-
-        cx.observe(&queue, |this, _, cx| {
-            this.preloaded = None;
-            this.suggest_similar(cx);
-        })
-        .detach();
+        cx.observe(&queue, |this, _, cx| this.suggest_similar(cx))
+            .detach();
 
         let level = settings.read(cx).volume();
         let normalisation = settings.read(cx).normalisation();
@@ -697,11 +696,7 @@ impl Playback {
         }
         let name = track.name.clone();
         let target = song_target(&track);
-        self.queue
-            .update(cx, |queue, cx| match queue.priority_enabled(cx) {
-                true => queue.append_priority(track, cx),
-                false => queue.append(track, cx),
-            });
+        self.queue.update(cx, |queue, cx| queue.append(track, cx));
         Toasts::linked(Outcome::Done, "toast-queued-track", name, target, cx);
     }
 
@@ -712,11 +707,7 @@ impl Playback {
         }
         let name = track.name.clone();
         let target = song_target(&track);
-        self.queue
-            .update(cx, |queue, cx| match queue.priority_enabled(cx) {
-                true => queue.prepend_priority(track, cx),
-                false => queue.prepend(track, cx),
-            });
+        self.queue.update(cx, |queue, cx| queue.prepend(track, cx));
         Toasts::linked(Outcome::Done, "toast-next-track", name, target, cx);
     }
 
@@ -729,10 +720,7 @@ impl Playback {
             return;
         }
         self.queue
-            .update(cx, |queue, cx| match queue.priority_enabled(cx) {
-                true => queue.append_all_priority(tracks, cx),
-                false => queue.append_all(tracks, cx),
-            });
+            .update(cx, |queue, cx| queue.append_all(tracks, cx));
     }
 
     pub fn play_next_all(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
@@ -744,10 +732,32 @@ impl Playback {
             return;
         }
         self.queue
-            .update(cx, |queue, cx| match queue.priority_enabled(cx) {
-                true => queue.prepend_all_priority(tracks, cx),
-                false => queue.prepend_all(tracks, cx),
-            });
+            .update(cx, |queue, cx| queue.prepend_all(tracks, cx));
+    }
+
+    /// Queues a track after everything already lined up, or starts playing it when nothing is.
+    pub fn play_last(&mut self, track: Track, cx: &mut Context<Self>) {
+        if self.queue.read(cx).current().is_none() {
+            self.begin(vec![track], 0, None, cx);
+            return;
+        }
+        let name = track.name.clone();
+        let target = song_target(&track);
+        self.queue
+            .update(cx, |queue, cx| queue.append_last(track, cx));
+        Toasts::linked(Outcome::Done, "toast-last-track", name, target, cx);
+    }
+
+    pub fn play_last_all(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
+        if tracks.is_empty() {
+            return;
+        }
+        if self.queue.read(cx).current().is_none() {
+            self.begin(tracks, 0, None, cx);
+            return;
+        }
+        self.queue
+            .update(cx, |queue, cx| queue.append_last_all(tracks, cx));
     }
 
     /// Opens paths handed in from the OS (a file-association launch or hand-off). A single file
@@ -812,30 +822,9 @@ impl Playback {
             .update(cx, |queue, cx| queue.insert_upcoming(gap, tracks, cx));
     }
 
-    fn insert_priority_all(&mut self, tracks: Vec<Track>, gap: usize, cx: &mut Context<Self>) {
-        if tracks.is_empty() {
-            return;
-        }
-        if self.queue.read(cx).current().is_none() {
-            self.begin(tracks, 0, None, cx);
-            return;
-        }
-        self.queue
-            .update(cx, |queue, cx| queue.insert_priority_queue(gap, tracks, cx));
-    }
-
     /// Fetches a pinned collection and inserts it `gap` tracks ahead, or at the end.
     pub fn enqueue_pin(&mut self, pin: &Pin, gap: Option<usize>, cx: &mut Context<Self>) {
         let placement = QueuePlacement::Gap(gap.unwrap_or(usize::MAX));
-        self.enqueue_pin_at(pin, placement, cx);
-    }
-
-    /// Fetches a pinned collection into a specific priority-queue gap.
-    pub fn enqueue_priority_pin(&mut self, pin: &Pin, gap: usize, cx: &mut Context<Self>) {
-        self.enqueue_pin_at(pin, QueuePlacement::PriorityGap(gap), cx);
-    }
-
-    fn enqueue_pin_at(&mut self, pin: &Pin, placement: QueuePlacement, cx: &mut Context<Self>) {
         let id = pin.id.clone();
 
         match pin.kind {
@@ -884,6 +873,14 @@ impl Playback {
         });
     }
 
+    pub fn play_album_last(&mut self, album: &str, cx: &mut Context<Self>) {
+        let id = album.to_owned();
+        let album = album.to_owned();
+        self.enqueue_from("album", &id, QueuePlacement::Last, cx, move |client| {
+            Box::pin(async move { client.album_tracks(&album).await })
+        });
+    }
+
     fn play_album_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let album = origin.id.clone();
         self.gather(origin, cx, move |client| {
@@ -914,6 +911,14 @@ impl Playback {
         });
     }
 
+    pub fn play_artist_last(&mut self, artist: &str, cx: &mut Context<Self>) {
+        let id = artist.to_owned();
+        let artist = artist.to_owned();
+        self.enqueue_from("artist", &id, QueuePlacement::Last, cx, move |client| {
+            Box::pin(async move { client.artist(&artist).await.map(|found| found.top_tracks) })
+        });
+    }
+
     pub fn enqueue_playlist(&mut self, playlist: &str, cx: &mut Context<Self>) {
         let id = playlist.to_owned();
         let playlist = playlist.to_owned();
@@ -926,6 +931,14 @@ impl Playback {
         let id = playlist.to_owned();
         let playlist = playlist.to_owned();
         self.enqueue_from("playlist", &id, QueuePlacement::Next, cx, move |client| {
+            Box::pin(async move { client.playlist_tracks(&playlist).await })
+        });
+    }
+
+    pub fn play_playlist_last(&mut self, playlist: &str, cx: &mut Context<Self>) {
+        let id = playlist.to_owned();
+        let playlist = playlist.to_owned();
+        self.enqueue_from("playlist", &id, QueuePlacement::Last, cx, move |client| {
             Box::pin(async move { client.playlist_tracks(&playlist).await })
         });
     }
@@ -984,10 +997,8 @@ impl Playback {
                         match placement {
                             QueuePlacement::Next => this.play_next_all(tracks, cx),
                             QueuePlacement::End => this.enqueue_all(tracks, cx),
+                            QueuePlacement::Last => this.play_last_all(tracks, cx),
                             QueuePlacement::Gap(gap) => this.insert_all(tracks, gap, cx),
-                            QueuePlacement::PriorityGap(gap) => {
-                                this.insert_priority_all(tracks, gap, cx)
-                            }
                         }
                         if queued && let Some(key) = placement.toast(source) {
                             Toasts::show(Outcome::Done, key, cx);
@@ -1115,7 +1126,7 @@ impl Playback {
         }
 
         let next = match self.repeat != Repeat::One {
-            true => self.queue.read(cx).next_track(cx).cloned(),
+            true => self.queue.read(cx).upcoming().next().cloned(),
             false => None,
         };
         let Some(next) = next else {
@@ -1163,12 +1174,7 @@ impl Playback {
     /// The track suggestions are drawn from: the last queued, else the current.
     fn seed(&self, cx: &Context<Self>) -> Option<Track> {
         let queue = self.queue.read(cx);
-        queue
-            .upcoming()
-            .last()
-            .or_else(|| queue.priority().last())
-            .or_else(|| queue.current())
-            .cloned()
+        queue.upcoming().last().or_else(|| queue.current()).cloned()
     }
 
     /// Fills the suggestions from the seed's radio when radio is on and they are empty,
@@ -1255,13 +1261,13 @@ impl Playback {
                 Some(track) => self.load_after(&track, Start::Segue, cx),
                 None => self.segue_queue(cx),
             },
-            Repeat::All if !self.queue.read(cx).has_next(cx) => {
+            Repeat::All if !self.queue.read(cx).has_next() => {
                 self.fetch = None;
                 if let Some(track) = self.queue.update(cx, |queue, cx| queue.rewind(cx)) {
                     self.follow_after(track, Start::Segue, cx);
                 }
             }
-            _ if self.radio && !self.queue.read(cx).has_next(cx) => {
+            _ if self.radio && !self.queue.read(cx).has_next() => {
                 let seed = ended
                     .or_else(|| self.track.clone())
                     .filter(|seed| seed.id.as_deref().is_some_and(|id| self.stations(id, cx)));
@@ -1302,7 +1308,9 @@ impl Playback {
             this.update(cx, |this, cx| match loaded {
                 Ok(tracks) if !tracks.is_empty() => {
                     this.queue.update(cx, |queue, cx| {
-                        queue.append_all(tracks, cx);
+                        for track in tracks {
+                            queue.append(track, cx);
+                        }
                     });
                     this.follow_queue(Start::Segue, cx);
                 }
@@ -1375,24 +1383,15 @@ impl Playback {
         self.load_after(&track, Start::Pick, cx);
     }
 
-    fn play_queued(
-        &mut self,
-        cx: &mut Context<Self>,
-        update: impl Fn(&mut Queue, &mut Context<'_, Queue>) -> Option<Track>,
-    ) {
+    pub fn play_upcoming(&mut self, index: usize, cx: &mut Context<Self>) {
         self.fetch = None;
-        let Some(track) = self.queue.update(cx, update) else {
+        let Some(track) = self
+            .queue
+            .update(cx, |queue, cx| queue.play_upcoming(index, cx))
+        else {
             return;
         };
         self.load_after(&track, Start::Pick, cx);
-    }
-
-    pub fn play_upcoming(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.play_queued(cx, |queue, cx| queue.play_upcoming(index, cx));
-    }
-
-    pub fn play_priority(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.play_queued(cx, |queue, cx| queue.play_priority(index, cx));
     }
 
     /// Plays on. A restored track the engine does not hold yet is loaded at its position.
@@ -1723,23 +1722,6 @@ impl Playback {
 
     pub fn gapless(&self) -> bool {
         self.gapless
-    }
-
-    pub fn priority_queue(&self, cx: &App) -> bool {
-        self.queue.read(cx).priority_enabled(cx)
-    }
-
-    pub fn set_priority_queue(&mut self, on: bool, cx: &mut Context<Self>) {
-        if self.priority_queue(cx) == on {
-            return;
-        }
-        self.settings
-            .update(cx, |settings, cx| settings.set_priority_queue(on, cx));
-        if !on {
-            self.queue.update(cx, |queue, cx| queue.fold_priority(cx));
-        }
-        self.preloaded = None;
-        cx.notify();
     }
 
     pub fn equalizer(&self) -> bool {

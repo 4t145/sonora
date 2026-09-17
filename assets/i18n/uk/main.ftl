@@ -139,6 +139,12 @@ menu-add-tracks-to-queue = { $count ->
     [few] Додати { $count } треки до черги
    *[other] Додати { $count } треків до черги
 }
+menu-play-last = Відтворити наприкінці
+menu-play-tracks-last = { $count ->
+    [one] Відтворити { $count } трек наприкінці
+    [few] Відтворити { $count } треки наприкінці
+   *[other] Відтворити { $count } треків наприкінці
+}
 menu-song-radio = Радіо за треком
 menu-go-to-album = Перейти до альбому
 menu-go-to-artist = Перейти до виконавця
@@ -223,6 +229,7 @@ queue-title = Черга
 queue-history = Історія
 queue-now-playing = Зараз грає
 queue-from = З
+queue-next-in-queue = Наступні в черзі
 queue-up-next = Далі
 queue-reset = Скинути
 queue-clear = Очистити
@@ -773,12 +780,16 @@ toast-playlist-busy = Інша зміна ще виконується
 toast-playlist-signed-out = Увійдіть, щоб змінювати плейлисти
 toast-queued-track = { $name } додано до черги
 toast-next-track = { $name } прозвучить наступним
+toast-last-track = { $name } прозвучить наприкінці
 toast-queued-album = Альбом додано до черги
 toast-next-album = Альбом прозвучить наступним
+toast-last-album = Альбом прозвучить наприкінці
 toast-queued-playlist = Плейлист додано до черги
 toast-next-playlist = Плейлист прозвучить наступним
+toast-last-playlist = Плейлист прозвучить наприкінці
 toast-queued-artist = Виконавця додано до черги
 toast-next-artist = Виконавець прозвучить наступним
+toast-last-artist = Виконавець прозвучить наприкінці
 toast-queue-failed = Не вдалося додати до черги
 toast-keys-refused = Spotify не надає цьому обліковому запису ключі відтворення
 toast-sign-in-to-play = { $name } віддає музику лише тим, хто увійшов в акаунт

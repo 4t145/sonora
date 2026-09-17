@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A Play last item on track, album, artist and playlist menus queues them for after everything
+  else.
+
+### Changed
+
+- Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
+  the album or playlist, in the order you added them. The queue panel lists them under Next in
+  queue, above what the album or playlist plays next.
+
 ### Fixed
 
 - Apple Music similar tracks link to their artist and album again.

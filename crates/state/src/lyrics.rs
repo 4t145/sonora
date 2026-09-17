@@ -234,7 +234,7 @@ impl Lyrics {
         if self.task.is_some() {
             return;
         }
-        let next = self.queue.read(cx).next_track(cx).cloned();
+        let next = self.queue.read(cx).upcoming().next().cloned();
         let Some((track, id)) = next.and_then(|track| Some((track.clone(), track.id?))) else {
             return;
         };

@@ -27,7 +27,6 @@ use crate::shared::menus::ItemMenu;
 use crate::shared::pins::Pinned as _;
 
 const QUEUE: &str = "queue";
-const PRIORITY_QUEUE: &str = "priority-queue";
 const BULLET: SharedString = SharedString::new_static("·");
 const FADE: f32 = 96.;
 const REST: f32 = FADE * 0.75;
@@ -87,7 +86,6 @@ fn track(queue: &Queue, position: QueuePosition) -> Option<Track> {
         QueuePosition::Current => queue.current().cloned(),
         QueuePosition::Upcoming(index) => queue.upcoming().nth(index).cloned(),
         QueuePosition::Similar(index) => queue.similar().nth(index).cloned(),
-        QueuePosition::Priority(index) => queue.priority().nth(index).cloned(),
     }
 }
 
@@ -97,13 +95,6 @@ enum QueuePosition {
     Current,
     Upcoming(usize),
     Similar(usize),
-    Priority(usize),
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum DropGap {
-    Priority(usize),
-    Upcoming(usize),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,13 +103,16 @@ enum Slot {
     Track(QueuePosition),
 }
 
+/// The row counts the queue list is built from. `manual` is how many of the `upcoming` tracks
+/// the user queued by hand. They open the list under their own header, and the rest of the
+/// source follows under Up next, both indexed into the same upcoming list.
 #[derive(Clone, Copy)]
 struct Sections {
     past: usize,
     current: bool,
+    manual: usize,
     upcoming: usize,
     similar: usize,
-    priority: usize,
 }
 
 impl Sections {
@@ -133,17 +127,17 @@ impl Sections {
         self.past_end() + 2 * usize::from(self.current)
     }
 
-    fn priority_end(self) -> usize {
+    fn manual_end(self) -> usize {
         self.current_end()
-            + match self.priority {
+            + match self.manual {
                 0 => 0,
                 count => count + 1,
             }
     }
 
     fn upcoming_end(self) -> usize {
-        self.priority_end()
-            + match self.upcoming {
+        self.manual_end()
+            + match self.upcoming - self.manual {
                 0 => 0,
                 count => count + 1,
             }
@@ -174,16 +168,18 @@ impl Sections {
                 false => Slot::Track(QueuePosition::Current),
             };
         }
-        if index < self.priority_end() {
+        if index < self.manual_end() {
             return match index == self.current_end() {
-                true => Slot::Header("queue-priority"),
-                false => Slot::Track(QueuePosition::Priority(index - self.current_end() - 1)),
+                true => Slot::Header("queue-next-in-queue"),
+                false => Slot::Track(QueuePosition::Upcoming(index - self.current_end() - 1)),
             };
         }
         if index < self.upcoming_end() {
-            return match index == self.priority_end() {
+            return match index == self.manual_end() {
                 true => Slot::Header("queue-up-next"),
-                false => Slot::Track(QueuePosition::Upcoming(index - self.priority_end() - 1)),
+                false => Slot::Track(QueuePosition::Upcoming(
+                    self.manual + index - self.manual_end() - 1,
+                )),
             };
         }
         match index == self.upcoming_end() {
@@ -255,13 +251,6 @@ impl QueuePosition {
             _ => None,
         }
     }
-
-    fn priority(self) -> Option<usize> {
-        match self {
-            Self::Priority(index) => Some(index),
-            _ => None,
-        }
-    }
 }
 
 pub(crate) struct Aside {
@@ -280,7 +269,7 @@ pub(crate) struct Aside {
     placing: bool,
     context_menu: Option<ContextMenuState>,
     track_menu: ItemMenu,
-    drop_gap: Option<DropGap>,
+    drop_gap: Option<usize>,
     scroll: UniformListScrollHandle,
     scrollbar: Entity<Scrollbar>,
     past_len: usize,
@@ -648,12 +637,9 @@ impl Aside {
         }));
     }
 
-    fn enqueue(&mut self, pin: &Pin, gap: Option<DropGap>, cx: &mut Context<Self>) {
-        self.playback.update(cx, |playback, cx| match gap {
-            Some(DropGap::Priority(gap)) => playback.enqueue_priority_pin(pin, gap, cx),
-            Some(DropGap::Upcoming(gap)) => playback.enqueue_pin(pin, Some(gap), cx),
-            None => playback.enqueue_pin(pin, None, cx),
-        });
+    fn enqueue(&mut self, pin: &Pin, gap: Option<usize>, cx: &mut Context<Self>) {
+        self.playback
+            .update(cx, |playback, cx| playback.enqueue_pin(pin, gap, cx));
     }
 
     fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
@@ -673,13 +659,11 @@ impl Aside {
         let RowLook { playing, drop_line } = look;
         let theme = *cx.theme();
         let past_index = position.past();
-        let priority_index = position.priority();
         let queue_index = position.upcoming();
         let similar_index = position.similar();
         let title = match position {
             QueuePosition::Past(_) => theme.muted_foreground,
             QueuePosition::Current => theme.primary,
-            QueuePosition::Priority(_) => theme.foreground,
             QueuePosition::Upcoming(_) | QueuePosition::Similar(_) => theme.foreground,
         };
         let pin = track.pin();
@@ -709,7 +693,6 @@ impl Aside {
                 this.playback.update(cx, |playback, cx| match position {
                     QueuePosition::Current => playback.toggle_play(cx),
                     QueuePosition::Past(index) if !stale => playback.play_past(index, cx),
-                    QueuePosition::Priority(index) if !stale => playback.play_priority(index, cx),
                     QueuePosition::Upcoming(index) if !stale => playback.play_upcoming(index, cx),
                     QueuePosition::Similar(index) if !stale => playback.play_similar(index, cx),
                     _ => {}
@@ -731,62 +714,6 @@ impl Aside {
                     this.playback
                         .update(cx, |playback, cx| playback.play_past(index, cx));
                 }
-            }))
-        })
-        .when_some(priority_index, |this, target| {
-            this.press(cx.listener(move |this, _, _, cx| {
-                if this.queue.read(cx).revision() == queue_revision {
-                    this.playback
-                        .update(cx, |playback, cx| playback.play_priority(target, cx));
-                }
-            }))
-            .action(
-                Button::new(("remove-priority-track", index))
-                    .ghost()
-                    .small()
-                    .mr_1()
-                    .icon("icons/x.svg")
-                    .tooltip("menu-remove-from-queue")
-                    .tint(theme.muted_foreground)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.queue.update(cx, |queue, cx| {
-                            if queue.revision() == queue_revision {
-                                queue.remove_priority(target, cx);
-                            }
-                        });
-                    })),
-            )
-            .on_drag_move(
-                cx.listener(move |this, event: &DragMoveEvent<DraggedPin>, _, cx| {
-                    let Some(gap) = drop_gap(event.bounds, event.event.position, target) else {
-                        return;
-                    };
-                    let gap = match event.drag(cx).spot(PRIORITY_QUEUE) {
-                        Some(held) => (gap != held.index && gap != held.index + 1)
-                            .then_some(DropGap::Priority(gap)),
-                        None => Some(DropGap::Priority(gap)),
-                    };
-                    if this.drop_gap != gap {
-                        this.drop_gap = gap;
-                        cx.notify();
-                    }
-                }),
-            )
-            .on_drop(cx.listener(move |this, dragged: &DraggedPin, _, cx| {
-                let gap = this.drop_gap.take();
-                match (dragged.spot(PRIORITY_QUEUE), gap) {
-                    (Some(held), Some(DropGap::Priority(gap))) => {
-                        this.queue.update(cx, |queue, cx| {
-                            if queue.revision() == held.revision {
-                                queue.move_priority_to_gap(held.index, gap, cx);
-                            }
-                        });
-                    }
-                    (None, gap) => this.enqueue(&dragged.pin, gap, cx),
-                    _ => {}
-                }
-                cx.notify();
             }))
         })
         .when_some(queue_index, |this, target| {
@@ -819,9 +746,8 @@ impl Aside {
                         return;
                     };
                     let gap = match event.drag(cx).spot(QUEUE) {
-                        Some(held) => (gap != held.index && gap != held.index + 1)
-                            .then_some(DropGap::Upcoming(gap)),
-                        None => Some(DropGap::Upcoming(gap)),
+                        Some(held) => (gap != held.index && gap != held.index + 1).then_some(gap),
+                        None => Some(gap),
                     };
                     if this.drop_gap != gap {
                         this.drop_gap = gap;
@@ -831,16 +757,17 @@ impl Aside {
             )
             .on_drop(cx.listener(move |this, dragged: &DraggedPin, _, cx| {
                 let gap = this.drop_gap.take();
-                match (dragged.spot(QUEUE), gap) {
-                    (Some(held), Some(DropGap::Upcoming(gap))) => {
-                        this.queue.update(cx, |queue, cx| {
-                            if queue.revision() == held.revision {
-                                queue.move_upcoming_to_gap(held.index, gap, cx);
-                            }
-                        });
+                match dragged.spot(QUEUE) {
+                    Some(held) => {
+                        if let Some(gap) = gap {
+                            this.queue.update(cx, |queue, cx| {
+                                if queue.revision() == held.revision {
+                                    queue.move_upcoming_to_gap(held.index, gap, cx);
+                                }
+                            });
+                        }
                     }
-                    (None, gap) => this.enqueue(&dragged.pin, gap, cx),
-                    _ => {}
+                    None => this.enqueue(&dragged.pin, gap, cx),
                 }
                 cx.notify();
             }))
@@ -870,15 +797,9 @@ impl Aside {
                     })),
             )
         })
-        .when_some(pin, |this, pin| match (priority_index, queue_index) {
-            (Some(index), _) => this.pin_from(
-                pin,
-                Spot::new(PRIORITY_QUEUE, index).revision(queue_revision),
-            ),
-            (_, Some(index)) => {
-                this.pin_from(pin, Spot::new(QUEUE, index).revision(queue_revision))
-            }
-            _ => this.pin(pin),
+        .when_some(pin, |this, pin| match queue_index {
+            Some(index) => this.pin_from(pin, Spot::new(QUEUE, index).revision(queue_revision)),
+            None => this.pin(pin),
         });
 
         div()
@@ -973,7 +894,7 @@ impl Aside {
                                 .small()
                                 .label(t!("queue-clear"))
                                 .tint(theme.muted_foreground)
-                                .disabled(sections.upcoming == 0 && sections.priority == 0)
+                                .disabled(sections.upcoming == 0)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.queue.update(cx, |queue, cx| queue.clear_upcoming(cx));
                                 })),
@@ -1800,25 +1721,10 @@ impl Aside {
                             }
                         }
                         (Some(Slot::Track(position)), Some(found)) => {
-                            let drop_line = match (position, drop_gap) {
-                                (QueuePosition::Upcoming(queued), Some(DropGap::Upcoming(gap)))
-                                    if gap == queued =>
-                                {
-                                    Some(Edge::Above)
-                                }
-                                (QueuePosition::Upcoming(queued), Some(DropGap::Upcoming(gap)))
+                            let drop_line = match (position.upcoming(), drop_gap) {
+                                (Some(queued), Some(gap)) if gap == queued => Some(Edge::Above),
+                                (Some(queued), Some(gap))
                                     if gap == upcoming && queued + 1 == upcoming =>
-                                {
-                                    Some(Edge::Below)
-                                }
-                                (QueuePosition::Priority(queued), Some(DropGap::Priority(gap)))
-                                    if gap == queued =>
-                                {
-                                    Some(Edge::Above)
-                                }
-                                (QueuePosition::Priority(queued), Some(DropGap::Priority(gap)))
-                                    if gap == sections.priority
-                                        && queued + 1 == sections.priority =>
                                 {
                                     Some(Edge::Below)
                                 }
@@ -1843,9 +1749,9 @@ impl Render for Aside {
         let sections = Sections {
             past: queue.past().len(),
             current: queue.current().is_some(),
+            manual: queue.manual().len(),
             upcoming: queue.upcoming().len(),
             similar: queue.similar().len(),
-            priority: queue.priority().len(),
         };
         let empty = sections.len() == 0;
         if !cx.has_active_drag() {
@@ -1886,9 +1792,7 @@ impl Render for Aside {
                     .when(self.tab == SideTab::Queue, |this| {
                         this.on_drop(cx.listener(|this, dragged: &DraggedPin, _, cx| {
                             let gap = this.drop_gap.take();
-                            if dragged.spot(QUEUE).is_none()
-                                && dragged.spot(PRIORITY_QUEUE).is_none()
-                            {
+                            if dragged.spot(QUEUE).is_none() {
                                 this.enqueue(&dragged.pin, gap, cx);
                             }
                             cx.notify();
@@ -2906,8 +2810,8 @@ mod tests {
             past: 2,
             current: true,
             upcoming: 2,
+            manual: 0,
             similar: 2,
-            priority: 2,
         };
 
         assert_eq!(sections.current_index(), Some(4));
@@ -2919,9 +2823,6 @@ mod tests {
                 Slot::Track(QueuePosition::Past(1)),
                 Slot::Header("queue-now-playing"),
                 Slot::Track(QueuePosition::Current),
-                Slot::Header("queue-priority"),
-                Slot::Track(QueuePosition::Priority(0)),
-                Slot::Track(QueuePosition::Priority(1)),
                 Slot::Header("queue-up-next"),
                 Slot::Track(QueuePosition::Upcoming(0)),
                 Slot::Track(QueuePosition::Upcoming(1)),
@@ -2938,8 +2839,8 @@ mod tests {
             past: 0,
             current: true,
             upcoming: 0,
+            manual: 0,
             similar: 1,
-            priority: 0,
         };
 
         assert_eq!(
@@ -2959,8 +2860,8 @@ mod tests {
             past: 0,
             current: true,
             upcoming: 1,
+            manual: 0,
             similar: 0,
-            priority: 0,
         };
 
         assert_eq!(sections.current_index(), Some(1));
@@ -2981,8 +2882,8 @@ mod tests {
             past: 1,
             current: false,
             upcoming: 0,
+            manual: 0,
             similar: 0,
-            priority: 0,
         };
 
         assert_eq!(sections.current_index(), None);
@@ -3001,8 +2902,8 @@ mod tests {
             past: 0,
             current: false,
             upcoming: 0,
+            manual: 0,
             similar: 0,
-            priority: 0,
         };
 
         assert_eq!(sections.len(), 0);
