@@ -64,8 +64,7 @@ fn dominant(pixels: &[u8]) -> Option<Hsla> {
     let mut bins = [Bin::default(); BINS];
     let mut sampled = 0.;
 
-    for pixel in pixels.chunks_exact(4).step_by(stride) {
-        let [blue, green, red, alpha] = [pixel[0], pixel[1], pixel[2], pixel[3]];
+    for &[blue, green, red, alpha] in pixels.as_chunks::<4>().0.iter().step_by(stride) {
         if alpha < MIN_ALPHA {
             continue;
         }
