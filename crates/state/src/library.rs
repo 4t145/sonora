@@ -194,7 +194,8 @@ fn place(
 }
 
 /// Puts one part's rows, or its failure, onto the shelf. A part arriving in pages passes here
-/// once per page, so the rows already there stay and the new ones go behind them.
+/// once per page, so the rows already there stay and the new ones go behind them. A track the
+/// provider cannot play is left out, so the songs list and its count hold only what plays.
 fn extend(state: &mut LibraryState, landed: Landed) {
     if !matches!(state, LibraryState::Ready(_)) {
         *state = LibraryState::Ready(Ready::default());
@@ -211,7 +212,11 @@ fn extend(state: &mut LibraryState, landed: Landed) {
     } = ready;
     let part = landed.part();
     match landed {
-        Landed::Tracks(result) => tracks.extend(take(part, result, problems)),
+        Landed::Tracks(result) => tracks.extend(
+            take(part, result, problems)
+                .into_iter()
+                .filter(|track| track.playable),
+        ),
         Landed::Playlists(result) => playlists.extend(take(part, result, problems)),
         Landed::Albums(result) => albums.extend(take(part, result, problems)),
         Landed::Artists(result) => artists.extend(take(part, result, problems)),
@@ -801,7 +806,8 @@ impl Library {
     }
 
     /// How many rows a part will have once it has all arrived, when the provider said on the
-    /// first page. Nothing while nothing is known, and the rows so far are the count.
+    /// first page. Nothing while nothing is known and nothing once the part has arrived, since
+    /// the rows kept are then the count and the provider's total may have counted unplayable ones.
     pub fn expected(&self, shelf: Shelf, part: LibraryPart) -> Option<usize> {
         self.held(shelf).expected.get(&part).copied()
     }
@@ -1799,6 +1805,7 @@ impl Library {
             }
             this.update(cx, |this, cx| {
                 let held = this.held_mut(shelf);
+                held.expected.remove(&part);
                 settle(&mut held.state, &mut held.awaited, part, shelf.fatal());
                 cx.notify();
             })
@@ -1809,6 +1816,7 @@ impl Library {
     fn land(&mut self, shelf: Shelf, landed: Landed, cx: &mut Context<Self>) {
         let part = landed.part();
         let held = self.held_mut(shelf);
+        held.expected.remove(&part);
         place(&mut held.state, &mut held.awaited, landed, shelf.fatal());
         if part == LibraryPart::Playlists {
             self.read_playlists(shelf, cx);
