@@ -1,5 +1,5 @@
 use ksni::blocking::{Handle, TrayMethods as _};
-use ksni::menu::{MenuItem, StandardItem};
+use ksni::menu::{CheckmarkItem, MenuItem, StandardItem};
 use ksni::{Category, ToolTip};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -79,6 +79,16 @@ impl Item {
         }
         .into()
     }
+
+    fn checkmark(&self, label: &str, checked: bool, event: Event) -> MenuItem<Self> {
+        CheckmarkItem {
+            label: label.to_owned(),
+            checked,
+            activate: Box::new(move |this: &mut Self| this.send(event)),
+            ..Default::default()
+        }
+        .into()
+    }
 }
 
 impl ksni::Tray for Item {
@@ -139,6 +149,9 @@ impl ksni::Tray for Item {
             self.entry(&shown.toggle, Event::Toggle),
             self.entry(&shown.previous, Event::Previous),
             self.entry(&shown.next, Event::Next),
+            MenuItem::Separator,
+            self.checkmark(&shown.shuffle, shown.shuffle_on, Event::Shuffle),
+            self.checkmark(&shown.repeat, shown.repeat_on, Event::Repeat),
             MenuItem::Separator,
             self.entry(&shown.show, Event::Show),
             self.entry(&shown.quit, Event::Quit),
