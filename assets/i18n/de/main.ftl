@@ -747,7 +747,6 @@ tags-comment = Kommentar
 toast-tags-saved = Tags für { $name } gespeichert
 toast-tags-failed = Die Tags konnten nicht gespeichert werden
 nav-pin = Anheften
-toast-library-pin-limit = Das Limit für angeheftete Einträge bei Spotify ist erreicht. Löse zuerst einen anderen Eintrag.
 toast-library-pin-failed = Das Anheften konnte bei Spotify nicht geändert werden.
 nav-nothing-pinned = Nichts hier
 nav-pins-alphabetical = Alphabetisch

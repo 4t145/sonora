@@ -708,7 +708,6 @@ tags-comment = Yorum
 toast-tags-saved = { $name } için etiketler kaydedildi
 toast-tags-failed = Etiketler kaydedilemedi
 nav-pin = Sabitle
-toast-library-pin-limit = Spotify'ın sabitleme sınırına ulaşıldı. Önce başka bir ögenin sabitlemesini kaldır.
 toast-library-pin-failed = Spotify'daki sabitleme güncellenemedi.
 nav-nothing-pinned = Burada bir şey yok
 nav-pins-alphabetical = Alfabetik

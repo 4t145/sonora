@@ -679,7 +679,9 @@ impl Library {
     }
 
     /// Changes the provider's own pin for `uri` and calls `done` with whether it stuck. A second
-    /// change replaces the one in flight, so the last one wins and only its `done` runs.
+    /// change replaces the one in flight, so the last one wins and only its `done` runs. A pin
+    /// the provider turns away for being past its limit counts as stuck too, since Sonora keeps
+    /// the pin itself and the sidebar has no limit of its own.
     pub fn set_sidebar_pinned(
         &mut self,
         uri: String,
@@ -726,8 +728,10 @@ impl Library {
                         done(true, cx);
                     }
                     Ok((music::LibraryPinResult::LimitReached, _)) => {
-                        Toasts::show(Outcome::Failed, "toast-library-pin-limit", cx);
-                        done(false, cx);
+                        log::debug!(
+                            "library: the provider's pin limit is reached, pinning locally"
+                        );
+                        done(true, cx);
                     }
                     Err(error) => {
                         log::warn!("library: cannot update the library pin: {error:#}");

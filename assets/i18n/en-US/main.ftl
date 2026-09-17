@@ -813,8 +813,7 @@ toast-tags-saved = Saved the tags for { $name }
 toast-tags-failed = The tags could not be saved
 
 nav-pin = Pin
-toast-library-pin-limit = Spotify’s pin limit has been reached. Unpin another item first.
-toast-library-pin-failed = Could not update the pin in Spotify.
+toast-library-pin-failed = Could not update the pin.
 nav-nothing-pinned = Nothing here
 nav-pins-alphabetical = Alphabetical
 nav-pins-kind = By type

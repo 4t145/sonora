@@ -683,7 +683,6 @@ tags-comment = コメント
 toast-tags-saved = { $name } のタグを保存しました
 toast-tags-failed = タグを保存できませんでした
 nav-pin = ピン留め
-toast-library-pin-limit = Spotify のピン留めの上限に達しました。先にほかの項目のピン留めを解除してください。
 toast-library-pin-failed = Spotify のピン留めを更新できませんでした。
 nav-nothing-pinned = ここには何もありません
 nav-pins-alphabetical = 名前順
