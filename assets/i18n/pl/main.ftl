@@ -141,6 +141,12 @@ menu-add-tracks-to-queue = { $count ->
     [few] Dodaj { $count } utwory do kolejki
    *[other] Dodaj { $count } utworów do kolejki
 }
+menu-play-last = Odtwórz na końcu
+menu-play-tracks-last = { $count ->
+    [one] Odtwórz { $count } utwór na końcu
+    [few] Odtwórz { $count } utwory na końcu
+   *[other] Odtwórz { $count } utworów na końcu
+}
 menu-song-radio = Radio utworu
 menu-go-to-album = Przejdź do albumu
 menu-go-to-artist = Przejdź do wykonawcy
@@ -225,6 +231,7 @@ queue-title = Kolejka
 queue-history = Historia
 queue-now-playing = Teraz odtwarzane
 queue-from = Z
+queue-next-in-queue = Następne w kolejce
 queue-up-next = Następne
 queue-reset = Resetuj
 queue-clear = Wyczyść
@@ -775,12 +782,16 @@ toast-playlist-busy = Inna zmiana wciąż trwa
 toast-playlist-signed-out = Zaloguj się, aby zmieniać playlisty
 toast-queued-track = { $name } dodano do kolejki
 toast-next-track = { $name } zabrzmi następny
+toast-last-track = { $name } zabrzmi na końcu
 toast-queued-album = Album dodano do kolejki
 toast-next-album = Album zabrzmi następny
+toast-last-album = Album zabrzmi na końcu
 toast-queued-playlist = Playlistę dodano do kolejki
 toast-next-playlist = Playlista zabrzmi następna
+toast-last-playlist = Playlista zabrzmi na końcu
 toast-queued-artist = Wykonawcę dodano do kolejki
 toast-next-artist = Wykonawca zabrzmi następny
+toast-last-artist = Wykonawca zabrzmi na końcu
 toast-queue-failed = Nie udało się dodać do kolejki
 toast-keys-refused = Spotify nie udziela temu kontu kluczy odtwarzania
 toast-sign-in-to-play = { $name } udostępnia muzykę tylko po zalogowaniu

@@ -134,6 +134,11 @@ menu-add-tracks-to-queue = { $count ->
     [one] Add { $count } track to queue
    *[other] Add { $count } tracks to queue
 }
+menu-play-last = Play last
+menu-play-tracks-last = { $count ->
+    [one] Play { $count } track last
+   *[other] Play { $count } tracks last
+}
 menu-song-radio = Go to song radio
 menu-go-to-album = Go to album
 menu-go-to-artist = Go to artist
@@ -211,8 +216,8 @@ confirm-delete-track-files = The file(s) will be permanently deleted from disk. 
 queue-title = Queue
 queue-history = History
 queue-now-playing = Now playing
-queue-priority = Priority queue
 queue-from = From
+queue-next-in-queue = Next in queue
 queue-up-next = Up next
 queue-reset = Reset
 queue-clear = Clear
@@ -558,8 +563,6 @@ settings-normalisation = Normalize loudness
 settings-normalisation-detail = Keeps tracks at a consistent volume
 settings-gapless = Gapless playback
 settings-gapless-detail = Runs one track into the next without a pause, the way an album was sequenced
-settings-priority-queue = Priority queue
-settings-priority-queue-detail = Changes the queue-adding behavior from inserting to the bottom of the upcoming songs to inserting into a separate, prioritized queue
 settings-sleep = Sleep timer
 settings-sleep-detail = Lets the music stop on its own after a set time, so it can play you to sleep
 settings-sleep-configure = Configure…
@@ -753,12 +756,16 @@ toast-playlist-busy = Another change is still running
 toast-playlist-signed-out = Sign in to change playlists
 toast-queued-track = { $name } added to the queue
 toast-next-track = { $name } plays next
+toast-last-track = { $name } plays last
 toast-queued-album = Album added to the queue
 toast-next-album = Album plays next
+toast-last-album = Album plays last
 toast-queued-playlist = Playlist added to the queue
 toast-next-playlist = Playlist plays next
+toast-last-playlist = Playlist plays last
 toast-queued-artist = Artist added to the queue
 toast-next-artist = Artist plays next
+toast-last-artist = Artist plays last
 toast-queue-failed = That could not be added to the queue
 toast-keys-refused = Spotify is not granting this account playback keys
 toast-sign-in-to-play = { $name } only streams to a signed-in listener

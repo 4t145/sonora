@@ -150,7 +150,7 @@ fn previous(playback: &Entity<Playback>, cx: &App) -> Button {
 }
 
 fn next(playback: &Entity<Playback>, queue: &Entity<Queue>, cx: &App) -> Button {
-    let enabled = queue.read(cx).has_next(cx);
+    let enabled = queue.read(cx).has_next();
     let playback = playback.clone();
 
     Button::new("next")
