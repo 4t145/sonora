@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Apple Music similar tracks link to their artist and album again.
+- An Apple Music library song whose catalog copy Apple has pulled is shown as unavailable
+  instead of failing when played.
+
 ## [0.37.0] - 2026-09-17
 
 ### Added

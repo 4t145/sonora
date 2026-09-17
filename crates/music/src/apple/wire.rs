@@ -174,7 +174,9 @@ pub fn playlist_track(row: &Value) -> Option<Track> {
 }
 
 /// One library song, which plays through the catalog id its play parameters name. A library row
-/// without one is an upload, and this path has no way to play it.
+/// without one is an upload, and this path has no way to play it. A row whose catalog
+/// relationship was asked for and came back empty names a song Apple has since pulled: the
+/// play parameters still carry its id, but web playback refuses it, so it is listed unplayable.
 pub fn library_song(value: &Value) -> Option<Track> {
     let id = value
         .pointer("/attributes/playParams/catalogId")
@@ -191,7 +193,11 @@ pub fn library_song(value: &Value) -> Option<Track> {
     // that album joined the library, which is also the order Apple itself sorts songs by.
     let mut track = match catalog(value) {
         Some(found) => song(found)?,
-        None => song(value)?,
+        None => {
+            let mut track = song(value)?;
+            track.playable = value.pointer("/relationships/catalog/data").is_none();
+            track
+        }
     };
     track.id = Some(id);
     track.added_at = value
