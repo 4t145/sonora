@@ -573,13 +573,19 @@ impl AppleClient {
     /// Builds the station a track seeds and reads its first tracks.
     ///
     /// This is what the web player's autoplay calls, and the only way Apple hands out the
-    /// contents of a station: `/songs/{id}/station` names one but lists nothing.
+    /// contents of a station: `/songs/{id}/station` names one but lists nothing. The artists
+    /// and albums are asked for along with the songs, since a station row names them in text
+    /// only and a suggestion without ids leads nowhere.
     async fn seed_station(&self, track_id: &str) -> Result<(String, Vec<Track>)> {
         let limit = STATION.to_string();
         let answered = self
             .post(
                 "/me/stations/continuous",
-                &[("with", "tracks"), ("limit[results:tracks]", &limit)],
+                &[
+                    ("with", "tracks"),
+                    ("limit[results:tracks]", &limit),
+                    ("include[songs]", "artists,albums"),
+                ],
                 Some(serde_json::json!({
                     "data": [{ "id": track_id, "type": "songs" }]
                 })),
@@ -605,7 +611,7 @@ impl AppleClient {
         let answered = self
             .post(
                 &format!("/me/stations/next-tracks/{station}"),
-                &[("limit", &limit)],
+                &[("limit", &limit), ("include[songs]", "artists,albums")],
                 None,
             )
             .await?;
