@@ -11,7 +11,7 @@
 
 ### A native music streaming client, built with Rust and GPUI
 
-Stream **Apple Music, Spotify, YouTube Music, Deezer, Subsonic/Navidrome** and play local files all in one **native** app
+Stream from your favorite services and play local files — all in one **native** app.
 </div>
 
 <div align="center">
