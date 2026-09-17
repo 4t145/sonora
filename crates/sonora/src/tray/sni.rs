@@ -1,5 +1,5 @@
 use ksni::blocking::{Handle, TrayMethods as _};
-use ksni::menu::{MenuItem, StandardItem};
+use ksni::menu::{CheckmarkItem, MenuItem, StandardItem};
 use ksni::{Category, ToolTip};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -22,7 +22,7 @@ impl Icon {
                 let image = image.into_rgba8();
                 let (width, height) = image.dimensions();
                 let mut data = image.into_raw();
-                for pixel in data.chunks_exact_mut(4) {
+                for pixel in data.as_chunks_mut::<4>().0 {
                     pixel.rotate_right(1);
                 }
                 vec![ksni::Icon {
@@ -74,6 +74,16 @@ impl Item {
     fn entry(&self, label: &str, event: Event) -> MenuItem<Self> {
         StandardItem {
             label: label.to_owned(),
+            activate: Box::new(move |this: &mut Self| this.send(event)),
+            ..Default::default()
+        }
+        .into()
+    }
+
+    fn checkmark(&self, label: &str, checked: bool, event: Event) -> MenuItem<Self> {
+        CheckmarkItem {
+            label: label.to_owned(),
+            checked,
             activate: Box::new(move |this: &mut Self| this.send(event)),
             ..Default::default()
         }
@@ -139,6 +149,9 @@ impl ksni::Tray for Item {
             self.entry(&shown.toggle, Event::Toggle),
             self.entry(&shown.previous, Event::Previous),
             self.entry(&shown.next, Event::Next),
+            MenuItem::Separator,
+            self.checkmark(&shown.shuffle, shown.shuffle_on, Event::Shuffle),
+            self.checkmark(&shown.repeat, shown.repeat_on, Event::Repeat),
             MenuItem::Separator,
             self.entry(&shown.show, Event::Show),
             self.entry(&shown.quit, Event::Quit),

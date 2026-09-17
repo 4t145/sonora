@@ -836,7 +836,6 @@ toast-tags-saved = Zapisano tagi „{ $name }”
 toast-tags-failed = Nie udało się zapisać tagów
 
 nav-pin = Przypnij
-toast-library-pin-limit = Osiągnięto limit przypięć Spotify. Najpierw odepnij inny element.
 toast-library-pin-failed = Nie udało się zmienić przypięcia w Spotify.
 nav-nothing-pinned = Tu jest pusto
 nav-pins-alphabetical = Alfabetycznie

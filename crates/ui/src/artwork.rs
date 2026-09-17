@@ -208,7 +208,7 @@ fn artwork_frame(mut image: RgbaImage, edge: u32) -> RgbaImage {
 }
 
 fn bgra(image: &mut RgbaImage) {
-    for pixel in image.chunks_exact_mut(4) {
+    for pixel in image.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
 }

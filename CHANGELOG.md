@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Apple Music similar tracks link to their artist and album again.
+- An Apple Music library song whose catalog copy Apple has pulled is shown as unavailable
+  instead of failing when played.
+- Pinning an Apple Music album, artist or playlist to the sidebar works again. The pin is kept
+  by Sonora, since Apple Music has no pins of its own.
+- A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
+  sidebar can hold as many pins as you like.
+
 ## [0.37.0] - 2026-09-17
 
 ### Added

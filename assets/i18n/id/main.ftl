@@ -677,7 +677,6 @@ toast-sign-in-to-play = { $name } hanya dapat diputar untuk pendengar yang sudah
 toast-track-unplayable = { $name } tidak dapat diputar
 toast-library-add-failed = { $name } tidak dapat ditambahkan ke koleksi Anda
 toast-library-remove-failed = { $name } tidak dapat dihapus dari koleksi Anda
-toast-library-pin-limit = Batas sematan Spotify telah tercapai. Lepas sematan item lain terlebih dahulu.
 toast-library-pin-failed = Gagal memperbarui sematan di Spotify.
 
 # lyrics

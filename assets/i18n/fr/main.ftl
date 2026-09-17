@@ -746,7 +746,6 @@ tags-comment = Commentaire
 toast-tags-saved = Tags de { $name } enregistrés
 toast-tags-failed = Les tags n’ont pas pu être enregistrés
 nav-pin = Épingler
-toast-library-pin-limit = La limite d'épingles de Spotify est atteinte. Détachez d'abord un autre élément.
 toast-library-pin-failed = Impossible de mettre à jour l'épingle dans Spotify.
 nav-nothing-pinned = Rien ici
 nav-pins-alphabetical = Alphabétique

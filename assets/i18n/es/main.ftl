@@ -726,7 +726,6 @@ toast-tags-saved = Se guardaron las etiquetas de { $name }
 toast-tags-failed = No se pudieron guardar las etiquetas
 
 nav-pin = Fijar
-toast-library-pin-limit = Se alcanzó el límite de elementos fijados de Spotify. Deja de fijar otro para hacer espacio.
 toast-library-pin-failed = No se pudo actualizar el elemento fijado en Spotify.
 nav-nothing-pinned = No hay nada aquí
 nav-pins-alphabetical = Alfabético

@@ -60,6 +60,7 @@ impl LocalProvider {
                 radio: false,
                 playcounts: false,
                 library: false,
+                pins: false,
             },
         })
     }
