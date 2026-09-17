@@ -444,6 +444,7 @@ month-11 = nov.
 month-12 = déc.
 
 # settings
+settings-search = Rechercher dans les paramètres
 settings-tab-general = Général
 settings-tab-appearance = Apparence
 settings-tab-playback = Lecture

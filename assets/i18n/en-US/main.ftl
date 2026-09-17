@@ -474,6 +474,7 @@ month-11 = Nov
 month-12 = Dec
 
 # settings
+settings-search = Search settings
 settings-tab-general = General
 settings-tab-appearance = Appearance
 settings-tab-playback = Playback

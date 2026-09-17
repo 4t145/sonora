@@ -498,6 +498,7 @@ month-11 = ноя.
 month-12 = дек.
 
 # settings
+settings-search = Поиск по настройкам
 settings-tab-general = Общие
 settings-tab-appearance = Внешний вид
 settings-tab-playback = Воспроизведение

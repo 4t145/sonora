@@ -500,6 +500,7 @@ month-11 = lis
 month-12 = gru
 
 # settings
+settings-search = Szukaj w ustawieniach
 settings-tab-general = Ogólne
 settings-tab-appearance = Wygląd
 settings-tab-playback = Odtwarzanie

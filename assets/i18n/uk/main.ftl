@@ -498,6 +498,7 @@ month-11 = лист.
 month-12 = груд.
 
 # settings
+settings-search = Пошук у налаштуваннях
 settings-tab-general = Загальні
 settings-tab-appearance = Вигляд
 settings-tab-playback = Відтворення

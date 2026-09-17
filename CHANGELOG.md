@@ -17,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
   the album or playlist, in the order you added them. The queue panel lists them under Next in
   queue, above what the album or playlist plays next.
+- Settings is one page. A search box at the top finds a setting in any category, and the
+  categories sit in a bar at the bottom of the page instead of under Settings in the sidebar.
 
 ### Fixed
 

@@ -443,6 +443,7 @@ month-11 = Nov
 month-12 = Des
 
 # settings
+settings-search = Cari pengaturan
 settings-tab-general = Umum
 settings-tab-appearance = Tampilan
 settings-tab-playback = Pemutaran

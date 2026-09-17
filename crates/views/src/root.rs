@@ -16,6 +16,7 @@ use ui::{ActiveTheme as _, Dismiss, Look, Stillness, Theme, ThemeKind, clear_lis
 
 use crate::chrome::{TitleBar, TitleBarEvent, TitleBarOptions, Toolbar, Tooled};
 use crate::screens::search::SearchView;
+use crate::screens::settings::SettingsHeader;
 use crate::shared::tracks::{LIBRARY_COLUMNS, album_columns};
 use crate::shells::Shell;
 use crate::shells::workspace::Workspace;
@@ -44,6 +45,7 @@ struct Screens {
     genre: Option<Entity<GenreView>>,
     genre_detail: Option<Entity<GenreDetails>>,
     settings: Entity<SettingsView>,
+    settings_header: Entity<SettingsHeader>,
 }
 
 struct Shells {
@@ -143,6 +145,7 @@ impl Root {
         let search = cx.new(|cx| SearchView::new(queries, genres.clone(), playback.clone(), cx));
 
         let settings = cx.new(|cx| SettingsView::new(session.clone(), playback.clone(), cx));
+        let settings_header = cx.new(|cx| SettingsHeader::new(settings.clone(), cx));
 
         let song_detail = cx.new(|cx| SongDetail::new(session.clone(), io.clone(), cx));
         let song = cx.new(|cx| SongView::new(song_detail.clone(), playback.clone(), cx));
@@ -252,6 +255,7 @@ impl Root {
                 genre: None,
                 genre_detail: None,
                 settings,
+                settings_header,
             },
             _adaptive: adaptive,
             background: None,
@@ -443,6 +447,7 @@ impl Root {
         });
 
         let mut toolbar = None;
+        let mut header = None;
 
         let content: AnyView = match destination {
             Destination::Fullscreen => return,
@@ -508,15 +513,16 @@ impl Root {
                 self.screens
                     .settings
                     .update(cx, |settings, cx| settings.select(tab, cx));
+                header = Some(self.screens.settings_header.clone().into());
                 self.screens.settings.clone().into()
             }
         };
 
         self.toolbar = toolbar;
 
-        self.shells
-            .workspace
-            .update(cx, |workspace, cx| workspace.set_content(content, cx));
+        self.shells.workspace.update(cx, |workspace, cx| {
+            workspace.set_content(content, header, cx)
+        });
         cx.notify();
     }
 }

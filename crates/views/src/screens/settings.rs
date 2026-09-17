@@ -5,8 +5,10 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::shared::confirm::{Confirm, Kind};
+use crate::shared::effects;
 use crate::shared::local;
 use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_query};
+use crate::shared::text;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, MouseUpEvent, Pixels, Render, SharedString, Task,
     Window, div, px,
@@ -17,19 +19,37 @@ use music::drm::Origin;
 use music::equalizer::{self, Preset};
 use music::scrobble::{Link, Secret};
 use music::{AccountChoice, SignIn, SignInPrompt, WritingSystem};
-use router::{NavEntry, Screen, SettingsTab};
+use router::{Destination, NavEntry, Screen, SettingsTab, navigate};
 use state::{
     AppSettings, CdmState, DiscordName, Drm, Failure, FullscreenControlsAutohide, Io, Playback,
     SYSTEM_FONT, ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
 };
-use ui::{ActiveTheme as _, Scrollbar, Scroller, eyebrow};
+use ui::{ActiveTheme as _, Scrollbar, Scroller, eyebrow, snapped};
 use ui::{
     Avatar, Button, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
     MIN_FONT, MIN_LYRICS_SCALE, MenuItem, Modal, Pace, Picker, Popovers, Rounding, Saver, Scrubber,
-    ScrubberState, Separator, Skeleton, Stillness, Switch, Text, Theme, ThemeKind,
+    ScrubberState, Separator, Skeleton, Stillness, Switch, TabBar, Text, Theme, ThemeKind, Vacancy,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// How wide the settings column, the search field and the category bar grow at most.
+const WIDTH: Pixels = px(640.);
+/// How much a query found in a setting's title counts over one found in its detail.
+const TITLE_WEIGHT: u32 = 2;
+/// How far the rows are blurred where they pass under the header. One blur pass serves every
+/// strip, so this is also the widest the haze gets. The renderer cuts a kernel off at 24 taps
+/// on a quarter-resolution frame, so past about 32px a wider radius only flattens the curve.
+const HEADER_BLUR: Pixels = px(1.);
+/// How many strips the blur fades in through on its way up from the rows. They cost nothing
+/// beyond a quad each, so more of them only make the crossfade smoother.
+const HEADER_BLUR_STRIPS: usize = 64;
+/// The curve of the crossfade: the exponent on a strip's distance up from the bottom edge. One
+/// is linear, above one starts slower, below one starts faster. Kept well below one so the
+/// haze reaches working strength quickly and only the bottom edge reads as clear.
+const HEADER_HAZE: f32 = 0.4;
+/// How far past the header the rows keep dissolving, so the handoff under the blur has
+/// no hard edge where sharp content emerges from the haze.
+const HEADER_FADE_TAIL: Pixels = px(48.);
 const LICENSE_URL: &str = "https://www.gnu.org/licenses/gpl-3.0.html";
 const SOURCE_URL: &str = "https://github.com/sonorahq/sonora";
 
@@ -65,15 +85,35 @@ const SLEEP_LAST: usize =
     SLEEP_MAX_MINUTES as usize + SLEEP_MAGNETS.len() * (SLEEP_MAGNET_WEIGHT - 1) + 1;
 
 enum Row {
-    Item(AnyElement),
+    Item(Setting),
     Title(AnyElement),
 }
 
 impl Row {
     fn into_element(self) -> AnyElement {
         match self {
-            Self::Item(element) | Self::Title(element) => element,
+            Self::Item(setting) => setting.element,
+            Self::Title(element) => element,
         }
+    }
+}
+
+/// One setting on the page: the row that draws it, and the title and detail a search is
+/// matched against.
+struct Setting {
+    title: SharedString,
+    detail: SharedString,
+    element: AnyElement,
+}
+
+impl Setting {
+    /// How well the setting answers `query`, or `None` when it does not. The query may span
+    /// the title and the detail, and a hit in the title alone counts on top.
+    fn score(&self, query: &str) -> Option<u32> {
+        let both = format!("{} {}", self.title, self.detail);
+        let whole = text::fuzzy(&both, query)?;
+        let titled = text::fuzzy(&self.title, query).unwrap_or(0) * TITLE_WEIGHT;
+        Some(whole + titled)
     }
 }
 
@@ -156,6 +196,14 @@ pub struct SettingsView {
     drm: Entity<Drm>,
     settings: Entity<AppSettings>,
     tab: SettingsTab,
+    search: Entity<Input>,
+    /// The search field's text, trimmed. Empty means the page shows one category.
+    query: String,
+    /// How tall the header floating over the page measured last, so the rows start beneath it.
+    header_height: Pixels,
+    /// Whether the header has measured itself at least once. Until then the height is a
+    /// zero stand-in, and the page stays hidden rather than flashing unpadded for a frame.
+    header_measured: bool,
     scrollbar: Entity<Scrollbar>,
     opacity: ScrubberState,
     sleep: ScrubberState,
@@ -209,6 +257,16 @@ impl SettingsView {
             cx.notify();
         })
         .detach();
+        let search = cx.new(|cx| {
+            Input::new("settings-search", cx)
+                .icon("icons/search.svg")
+                .clearable()
+        });
+        cx.observe(&search, |this, input, cx| {
+            this.query = input.read(cx).text().trim().to_owned();
+            cx.notify();
+        })
+        .detach();
 
         Self {
             session,
@@ -216,6 +274,10 @@ impl SettingsView {
             drm,
             settings,
             tab: SettingsTab::General,
+            search,
+            query: String::new(),
+            header_height: Pixels::ZERO,
+            header_measured: false,
             scrollbar: cx.new(|_| Scrollbar::new(ScrollHandle::new()).watching(me)),
             opacity: ScrubberState::new("opacity"),
             sleep: ScrubberState::new("sleep"),
@@ -243,97 +305,48 @@ impl SettingsView {
         }
     }
 
+    /// Shows one category and ends any search, so a route always lands on a plain page.
     pub(crate) fn select(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
         self.tab = tab;
         self.popovers.close();
+        if !self.search.read(cx).text().is_empty() {
+            self.search.update(cx, |input, cx| input.set_text("", cx));
+        }
         cx.notify();
     }
 
-    fn panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows: Vec<Row> = match self.tab {
-            SettingsTab::General => vec![
-                Row::Item(self.startup_row(cx).into_any_element()),
-                Row::Item(self.entries_row(cx).into_any_element()),
-                Row::Item(self.language_row(cx).into_any_element()),
-                self.title("settings-group-window", cx),
-                Row::Item(self.tray_row(cx).into_any_element()),
-                self.title("settings-group-accounts", cx),
-                Row::Item(self.accounts_row(cx).into_any_element()),
-                self.title("settings-group-library", cx),
-                Row::Item(self.local_folder_row(cx).into_any_element()),
-            ],
-            SettingsTab::Appearance => vec![
-                Row::Item(self.theme_row(cx).into_any_element()),
-                Row::Item(self.adaptive_row(cx).into_any_element()),
-                Row::Item(self.visualizer_row(cx).into_any_element()),
-                Row::Item(self.icons_row(cx).into_any_element()),
-                Row::Item(self.opacity_row(cx).into_any_element()),
-                Row::Item(self.blur_row(cx).into_any_element()),
-                Row::Item(self.corners_row(cx).into_any_element()),
-                Row::Item(self.fullscreen_controls_autohide_row(cx).into_any_element()),
-                self.title("settings-group-lyrics", cx),
-                Row::Item(self.panel_lyrics_size_row(cx).into_any_element()),
-                Row::Item(self.fullscreen_lyrics_size_row(cx).into_any_element()),
-                Row::Item(self.blur_lyrics_row(cx).into_any_element()),
-                self.title("settings-group-text", cx),
-                Row::Item(self.font_row(cx).into_any_element()),
-                Row::Item(self.typeface_row(cx).into_any_element()),
-                self.title("settings-group-motion", cx),
-                Row::Item(self.motion_row(cx).into_any_element()),
-                Row::Item(self.pace_row(cx).into_any_element()),
-                Row::Item(self.saver_row(cx).into_any_element()),
-            ]
-            .into_iter()
-            .chain(self.decoration_rows(cx))
-            .chain([
-                self.title("settings-advanced", cx),
-                Row::Item(self.adaptive_menu_row(cx).into_any_element()),
-            ])
-            .collect(),
-            SettingsTab::Playback => {
-                let mut rows = vec![
-                    Row::Item(self.playback_row(cx).into_any_element()),
-                    Row::Item(self.gapless_row(cx).into_any_element()),
-                    Row::Item(self.sleep_row(cx).into_any_element()),
-                ];
-                if self.drm.read(cx).shown(cx) {
-                    rows.push(Row::Item(self.widevine_row(cx).into_any_element()));
-                }
-                rows.extend([
-                    self.title("settings-group-equalizer", cx),
-                    Row::Item(self.equalizer_row(cx).into_any_element()),
-                ]);
-                if self.playback.read(cx).equalizer() {
-                    rows.push(Row::Item(self.equalizer_preset_row(cx).into_any_element()));
-                    rows.push(Row::Item(self.equalizer_bands_row(cx).into_any_element()));
-                }
-                rows.extend([
-                    self.title("settings-group-lyrics", cx),
-                    Row::Item(self.lyrics_providers_row(cx).into_any_element()),
-                    Row::Item(self.karaoke_lyrics_row(cx).into_any_element()),
-                    Row::Item(self.romanized_lyrics_row(cx).into_any_element()),
-                ]);
-                rows
-            }
-            SettingsTab::Privacy => vec![
-                self.title("settings-group-lyrics", cx),
-                Row::Item(self.lyrics_for_local_files_row(cx).into_any_element()),
-            ],
-            SettingsTab::Integrations => self
-                .discord_rows(cx)
-                .into_iter()
-                .chain([self.title("settings-group-scrobbling", cx)])
-                .chain(self.scrobble_rows(cx))
-                .collect(),
-            SettingsTab::About => vec![
-                Row::Item(self.version_row(cx).into_any_element()),
-                Row::Item(self.updates_row(cx).into_any_element()),
-                Row::Item(self.log_row(cx).into_any_element()),
-                self.title("settings-group-project", cx),
-                Row::Item(self.license_row(cx).into_any_element()),
-                Row::Item(self.source_row(cx).into_any_element()),
-            ],
+    fn searching(&self) -> bool {
+        !self.query.is_empty()
+    }
+
+    /// Takes the header's measured height. The header floats over the page, so the rows pad
+    /// themselves by this much and scroll beneath it, and the scrollbar starts below it so
+    /// the bar never slides under the blur.
+    fn set_header_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
+        if self.header_height == height {
+            return;
+        }
+        self.header_height = height;
+        self.header_measured = true;
+        self.scrollbar.update(cx, |bar, cx| {
+            bar.set_track_top(height, cx);
+        });
+        cx.notify();
+    }
+
+    /// The rows of the page: the current category's, or, while a search is on, every
+    /// category's that answers it, best match first and without the group titles.
+    fn panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let rows = match self.searching() {
+            false => self.rows(self.tab, cx),
+            true => self.found(cx),
         };
+        if rows.is_empty() {
+            return Vacancy::new(t!("search-no-matches"))
+                .icon("icons/search.svg")
+                .py_6()
+                .into_any_element();
+        }
 
         let mut panel = div().flex().flex_col();
         let mut parted = false;
@@ -345,7 +358,111 @@ impl SettingsView {
             parted = !titled;
             panel = panel.child(row.into_element());
         }
-        panel
+        panel.into_any_element()
+    }
+
+    /// Every setting of every category that answers the query, best match first. Ties keep
+    /// the order of the categories.
+    fn found(&self, cx: &mut Context<Self>) -> Vec<Row> {
+        let mut hits: Vec<(u32, Setting)> = SettingsTab::ALL
+            .into_iter()
+            .flat_map(|tab| self.rows(tab, cx))
+            .filter_map(|row| match row {
+                Row::Item(setting) => setting.score(&self.query).map(|score| (score, setting)),
+                Row::Title(_) => None,
+            })
+            .collect();
+        hits.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        hits.into_iter()
+            .map(|(_, setting)| Row::Item(setting))
+            .collect()
+    }
+
+    fn rows(&self, tab: SettingsTab, cx: &mut Context<Self>) -> Vec<Row> {
+        match tab {
+            SettingsTab::General => vec![
+                Row::Item(self.startup_row(cx)),
+                Row::Item(self.entries_row(cx)),
+                Row::Item(self.language_row(cx)),
+                self.title("settings-group-window", cx),
+                Row::Item(self.tray_row(cx)),
+                self.title("settings-group-accounts", cx),
+                Row::Item(self.accounts_row(cx)),
+                self.title("settings-group-library", cx),
+                Row::Item(self.local_folder_row(cx)),
+            ],
+            SettingsTab::Appearance => vec![
+                Row::Item(self.theme_row(cx)),
+                Row::Item(self.adaptive_row(cx)),
+                Row::Item(self.visualizer_row(cx)),
+                Row::Item(self.icons_row(cx)),
+                Row::Item(self.opacity_row(cx)),
+                Row::Item(self.blur_row(cx)),
+                Row::Item(self.corners_row(cx)),
+                Row::Item(self.fullscreen_controls_autohide_row(cx)),
+                self.title("settings-group-lyrics", cx),
+                Row::Item(self.panel_lyrics_size_row(cx)),
+                Row::Item(self.fullscreen_lyrics_size_row(cx)),
+                Row::Item(self.blur_lyrics_row(cx)),
+                self.title("settings-group-text", cx),
+                Row::Item(self.font_row(cx)),
+                Row::Item(self.typeface_row(cx)),
+                self.title("settings-group-motion", cx),
+                Row::Item(self.motion_row(cx)),
+                Row::Item(self.pace_row(cx)),
+                Row::Item(self.saver_row(cx)),
+            ]
+            .into_iter()
+            .chain(self.decoration_rows(cx))
+            .chain([
+                self.title("settings-advanced", cx),
+                Row::Item(self.adaptive_menu_row(cx)),
+            ])
+            .collect(),
+            SettingsTab::Playback => {
+                let mut rows = vec![
+                    Row::Item(self.playback_row(cx)),
+                    Row::Item(self.gapless_row(cx)),
+                    Row::Item(self.sleep_row(cx)),
+                ];
+                if self.drm.read(cx).shown(cx) {
+                    rows.push(Row::Item(self.widevine_row(cx)));
+                }
+                rows.extend([
+                    self.title("settings-group-equalizer", cx),
+                    Row::Item(self.equalizer_row(cx)),
+                ]);
+                if self.playback.read(cx).equalizer() {
+                    rows.push(Row::Item(self.equalizer_preset_row(cx)));
+                    rows.push(Row::Item(self.equalizer_bands_row(cx)));
+                }
+                rows.extend([
+                    self.title("settings-group-lyrics", cx),
+                    Row::Item(self.lyrics_providers_row(cx)),
+                    Row::Item(self.karaoke_lyrics_row(cx)),
+                    Row::Item(self.romanized_lyrics_row(cx)),
+                ]);
+                rows
+            }
+            SettingsTab::Privacy => vec![
+                self.title("settings-group-lyrics", cx),
+                Row::Item(self.lyrics_for_local_files_row(cx)),
+            ],
+            SettingsTab::Integrations => self
+                .discord_rows(cx)
+                .into_iter()
+                .chain([self.title("settings-group-scrobbling", cx)])
+                .chain(self.scrobble_rows(cx))
+                .collect(),
+            SettingsTab::About => vec![
+                Row::Item(self.version_row(cx)),
+                Row::Item(self.updates_row(cx)),
+                Row::Item(self.log_row(cx)),
+                self.title("settings-group-project", cx),
+                Row::Item(self.license_row(cx)),
+                Row::Item(self.source_row(cx)),
+            ],
+        }
     }
 
     #[allow(
@@ -356,23 +473,23 @@ impl SettingsView {
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let mut rows = vec![
             self.title("settings-group-window-style", cx),
-            Row::Item(self.server_side_decorations_row(cx).into_any_element()),
-            Row::Item(self.side_row(cx).into_any_element()),
-            Row::Item(self.traffic_light_controls_row(cx).into_any_element()),
+            Row::Item(self.server_side_decorations_row(cx)),
+            Row::Item(self.side_row(cx)),
+            Row::Item(self.traffic_light_controls_row(cx)),
         ];
         // Server-side decorations put the compositor in charge of the frame, so window
         // rounding is only ever this app's call with client-side ones.
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         if !self.settings.read(cx).server_side_decorations() {
-            rows.push(Row::Item(self.window_rounding_row(cx).into_any_element()));
+            rows.push(Row::Item(self.window_rounding_row(cx)));
         }
         #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "macos")))]
         let rows = vec![
             self.title("settings-group-title-bar", cx),
-            Row::Item(self.decorations_row(cx).into_any_element()),
-            Row::Item(self.side_row(cx).into_any_element()),
-            Row::Item(self.traffic_light_controls_row(cx).into_any_element()),
-            Row::Item(self.window_rounding_row(cx).into_any_element()),
+            Row::Item(self.decorations_row(cx)),
+            Row::Item(self.side_row(cx)),
+            Row::Item(self.traffic_light_controls_row(cx)),
+            Row::Item(self.window_rounding_row(cx)),
         ];
         #[cfg(target_os = "macos")]
         let rows = Vec::<Row>::new();
@@ -396,7 +513,7 @@ impl SettingsView {
         }
     }
 
-    fn startup_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn startup_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -424,7 +541,7 @@ impl SettingsView {
         )
     }
 
-    fn entries_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn entries_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -454,7 +571,7 @@ impl SettingsView {
         )
     }
 
-    fn language_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn language_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -537,7 +654,7 @@ impl SettingsView {
             .collect()
     }
 
-    fn typeface_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn typeface_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -689,7 +806,7 @@ impl SettingsView {
         )
     }
 
-    fn corners_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn corners_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -720,7 +837,7 @@ impl SettingsView {
         )
     }
 
-    fn blur_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn blur_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -746,7 +863,7 @@ impl SettingsView {
         )
     }
 
-    fn font_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn font_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -795,7 +912,7 @@ impl SettingsView {
     }
 
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    fn server_side_decorations_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn server_side_decorations_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -819,7 +936,7 @@ impl SettingsView {
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "macos")))]
-    fn decorations_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn decorations_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -840,7 +957,7 @@ impl SettingsView {
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn traffic_light_controls_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn traffic_light_controls_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -862,7 +979,7 @@ impl SettingsView {
     }
 
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-    fn window_rounding_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn window_rounding_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -891,7 +1008,7 @@ impl SettingsView {
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn side_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn side_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -961,7 +1078,7 @@ impl SettingsView {
             )
     }
 
-    fn theme_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn theme_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1019,7 +1136,7 @@ impl SettingsView {
         )
     }
 
-    fn icons_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn icons_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1048,7 +1165,7 @@ impl SettingsView {
         )
     }
 
-    fn opacity_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn opacity_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1106,7 +1223,7 @@ impl SettingsView {
         )
     }
 
-    fn adaptive_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn adaptive_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1144,7 +1261,7 @@ impl SettingsView {
         )
     }
 
-    fn visualizer_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn visualizer_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1164,7 +1281,7 @@ impl SettingsView {
         )
     }
 
-    fn fullscreen_controls_autohide_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn fullscreen_controls_autohide_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1196,7 +1313,7 @@ impl SettingsView {
         )
     }
 
-    fn motion_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn motion_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1224,7 +1341,7 @@ impl SettingsView {
         )
     }
 
-    fn pace_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn pace_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1251,7 +1368,7 @@ impl SettingsView {
         )
     }
 
-    fn saver_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn saver_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1278,7 +1395,7 @@ impl SettingsView {
         )
     }
 
-    fn playback_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn playback_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1298,7 +1415,7 @@ impl SettingsView {
         )
     }
 
-    fn adaptive_menu_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn adaptive_menu_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1318,7 +1435,7 @@ impl SettingsView {
         )
     }
 
-    fn tray_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn tray_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1338,7 +1455,7 @@ impl SettingsView {
         )
     }
 
-    fn gapless_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn gapless_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1358,7 +1475,7 @@ impl SettingsView {
         )
     }
 
-    fn equalizer_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn equalizer_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1380,7 +1497,7 @@ impl SettingsView {
 
     /// The preset picker. It reads the current curve back, so a band moved by hand shows as
     /// Custom and a curve that happens to match a preset shows that preset's name.
-    fn equalizer_preset_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn equalizer_preset_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1416,7 +1533,7 @@ impl SettingsView {
     /// One vertical slider per band with its gain above and its frequency below. Shown only
     /// while the equalizer is on. Dragging writes straight through to the engines, so the
     /// change is heard as it is made.
-    fn equalizer_bands_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn equalizer_bands_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let gains = self.playback.read(cx).equalizer_gains();
         let span = equalizer::MAX_GAIN - equalizer::MIN_GAIN;
@@ -1464,10 +1581,19 @@ impl SettingsView {
                 )
         });
 
-        div().flex().w_full().py_3().children(columns)
+        Setting {
+            title: t!("settings-group-equalizer"),
+            detail: SharedString::default(),
+            element: div()
+                .flex()
+                .w_full()
+                .py_3()
+                .children(columns)
+                .into_any_element(),
+        }
     }
 
-    fn sleep_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn sleep_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1561,7 +1687,7 @@ impl SettingsView {
     /// tracks need the module and this build has a host for one. Sonora uses a browser's copy
     /// when one is here and otherwise offers Google's download, so the row says where that
     /// stands and offers the download by hand when the user said no or nothing asked yet.
-    fn widevine_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn widevine_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1632,7 +1758,7 @@ impl SettingsView {
         )
     }
 
-    fn updates_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn updates_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1654,7 +1780,7 @@ impl SettingsView {
 
     /// The About row that opens the current log file in whatever the system reads text with.
     /// The button is disabled when the platform names no state or cache folder to log into.
-    fn log_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn log_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let path = state::log_file();
 
@@ -1678,7 +1804,7 @@ impl SettingsView {
         )
     }
 
-    fn panel_lyrics_size_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn panel_lyrics_size_row(&self, cx: &mut Context<Self>) -> Setting {
         let scale = self.settings.read(cx).panel_lyrics_scale();
 
         self.lyrics_size_row(
@@ -1691,7 +1817,7 @@ impl SettingsView {
         )
     }
 
-    fn fullscreen_lyrics_size_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn fullscreen_lyrics_size_row(&self, cx: &mut Context<Self>) -> Setting {
         let scale = self.settings.read(cx).fullscreen_lyrics_scale();
 
         self.lyrics_size_row(
@@ -1712,7 +1838,7 @@ impl SettingsView {
         scale: f32,
         apply: fn(&mut AppSettings, f32, &mut Context<AppSettings>),
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1755,21 +1881,19 @@ impl SettingsView {
     fn discord_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
         let mut rows = vec![
             self.title("settings-group-discord", cx),
-            Row::Item(self.discord_row(cx).into_any_element()),
+            Row::Item(self.discord_row(cx)),
         ];
         if self.settings.read(cx).discord_presence() {
-            rows.push(Row::Item(self.discord_name_row(cx).into_any_element()));
-            rows.push(Row::Item(
-                self.discord_show_paused_row(cx).into_any_element(),
-            ));
-            rows.push(Row::Item(self.discord_badge_row(cx).into_any_element()));
-            rows.push(Row::Item(self.discord_anonymous_row(cx).into_any_element()));
-            rows.push(Row::Item(self.discord_buttons_row(cx).into_any_element()));
+            rows.push(Row::Item(self.discord_name_row(cx)));
+            rows.push(Row::Item(self.discord_show_paused_row(cx)));
+            rows.push(Row::Item(self.discord_badge_row(cx)));
+            rows.push(Row::Item(self.discord_anonymous_row(cx)));
+            rows.push(Row::Item(self.discord_buttons_row(cx)));
         }
         rows
     }
 
-    fn discord_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1789,7 +1913,7 @@ impl SettingsView {
         )
     }
 
-    fn discord_name_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_name_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1820,7 +1944,7 @@ impl SettingsView {
         )
     }
 
-    fn discord_show_paused_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_show_paused_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1840,7 +1964,7 @@ impl SettingsView {
         )
     }
 
-    fn discord_badge_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_badge_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1860,7 +1984,7 @@ impl SettingsView {
         )
     }
 
-    fn discord_anonymous_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_anonymous_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1881,7 +2005,7 @@ impl SettingsView {
         )
     }
 
-    fn discord_buttons_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn discord_buttons_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1929,7 +2053,7 @@ impl SettingsView {
         )
     }
 
-    fn lyrics_for_local_files_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn lyrics_for_local_files_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1950,7 +2074,7 @@ impl SettingsView {
         )
     }
 
-    fn lyrics_providers_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn lyrics_providers_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let settings = self.settings.read(cx);
         let providers = [
@@ -1991,7 +2115,7 @@ impl SettingsView {
         )
     }
 
-    fn karaoke_lyrics_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn karaoke_lyrics_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -2011,7 +2135,7 @@ impl SettingsView {
         )
     }
 
-    fn blur_lyrics_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn blur_lyrics_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -2031,7 +2155,7 @@ impl SettingsView {
         )
     }
 
-    fn romanized_lyrics_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn romanized_lyrics_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -2078,7 +2202,7 @@ impl SettingsView {
         )
     }
 
-    fn local_folder_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn local_folder_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -2098,7 +2222,11 @@ impl SettingsView {
                 .on_click(cx.listener(|this, _, _, cx| this.rescan_local_folder(cx)))
         });
 
-        let header = self.row(
+        let Setting {
+            title,
+            detail,
+            element: header,
+        } = self.row(
             t!("settings-local-folder"),
             match paths.is_empty() {
                 true => t!("settings-local-folder-empty"),
@@ -2114,21 +2242,26 @@ impl SettingsView {
                 .into_any_element(),
         );
 
-        div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(header)
-            .children((!paths.is_empty()).then(|| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .pb_2()
-                    .children(paths.into_iter().enumerate().map(|(index, path)| {
-                        Self::local_folder_item(index, path, muted, small, &mut *cx)
-                    }))
-            }))
+        let element =
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(header)
+                .children((!paths.is_empty()).then(|| {
+                    div().flex().flex_col().gap_1().pb_2().children(
+                        paths.into_iter().enumerate().map(|(index, path)| {
+                            Self::local_folder_item(index, path, muted, small, &mut *cx)
+                        }),
+                    )
+                }))
+                .into_any_element();
+
+        Setting {
+            title,
+            detail,
+            element,
+        }
     }
 
     fn local_folder_item(
@@ -2189,11 +2322,11 @@ impl SettingsView {
     fn scrobble_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
         let services = self.scrobbling.read(cx).rows().len();
         (0..services)
-            .map(|index| Row::Item(self.scrobble_row(index, cx).into_any_element()))
+            .map(|index| Row::Item(self.scrobble_row(index, cx)))
             .collect()
     }
 
-    fn scrobble_row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn scrobble_row(&self, index: usize, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -2406,7 +2539,7 @@ impl SettingsView {
         cx.notify();
     }
 
-    fn accounts_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn accounts_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let session = self.session.read(cx);
         let pending = session.is_pending();
@@ -2430,30 +2563,36 @@ impl SettingsView {
                 error: info.error,
             })
             .collect();
+        let names: Vec<&str> = accounts.iter().map(|account| account.name).collect();
         let mut cards = Vec::new();
         for account in accounts {
             cards.push(self.account_card(account, pending, cx).into_any_element());
         }
+        let title = t!("settings-accounts");
+        let detail = t!("settings-accounts-detail");
 
-        div()
+        let element = div()
             .flex()
             .flex_col()
             .gap_3()
             .py_3()
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(t!("settings-accounts"))
-                    .child(
-                        div()
-                            .text_color(theme.muted_foreground)
-                            .text_size(theme.text(Text::Small))
-                            .child(t!("settings-accounts-detail")),
-                    ),
+                div().flex().flex_col().gap_1().child(title.clone()).child(
+                    div()
+                        .text_color(theme.muted_foreground)
+                        .text_size(theme.text(Text::Small))
+                        .child(detail.clone()),
+                ),
             )
             .children(cards)
+            .into_any_element();
+
+        // the provider names are words too, so "spotify" finds the accounts
+        Setting {
+            title,
+            detail: format!("{detail} {}", names.join(" ")).into(),
+            element,
+        }
     }
 
     fn account_card(
@@ -2760,7 +2899,7 @@ impl SettingsView {
             }))
     }
 
-    fn version_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn version_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
 
         self.row(
@@ -2772,7 +2911,7 @@ impl SettingsView {
         )
     }
 
-    fn license_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn license_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
 
         self.row(
@@ -2790,7 +2929,7 @@ impl SettingsView {
         )
     }
 
-    fn source_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn source_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
 
         self.row(
@@ -2872,8 +3011,8 @@ impl SettingsView {
         muted: gpui::Hsla,
         small: Pixels,
         action: gpui::AnyElement,
-    ) -> impl IntoElement {
-        div()
+    ) -> Setting {
+        let element = div()
             .flex()
             .items_center()
             .justify_between()
@@ -2891,17 +3030,24 @@ impl SettingsView {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .child(title),
+                            .child(title.clone()),
                     )
                     .child(
                         div()
                             .min_w_0()
                             .text_color(muted)
                             .text_size(small)
-                            .child(detail),
+                            .child(detail.clone()),
                     ),
             )
             .child(div().flex_none().child(action))
+            .into_any_element();
+
+        Setting {
+            title,
+            detail,
+            element,
+        }
     }
 
     fn account_modal(
@@ -2967,7 +3113,9 @@ fn open_path(path: &Path) -> std::io::Result<()> {
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let in_appearance = self.tab == SettingsTab::Appearance;
+        let searching = self.searching();
+        // a search can list the typeface row from any category
+        let in_appearance = self.tab == SettingsTab::Appearance || searching;
         let picking_typefaces = self.popovers.shows(TYPEFACES);
         if (in_appearance || picking_typefaces) && self.installed.is_none() && !self.loading_fonts {
             self.loading_fonts = true;
@@ -3035,28 +3183,43 @@ impl Render for SettingsView {
             )
         });
 
+        let general = self.tab == SettingsTab::General && !searching;
+        let about = self.tab == SettingsTab::About && !searching;
+
         div()
             .relative()
             .size_full()
+            // the padding, the fade and the scrollbar all hang off the header's measured
+            // height, so the page sits out the first frame rather than snapping into place
+            .when(!self.header_measured, |this| this.invisible())
             .child(
                 Scroller::new("settings", &self.scrollbar)
                     .flex()
                     .flex_col()
                     .items_center()
+                    // the rows dissolve over the header's height as they scroll up beneath
+                    // it, the way the verse sheet fades its edges, so no sharp content ever
+                    // sits over the blur. The tail reaches past the header so the handoff
+                    // has no hard edge.
+                    .when(effects(), |this| {
+                        this.fade_edges(self.header_height + HEADER_FADE_TAIL, px(0.))
+                    })
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_6()
                             .w_full()
-                            .max_w(px(640.))
-                            .p_6()
-                            .when(self.tab == SettingsTab::General, |this| {
+                            .max_w(WIDTH)
+                            .px_6()
+                            .pb_6()
+                            .pt(self.header_height)
+                            .when(general, |this| {
                                 this.child(self.profile(cx))
                                     .child(Separator::horizontal().w_full())
                             })
                             .child(self.panel(cx))
-                            .when(self.tab == SettingsTab::About, |this| {
+                            .when(about, |this| {
                                 this.child(self.team(cx)).child(self.notice(cx))
                             }),
                     ),
@@ -3073,6 +3236,116 @@ impl Render for SettingsView {
             .when_some(self.scrobble_prompt, |this, service| {
                 this.child(self.scrobble_modal(service, cx).into_any_element())
             })
+    }
+}
+
+/// The search field and the category bar over the settings page. `Workspace` floats it over
+/// the page, outside the transition, so a category switch fades the rows and nothing else, and
+/// the rows scroll beneath it. It reads the page's state, writes back through
+/// `SettingsView::select`, and reports its height so the page can start below it.
+pub struct SettingsHeader {
+    view: Entity<SettingsView>,
+    /// The category clicked last, kept free of the hover shade until the pointer leaves it,
+    /// so the change of selection never flashes.
+    calm: Option<SettingsTab>,
+}
+
+impl SettingsHeader {
+    pub fn new(view: Entity<SettingsView>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&view, |_, _, cx| cx.notify()).detach();
+        Self { view, calm: None }
+    }
+}
+
+impl Render for SettingsHeader {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let page = self.view.read(cx);
+        let search = page.search.clone();
+        let chosen = page.tab;
+        let searching = page.searching();
+        let height = page.header_height;
+        let calm = self.calm;
+        let view = self.view.clone();
+
+        // a search lights no category, since its rows come from all of them, and picking
+        // one ends the search
+        let categories =
+            TabBar::new("settings-categories")
+                .max_w_full()
+                .items(SettingsTab::ALL.map(|tab| {
+                    Button::new(tab.id())
+                        .label(i18n::lookup(tab.key(), None))
+                        .small()
+                        .ghost()
+                        .selected(!searching && tab == chosen)
+                        .when(calm == Some(tab), Button::hoverless)
+                        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                            if !hovered && this.calm == Some(tab) {
+                                this.calm = None;
+                                cx.notify();
+                            }
+                        }))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.calm = Some(tab);
+                            this.view.update(cx, |view, cx| view.select(tab, cx));
+                            navigate(Destination::Settings(tab), cx);
+                        }))
+                }));
+
+        div()
+            .relative()
+            .flex()
+            .justify_center()
+            .px_6()
+            // the veil is absolute and takes the header's own size, so the last child, the
+            // column, is the one to measure
+            .on_children_prepainted(move |bounds, _, cx| {
+                let Some(height) = bounds.last().map(|bounds| bounds.size.height) else {
+                    return;
+                };
+                view.update(cx, |view, cx| view.set_header_height(height, cx));
+            })
+            .child(veil(cx.theme().background, height, window))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .max_w(WIDTH)
+                    .gap_2()
+                    .pt_6()
+                    .pb_6()
+                    .child(search)
+                    .child(div().flex().justify_center().child(categories)),
+            )
+    }
+}
+
+fn veil(background: gpui::Hsla, height: Pixels, window: &Window) -> impl IntoElement {
+    let edges: Vec<Pixels> = (0..=HEADER_BLUR_STRIPS)
+        .map(|edge| snapped(height * (edge as f32 / HEADER_BLUR_STRIPS as f32), window))
+        .collect();
+    let strips = edges.windows(2).enumerate().filter_map(|(strip, edge)| {
+        let cut = edge[1] - edge[0];
+        let up = 1. - (strip as f32 + 0.5) / HEADER_BLUR_STRIPS as f32;
+        (cut > Pixels::ZERO).then(|| {
+            div()
+                .flex_none()
+                .w_full()
+                .h(cut)
+                .opacity(up.powf(HEADER_HAZE))
+                .backdrop_blur(HEADER_BLUR)
+        })
+    });
+
+    match effects() {
+        true => div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            .children(strips),
+        false => div().absolute().inset_0().bg(background),
     }
 }
 

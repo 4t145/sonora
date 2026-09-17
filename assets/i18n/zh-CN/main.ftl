@@ -443,6 +443,7 @@ month-11 = 11月
 month-12 = 12月
 
 # settings
+settings-search = 搜索设置
 settings-tab-general = 通用
 settings-tab-appearance = 外观
 settings-tab-playback = 播放
