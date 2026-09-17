@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 
-use gpui::{Context, Entity};
+use gpui::{App, Context, Entity};
 use music::{ArtistRef, Track};
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,8 @@ pub struct Resume {
     pub(crate) past: Vec<Stub>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) upcoming: Vec<Stub>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) priority: Vec<Stub>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -108,6 +110,7 @@ fn record<'a>(
     past: &[Track],
     current: Option<&Track>,
     upcoming: impl Iterator<Item = &'a Track>,
+    priority: impl Iterator<Item = &'a Track>,
 ) -> Resume {
     Resume {
         provider: provider.to_owned(),
@@ -119,6 +122,7 @@ fn record<'a>(
             .filter_map(stub)
             .collect(),
         upcoming: upcoming.take(KEPT_UPCOMING).filter_map(stub).collect(),
+        priority: priority.take(KEPT_UPCOMING).filter_map(stub).collect(),
     }
 }
 
@@ -272,6 +276,10 @@ pub struct Queue {
     revision: u64,
     session: Entity<Session>,
     settings: Entity<AppSettings>,
+    /// A queue that is user-defined.
+    /// This is meant to mimic the spotify behavior where you can
+    /// enqueue songs in a queue that is separate to the playlist you are playing.
+    priority_queue: VecDeque<Track>,
 }
 
 impl Queue {
@@ -285,7 +293,6 @@ impl Queue {
             SessionEvent::SignedIn | SessionEvent::Reconnected | SessionEvent::LocalChanged => {}
         })
         .detach();
-
         let shuffle = settings.read(cx).shuffle();
 
         Self {
@@ -298,6 +305,7 @@ impl Queue {
             revision: 0,
             session,
             settings,
+            priority_queue: VecDeque::new(),
         }
     }
 
@@ -333,7 +341,7 @@ impl Queue {
     }
 
     fn blank(&self) -> bool {
-        self.past.is_empty() && self.current.is_none() && self.upcoming.is_empty()
+        self.past.is_empty() && self.is_empty()
     }
 
     fn remember(&mut self, cx: &mut Context<Self>) {
@@ -348,6 +356,7 @@ impl Queue {
                     &self.past,
                     self.current.as_ref(),
                     self.upcoming.range(..self.queued()),
+                    self.priority_queue.iter(),
                 )
             });
         self.settings
@@ -358,6 +367,10 @@ impl Queue {
         self.past = resume.past.into_iter().map(hydrate).collect();
         self.current = resume.current.map(hydrate);
         self.upcoming = resume.upcoming.into_iter().map(hydrate).collect();
+        self.priority_queue = resume.priority.into_iter().map(hydrate).collect();
+        if !self.priority_enabled(cx) {
+            self.merge_priority();
+        }
         self.similar = 0;
         self.source = self
             .past
@@ -381,7 +394,9 @@ impl Queue {
             &mut self.source,
             local,
         );
-        if suggested || sifted {
+        let before = self.priority_queue.len();
+        self.priority_queue.retain(local);
+        if suggested || sifted || before != self.priority_queue.len() {
             self.changed(cx);
         }
     }
@@ -399,7 +414,8 @@ impl Queue {
     }
 
     fn queued(&self) -> usize {
-        self.upcoming.len() - self.similar
+        debug_assert!(self.similar <= self.upcoming.len());
+        self.upcoming.len().saturating_sub(self.similar)
     }
 
     pub fn upcoming(&self) -> impl ExactSizeIterator<Item = &Track> {
@@ -408,6 +424,34 @@ impl Queue {
 
     pub fn similar(&self) -> impl ExactSizeIterator<Item = &Track> {
         self.upcoming.range(self.queued()..)
+    }
+
+    pub fn priority(&self) -> impl ExactSizeIterator<Item = &Track> {
+        self.priority_queue.iter()
+    }
+
+    pub fn priority_enabled(&self, cx: &App) -> bool {
+        self.settings.read(cx).priority_queue()
+    }
+
+    /// Folds pending priority tracks into the ordinary queue.
+    /// For context, this is called when priority mode is toggled off
+    pub fn fold_priority(&mut self, cx: &mut Context<Self>) {
+        if self.priority_queue.is_empty() {
+            return;
+        }
+        self.merge_priority();
+        self.changed(cx);
+    }
+
+    pub fn next_track(&self, cx: &App) -> Option<&Track> {
+        match self.priority_enabled(cx) {
+            true => self
+                .priority_queue
+                .front()
+                .or_else(|| self.upcoming.front()),
+            false => self.upcoming.front(),
+        }
     }
 
     pub fn suggest(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
@@ -430,6 +474,7 @@ impl Queue {
         self.past
             .iter()
             .chain(self.current.as_ref())
+            .chain(self.priority_queue.iter())
             .chain(self.upcoming.iter())
             .filter_map(|track| track.id.clone())
             .collect()
@@ -456,15 +501,15 @@ impl Queue {
     }
 
     pub fn len(&self) -> usize {
-        self.upcoming.len()
+        self.upcoming.len() + self.priority_queue.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.current.is_none() && self.upcoming.is_empty()
+        self.current.is_none() && self.upcoming.is_empty() && self.priority_queue.is_empty()
     }
 
-    pub fn has_next(&self) -> bool {
-        !self.upcoming.is_empty()
+    pub fn has_next(&self, cx: &App) -> bool {
+        self.next_track(cx).is_some()
     }
 
     pub fn has_previous(&self) -> bool {
@@ -472,10 +517,11 @@ impl Queue {
     }
 
     pub fn clear_upcoming(&mut self, cx: &mut Context<Self>) {
-        if self.queued() == 0 {
+        if self.queued() == 0 && self.priority_queue.is_empty() {
             return;
         }
         self.upcoming.drain(..self.queued());
+        self.priority_queue.clear();
         self.changed(cx);
     }
 
@@ -483,6 +529,7 @@ impl Queue {
         self.past.clear();
         self.current = None;
         self.upcoming.clear();
+        self.priority_queue.clear();
         self.source.clear();
         self.similar = 0;
         self.changed(cx);
@@ -495,7 +542,8 @@ impl Queue {
             .chain(self.current.as_ref())
             .chain(self.upcoming.iter());
 
-        !self.source.is_empty() && !in_order(sequence, &self.source)
+        !self.source.is_empty()
+            && (!self.priority_queue.is_empty() || !in_order(sequence, &self.source))
     }
 
     pub fn reset(&mut self, cx: &mut Context<Self>) -> Option<Track> {
@@ -526,6 +574,7 @@ impl Queue {
         let mut past = tracks;
         self.upcoming = past.split_off(index + 1).into();
         self.similar = 0;
+        self.priority_queue.clear();
         self.current = past.pop();
         if self.shuffle {
             scramble(&mut self.upcoming, &self.source, self.current.as_ref());
@@ -542,6 +591,18 @@ impl Queue {
 
     pub fn append_all(&mut self, tracks: impl IntoIterator<Item = Track>, cx: &mut Context<Self>) {
         self.insert_upcoming(self.queued(), tracks, cx);
+    }
+
+    pub fn append_priority(&mut self, track: Track, cx: &mut Context<Self>) {
+        self.append_all_priority([track], cx);
+    }
+
+    pub fn append_all_priority(
+        &mut self,
+        tracks: impl IntoIterator<Item = Track>,
+        cx: &mut Context<Self>,
+    ) {
+        self.insert_priority_queue(self.priority_queue.len(), tracks, cx);
     }
 
     pub(crate) fn extend_context(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
@@ -566,6 +627,19 @@ impl Queue {
         self.changed(cx);
     }
 
+    pub fn insert_priority_queue(
+        &mut self,
+        gap: usize,
+        tracks: impl IntoIterator<Item = Track>,
+        cx: &mut Context<Self>,
+    ) {
+        let at = gap.min(self.priority_queue.len());
+        for (offset, track) in tracks.into_iter().enumerate() {
+            self.priority_queue.insert(at + offset, track);
+        }
+        self.changed(cx);
+    }
+
     pub fn prepend(&mut self, track: Track, cx: &mut Context<Self>) {
         self.prepend_all([track], cx);
     }
@@ -574,6 +648,21 @@ impl Queue {
         let mut upcoming = tracks.into_iter().collect::<VecDeque<_>>();
         upcoming.append(&mut self.upcoming);
         self.upcoming = upcoming;
+        self.changed(cx);
+    }
+
+    pub fn prepend_priority(&mut self, track: Track, cx: &mut Context<Self>) {
+        self.prepend_all_priority([track], cx);
+    }
+
+    pub fn prepend_all_priority(
+        &mut self,
+        tracks: impl IntoIterator<Item = Track>,
+        cx: &mut Context<Self>,
+    ) {
+        let mut priority = tracks.into_iter().collect::<VecDeque<_>>();
+        priority.append(&mut self.priority_queue);
+        self.priority_queue = priority;
         self.changed(cx);
     }
 
@@ -588,8 +677,21 @@ impl Queue {
         self.move_upcoming(from, to, cx);
     }
 
+    pub fn move_priority_to_gap(&mut self, from: usize, gap: usize, cx: &mut Context<Self>) {
+        let to = gap_target(from, gap, self.priority_queue.len());
+        if move_item(&mut self.priority_queue, from, to) {
+            self.changed(cx);
+        }
+    }
+
     pub fn remove_upcoming(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.queued() && self.upcoming.remove(index).is_some() {
+            self.changed(cx);
+        }
+    }
+
+    pub fn remove_priority(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.priority_queue.remove(index).is_some() {
             self.changed(cx);
         }
     }
@@ -604,9 +706,25 @@ impl Queue {
         }
     }
 
+    fn pop_next_track(&mut self, cx: &App) -> Option<Track> {
+        match self.priority_enabled(cx) {
+            true => self
+                .priority_queue
+                .pop_front()
+                .or_else(|| self.upcoming.pop_front()),
+            false => self.upcoming.pop_front(),
+        }
+    }
+
     pub fn next(&mut self, cx: &mut Context<Self>) -> Option<Track> {
-        self.similar -= usize::from(self.queued() == 0 && self.similar > 0);
-        let next = self.upcoming.pop_front()?;
+        let taking_priority = self.priority_enabled(cx) && !self.priority_queue.is_empty();
+
+        if !taking_priority && self.queued() == 0 && self.similar > 0 {
+            self.similar -= 1;
+        }
+
+        let next = self.pop_next_track(cx)?;
+
         if let Some(played) = self.current.replace(next) {
             self.past.push(played);
         }
@@ -615,6 +733,7 @@ impl Queue {
     }
 
     pub fn rewind(&mut self, cx: &mut Context<Self>) -> Option<Track> {
+        self.merge_priority();
         self.upcoming.truncate(self.queued());
         self.similar = 0;
         let mut tracks = std::mem::take(&mut self.past);
@@ -624,6 +743,7 @@ impl Queue {
     }
 
     pub fn previous(&mut self, cx: &mut Context<Self>) -> Option<Track> {
+        self.merge_priority();
         let index = self.past.iter().rposition(|track| track.playable)?;
         if !select_past(&mut self.past, &mut self.current, &mut self.upcoming, index) {
             return None;
@@ -633,6 +753,7 @@ impl Queue {
     }
 
     pub fn play_past(&mut self, index: usize, cx: &mut Context<Self>) -> Option<Track> {
+        self.merge_priority();
         if !select_past(&mut self.past, &mut self.current, &mut self.upcoming, index) {
             return None;
         }
@@ -643,6 +764,21 @@ impl Queue {
     pub fn play_upcoming(&mut self, index: usize, cx: &mut Context<Self>) -> Option<Track> {
         if index >= self.queued()
             || !select_upcoming(&mut self.past, &mut self.current, &mut self.upcoming, index)
+        {
+            return None;
+        }
+        self.changed(cx);
+        self.current.clone()
+    }
+
+    pub fn play_priority(&mut self, index: usize, cx: &mut Context<Self>) -> Option<Track> {
+        if index >= self.priority_queue.len()
+            || !select_upcoming(
+                &mut self.past,
+                &mut self.current,
+                &mut self.priority_queue,
+                index,
+            )
         {
             return None;
         }
@@ -666,6 +802,17 @@ impl Queue {
         self.similar -= index + 1;
         self.changed(cx);
         self.current.clone()
+    }
+
+    /// Moves priority entries ahead of the regular queue while preserving similar suggestions as
+    /// its suffix.
+    fn merge_priority(&mut self) {
+        if self.priority_queue.is_empty() {
+            return;
+        }
+        let mut priority = std::mem::take(&mut self.priority_queue);
+        priority.append(&mut self.upcoming);
+        self.upcoming = priority;
     }
 }
 
@@ -932,7 +1079,7 @@ mod tests {
         let upcoming = listing(300);
         let current = track("now");
 
-        let resume = record("spotify", &past, Some(&current), upcoming.iter());
+        let resume = record("spotify", &past, Some(&current), upcoming.iter(), [].iter());
 
         assert_eq!(resume.provider, "spotify");
         assert_eq!(resume.position, 0.);
