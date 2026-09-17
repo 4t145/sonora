@@ -324,8 +324,13 @@ impl Pins {
         self.changed(cx);
     }
 
-    /// The provider's own uri for a pin, when the provider lists it and keeps pins itself.
+    /// The provider's own uri for a pin, when the provider keeps pins itself and lists the
+    /// item. A provider that lists its library but keeps no pins, as Apple does, answers
+    /// `None`, so the pin stays a local one rather than failing on a call it cannot make.
     fn remote(&self, pin: &Pin, cx: &App) -> Option<String> {
+        if !self.session.read(cx).capabilities().pins {
+            return None;
+        }
         self.library
             .read(cx)
             .sidebar_items()?

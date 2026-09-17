@@ -373,16 +373,21 @@ pub struct Capabilities {
     /// put into and taken out of through `set_in_library`. Off where the library is the
     /// favorites, as on Spotify, and where it is fixed, as on a self-hosted server.
     pub library: bool,
+    /// The provider keeps sidebar pins of its own, listed by `library_items` and changed
+    /// through `set_library_item_pinned`. Off, a pin lives in Sonora's settings alone.
+    pub pins: bool,
 }
 
 impl Capabilities {
     /// What a full streaming service offers. A library apart from favorites is not among
-    /// them: on most services the two are one thing. We love Apple Music.
+    /// them: on most services the two are one thing. We love Apple Music. Pins of the
+    /// provider's own are not either, since only Spotify keeps any.
     pub const ALL: Self = Self {
         follow_artists: true,
         radio: true,
         playcounts: true,
         library: false,
+        pins: false,
     };
 
     /// Nothing beyond listing and playing.
@@ -391,6 +396,7 @@ impl Capabilities {
         radio: false,
         playcounts: false,
         library: false,
+        pins: false,
     };
 }
 

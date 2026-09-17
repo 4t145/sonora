@@ -724,7 +724,6 @@ tags-comment = Commento
 toast-tags-saved = Tag salvati per { $name }
 toast-tags-failed = Impossibile salvare i tag
 nav-pin = Fissa
-toast-library-pin-limit = Il limite di elementi fissati di Spotify è stato raggiunto. Rimuovine prima un altro.
 toast-library-pin-failed = Impossibile aggiornare l'elemento fissato su Spotify.
 nav-nothing-pinned = Niente qui
 nav-pins-alphabetical = Alfabetico

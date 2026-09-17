@@ -63,7 +63,10 @@ impl SpotifyProvider {
             playback,
             shape: Shape::Saved,
             authenticated: true,
-            capabilities: Capabilities::ALL,
+            capabilities: Capabilities {
+                pins: true,
+                ..Capabilities::ALL
+            },
         })
     }
 }

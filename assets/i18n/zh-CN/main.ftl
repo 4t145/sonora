@@ -726,7 +726,6 @@ toast-tags-saved = 已保存 { $name } 的标签
 toast-tags-failed = 标签无法保存
 
 nav-pin = 固定
-toast-library-pin-limit = 已达到 Spotify 的固定上限。请先取消固定其他项目。
 toast-library-pin-failed = 无法在 Spotify 中更新固定状态。
 nav-nothing-pinned = 这里什么都没有
 nav-pins-alphabetical = 按字母顺序
