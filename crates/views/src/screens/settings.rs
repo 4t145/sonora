@@ -336,7 +336,13 @@ impl SettingsView {
                 .clearable()
         });
         cx.observe(&search, |this, input, cx| {
-            this.query = input.read(cx).text().trim().to_owned();
+            let query = input.read(cx).text().trim().to_owned();
+            // A search swaps the rows for hits from every category, so wherever the page was
+            // scrolled to answers for nothing once one starts.
+            if this.query.is_empty() && !query.is_empty() {
+                this.scrollbar.update(cx, |bar, _| bar.place(Pixels::ZERO));
+            }
+            this.query = query;
             cx.notify();
         })
         .detach();
