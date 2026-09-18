@@ -27,6 +27,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- The Modified column of local playlists shows the date they last changed instead of staying
+  blank.
 
 ## [0.37.0] - 2026-09-17
 
