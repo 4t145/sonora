@@ -387,15 +387,18 @@ impl FullscreenView {
             .min_w_0()
             .top(lift)
             .child(
+                // Three-part row with equal flex sides, so the title stays truly centred:
+                // the heart and the explicit badge live in the right cell and never shift it.
+                // Both sides have to stay styled the same and the room around the title has to
+                // come from the row gap, since padding on a side floors that side flex basis
+                // and makes it the wider one.
                 div()
                     .flex()
                     .items_center()
-                    .justify_center()
                     .gap_2()
                     .w_full()
                     .min_w_0()
-                    .when(explicit, |this| this.child(div().size_4().flex_none()))
-                    .child(div().w(theme.metrics.control_small).flex_none())
+                    .child(div().flex_1().min_w_0())
                     .child(
                         div()
                             .id("fullscreen-title")
@@ -421,15 +424,23 @@ impl FullscreenView {
                             )
                             .child(title),
                     )
-                    .when(explicit, |this| {
-                        this.child(div().flex_none().child(ExplicitBadge::new()))
-                    })
                     .child(
                         div()
                             .flex()
-                            .flex_none()
-                            .opacity(1. - hide)
-                            .child(like(track.clone(), cx)),
+                            .flex_1()
+                            .min_w_0()
+                            .items_center()
+                            .gap_2()
+                            .when(explicit, |this| {
+                                this.child(div().flex_none().child(ExplicitBadge::new()))
+                            })
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_none()
+                                    .opacity(1. - hide)
+                                    .child(like(track.clone(), cx)),
+                            ),
                     ),
             )
             .when_some(track, |this, track| {
