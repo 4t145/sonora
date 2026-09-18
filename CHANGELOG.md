@@ -27,6 +27,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- Lyrics from Apple Music, Musixmatch and LrcLib no longer go missing when the provider sends a
+  timestamp or song length out of range.
 
 ## [0.37.0] - 2026-09-17
 
