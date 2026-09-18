@@ -25,6 +25,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Listening history shows when you played a song in your own time zone instead of UTC.
 - Table filters such as the album year span or Favorites only are kept across restarts, the way
   sorts and views already were.
 - Apple Music similar tracks link to their artist and album again.
