@@ -27,6 +27,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- The local library no longer fails to load when a file's date tag is written like `平成11年` or
+  `２００４`.
 
 ## [0.37.0] - 2026-09-17
 
