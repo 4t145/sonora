@@ -29,6 +29,7 @@ use ui::{
     Avatar, Button, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
     MIN_FONT, MIN_LYRICS_SCALE, MenuItem, Modal, Pace, Picker, Popovers, Rounding, Saver, Scrubber,
     ScrubberState, Separator, Skeleton, Stillness, Switch, TabBar, Text, Theme, ThemeKind, Vacancy,
+    VisualizerStyle,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,6 +60,7 @@ const CORNERS: &str = "corners";
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 const WINDOW_ROUNDING: &str = "window-rounding";
 const FULLSCREEN_CONTROLS_AUTOHIDE: &str = "fullscreen-controls-autohide";
+const VISUALIZER_STYLE: &str = "visualizer-style";
 const LANGUAGES: &str = "languages";
 const TYPEFACES: &str = "typefaces";
 const TYPEFACE_LIMIT: usize = 200;
@@ -845,7 +847,7 @@ impl SettingsView {
             Slot::Adaptive => self.adaptive_row(cx).element,
             Slot::Ambient => self.ambient_row(cx).element,
             Slot::AmbientMotion => self.ambient_motion_row(cx).element,
-            Slot::Visualizer => self.visualizer_row(cx).element,
+            Slot::Visualizer => self.visualizer_style_row(cx).element,
             Slot::Icons => self.icons_row(cx).element,
             Slot::Opacity => self.opacity_row(cx).element,
             Slot::Blur => self.blur_row(cx).element,
@@ -1728,23 +1730,31 @@ impl SettingsView {
         )
     }
 
-    fn visualizer_row(&self, cx: &mut Context<Self>) -> Setting {
+    /// How the spectrum is drawn behind the fullscreen artwork, off included.
+    fn visualizer_style_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
-        let on = self.settings.read(cx).visualizer();
+        let chosen = self.settings.read(cx).visualizer_style();
+
+        let picker = Picker::new(VISUALIZER_STYLE, &self.popovers, chosen.label())
+            .width(Picker::NARROW)
+            .items(VisualizerStyle::ALL.map(|style| {
+                MenuItem::new(style.id(), style.label())
+                    .selected(style == chosen)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.settings
+                            .update(cx, |settings, cx| settings.set_visualizer_style(style, cx));
+                        cx.notify();
+                    }))
+            }));
 
         self.row(
             t!("settings-visualizer"),
             t!("settings-visualizer-detail"),
             muted,
             small,
-            Switch::new("visualizer", on)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.settings
-                        .update(cx, |settings, cx| settings.set_visualizer(!on, cx));
-                }))
-                .into_any_element(),
+            picker.into_any_element(),
         )
     }
 

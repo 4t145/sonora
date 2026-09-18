@@ -14,6 +14,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   switches it off, and Ambient motion holds the colours still.
 - A Play last item on track, album, artist and playlist menus queues them for after everything
   else.
+- The fullscreen visualizer can be drawn as a smooth wave instead of bars, one line per stereo
+  channel, or as both at once. The Visualizer setting under Appearance now picks between them
+  and holds the off switch.
 
 ### Changed
 

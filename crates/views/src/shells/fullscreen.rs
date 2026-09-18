@@ -1015,7 +1015,8 @@ impl Render for FullscreenView {
         let lift = (presented_side - side) / 2.;
         let staged = self.panel.is_none() || split;
 
-        let visualizer_on = self.panel.is_none() && self.settings.read(cx).visualizer();
+        let style = self.settings.read(cx).visualizer_style();
+        let visualizer_on = self.panel.is_none() && style.shown();
         match visualizer_on
             .then(|| self.playback.read(cx).spectrum())
             .flatten()
@@ -1055,6 +1056,7 @@ impl Render for FullscreenView {
             .when(visualizer_on, |this| {
                 this.child(
                     Visualizer::new(self.visualizer.levels(), visualizer_max)
+                        .style_kind(style)
                         .absolute()
                         .left_0()
                         .right_0()
