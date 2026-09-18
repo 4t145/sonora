@@ -18,19 +18,19 @@ use std::f32::consts::TAU;
 use std::rc::Rc;
 use std::time::Instant;
 
-use std::time::Duration;
-
 use gpui::prelude::*;
-use gpui::{App, Bounds, Context, Hsla, Render, Rgba, Task, Window, canvas, div, point, px};
+use gpui::{App, Bounds, Context, Hsla, Render, Rgba, Window, canvas, div, point, px};
 use state::Sonora;
 use ui::{ActiveTheme as _, Theme};
 
 /// How many blobs make up the field.
 const BLOBS: usize = 5;
-/// The blur shader runs a capped kernel, so giant radii melt nothing: the
-/// falloff is baked into the discs below and the layer blur only has to erase
-/// the small steps between them, which a true gaussian at this radius does.
-const MERGE_BLUR: f32 = 24.;
+/// The widest blur, in device pixels, the renderer still runs at full resolution. It picks
+/// the buffer from the radius: four or less keeps every pixel, eight halves the frame, and
+/// anything wider drops to a quarter. The field is already drawn at `DOWNSCALE`, so a wider
+/// blur would shrink it a second time and the upscale would crawl over every seam. The discs
+/// carry the falloff instead.
+const BLUR_FULL: f32 = 4.;
 /// How many times smaller the field is drawn than it is shown. The layer is
 /// laid out at this fraction of the window and the compositor scales it back
 /// up with a bilinear sample, so the discs and the blur cost a sixteenth of
@@ -39,15 +39,16 @@ const MERGE_BLUR: f32 = 24.;
 const DOWNSCALE: f32 = 4.;
 /// Dark overlay keeping lyrics readable over the field.
 const SHADE: f32 = 0.55;
-/// How often the field is redrawn while it drifts. The blobs move on periods of
-/// tens of seconds, so a frame at the display rate moves them a fraction of a
-/// pixel and only makes everything above them repaint that often too.
-const TICK_HZ: u32 = 24;
-const TICK: Duration = Duration::from_nanos(1_000_000_000 / TICK_HZ as u64);
 
 /// One blob: base centre (fractions of the layer), diameter (fraction of the
 /// layer's smaller side), drift period in seconds, phase, drift amplitude
 /// (fractions).
+///
+/// A centre travels at 2 pi A W / T at its fastest, where A is its amplitude and W the width
+/// it drifts across. On a 2560 wide window these periods put that around 65 pixels a second,
+/// so a frame at the display rate moves a blob half a pixel. What reads as steps at this speed
+/// is not the clock but the eight bit banding underneath, which holds a contour still and then
+/// jumps it a whole band at once. The dither over the field is what deals with that.
 const SPECS: [(f32, f32, f32, f32, f32, f32, f32); BLOBS] = [
     (0.22, 0.30, 1.10, 34., 0.0, 0.13, 0.10),
     (0.80, 0.24, 1.00, 27., 1.7, 0.11, 0.13),
@@ -56,13 +57,15 @@ const SPECS: [(f32, f32, f32, f32, f32, f32, f32); BLOBS] = [
     (0.85, 0.72, 0.72, 31., 2.5, 0.12, 0.11),
 ];
 
-/// Concentric discs faking a radial falloff. Eight steps disappear under the
-/// layer blur; three steep ones read as rings wherever the blur kernel runs
-/// thin, and every disc is a window-sized quad, so more is fill for nothing.
-const DISCS: usize = 8;
-/// Opacity ramp from the outermost disc to the core.
-const DISC_FAINT: f32 = 0.08;
-const DISC_STRONG: f32 = 0.22;
+/// Concentric discs faking a radial falloff. They are what keeps the field smooth now that
+/// the blur stays narrow enough to run at full resolution, and at `DOWNSCALE` a disc costs a
+/// sixteenth of the fill it did at window size, so the stack can afford to be dense. The
+/// spacing left between them has to stay inside the blur's reach or they read as rings.
+const DISCS: usize = 24;
+/// Opacity ramp from the outermost disc to the core. The discs stack, so a disc is far
+/// fainter than the field it builds up to.
+const DISC_FAINT: f32 = 0.027;
+const DISC_STRONG: f32 = 0.079;
 /// Time constant of the exponential ease onto a new palette, in seconds. The
 /// field lands within a few percent of the target after about three of these.
 const WASH: f32 = 0.8;
@@ -72,8 +75,6 @@ pub(crate) struct Ambient {
     stepped: Instant,
     bounds: Rc<Cell<Bounds<gpui::Pixels>>>,
     painted: Option<[Hsla; BLOBS]>,
-    ticked: Instant,
-    ticking: Option<Task<()>>,
 }
 
 impl Ambient {
@@ -89,29 +90,7 @@ impl Ambient {
             stepped: now,
             bounds: Rc::new(Cell::new(Bounds::default())),
             painted: None,
-            ticked: now,
-            ticking: None,
         }
-    }
-
-    /// Asks for the next frame of drift once `TICK` has passed since the last
-    /// one, instead of at the display rate. Nothing else redraws fullscreen
-    /// while a track plays undisturbed, so this is the rate the whole window
-    /// repaints at.
-    fn tick(&mut self, cx: &mut Context<Self>) {
-        if self.ticking.is_some() {
-            return;
-        }
-        let wait = TICK.saturating_sub(self.ticked.elapsed());
-        self.ticking = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(wait).await;
-            this.update(cx, |this, cx| {
-                this.ticked = Instant::now();
-                this.ticking = None;
-                cx.notify();
-            })
-            .ok();
-        }));
     }
 
     /// Eases the painted colours one frame toward `target` and returns them.
@@ -199,16 +178,21 @@ impl Ambient {
 }
 
 impl Render for Ambient {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         // Without motion the field is a still gradient: no frame requests, so
         // fullscreen stops redrawing once settled. Either the system preference
         // or the setting of its own is enough to stop it.
         let animates =
             ui::motion::animates(cx) && Sonora::global(cx).settings.read(cx).ambient_motion();
+        // The drift asks for the next frame off the display's own clock rather than a timer of
+        // its own. A timer is never in phase with the refresh, so a blob that moves a fraction
+        // of a pixel per frame lands on one vsync, skips the next and doubles the one after,
+        // which reads as a twitch however slow the motion is. Cost belongs in the field below,
+        // not in the frame rate.
         let elapsed = match animates {
             true => {
-                self.tick(cx);
+                window.request_animation_frame();
                 self.started.elapsed().as_secs_f32()
             }
             false => 0.,
@@ -248,7 +232,7 @@ impl Render for Ambient {
                     .h(px(high))
                     .layer_scale(DOWNSCALE)
                     .layer_scale_origin(point(0., 0.))
-                    .blur(px(MERGE_BLUR / DOWNSCALE))
+                    .blur(px(BLUR_FULL / window.scale_factor()))
                     .children(SPECS.iter().enumerate().map(|(index, spec)| {
                         let (base_x, base_y, size, period, phase, amp_x, amp_y) = *spec;
                         let spin = TAU * elapsed / period;
@@ -280,6 +264,11 @@ impl Render for Ambient {
                     })),
             )
             .child(div().absolute().inset_0().bg(gpui::black().opacity(SHADE)))
+            // Every buffer the field passes through holds eight bits a channel, and a gradient
+            // this wide and this dark steps through only a few dozen of them, so its steps read
+            // as bands that slide with the blobs. The dither scatters each step over
+            // neighbouring pixels instead.
+            .child(ui::grain(window))
     }
 }
 
