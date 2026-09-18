@@ -29,6 +29,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- The Modified column of local playlists shows the date they last changed instead of staying
+  blank.
 - An untagged song sitting directly in your music folder no longer takes the name of the folder
   above it as its artist.
 - Saving the tag editor no longer erases a release date it could not read, like `99` or
