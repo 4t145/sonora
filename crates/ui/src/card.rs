@@ -10,6 +10,7 @@ use gpui::{
 use crate::ExplicitBadge;
 use crate::artwork::{Artwork, Avatar, ROUNDED};
 use crate::button::Button;
+use crate::glass::GLASS_BLUR;
 use crate::label::upper;
 use crate::metrics::{LEADING, Text, snapped};
 use crate::skeleton::Skeleton;
@@ -22,6 +23,8 @@ const PLAY_RATIO: f32 = 0.24;
 const PLAY_MIN: Pixels = px(20.);
 const PLAY_MAX: Pixels = px(40.);
 const PLAY_INSET: Pixels = px(8.);
+/// How much of the accent colour the play button keeps over the artwork it blurs.
+const PLAY_FILL: f32 = 0.55;
 const SCRIM_RATIO: f32 = 0.45;
 const SCRIM_MIN: Pixels = px(14.);
 const TIGHT: Pixels = px(2.);
@@ -366,6 +369,8 @@ impl RenderOnce for Card {
                                     .tooltip(hint)
                                     .size(size)
                                     .rounded_full()
+                                    .bg(theme.primary.opacity(PLAY_FILL))
+                                    .backdrop_blur(GLASS_BLUR)
                                     .shadow_sm()
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()

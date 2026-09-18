@@ -826,6 +826,7 @@ impl AppSettings {
             transparency: self.transparency(),
             blur: self.blur(),
             tint: None,
+            tint_secondary: None,
         }
     }
 

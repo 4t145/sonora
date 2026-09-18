@@ -141,6 +141,7 @@ fn main() {
                     transparency: 0.,
                     blur: false,
                     tint: None,
+                    tint_secondary: None,
                 },
                 &Default::default(),
                 cx,

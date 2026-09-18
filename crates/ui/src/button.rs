@@ -4,11 +4,17 @@ use gpui::{
     StyleRefinement, Window, div, px, svg,
 };
 
+use crate::glass::frost;
 use crate::metrics::Text;
 use crate::theme::ActiveTheme as _;
 use crate::tooltip::{Perch, Tooltip};
 
 const FADED: f32 = 0.55;
+/// How much of a white tint a frosted ghost or outline button shows when hovered
+/// and when pressed, so the fill lightens the content under the glass blur rather than
+/// laying a themed slab over it.
+const TINT_HOVER: f32 = 0.14;
+const TINT_ACTIVE: f32 = 0.24;
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
@@ -32,6 +38,7 @@ pub struct Button {
     selected: bool,
     backgroundless: bool,
     hoverless: bool,
+    frosted: bool,
     hovered: Option<StyleRefinement>,
     pressed: Option<StyleRefinement>,
     tint: Option<Hsla>,
@@ -53,6 +60,7 @@ impl Button {
             selected: false,
             backgroundless: false,
             hoverless: false,
+            frosted: false,
             hovered: None,
             pressed: None,
             tint: None,
@@ -126,6 +134,15 @@ impl Button {
         self
     }
 
+    /// Blurs whatever the hover and press fills float over. Only for buttons
+    /// that sit on real content, like the fullscreen transport over the ambient
+    /// background. Anywhere else the backdrop is flat paint and the blur buys
+    /// nothing.
+    pub fn frosted(mut self) -> Self {
+        self.frosted = true;
+        self
+    }
+
     pub fn tooltip(mut self, key: impl Into<SharedString>) -> Self {
         self.tooltip = Some((key.into(), Perch::Pointer));
         self
@@ -190,6 +207,7 @@ impl RenderOnce for Button {
             selected,
             backgroundless,
             hoverless,
+            frosted,
             hovered,
             pressed,
             tint,
@@ -198,10 +216,22 @@ impl RenderOnce for Button {
         } = self;
 
         let theme = cx.theme();
+        // A plain ghost floats over flat paint, so it hovers with the themed
+        // secondary fill that stays visible on both dark and light surfaces. A
+        // frosted ghost floats over real content under blur, so it hovers with
+        // a white tint instead: a themed fill would read as a solid slab over
+        // the blur, and a black tint would vanish into dark artwork. Only
+        // frosted buttons use the tint.
         let subtle = |border| Palette {
             background: None,
-            hover: Some(theme.secondary_hover),
-            active: Some(theme.secondary_active),
+            hover: Some(match frosted {
+                true => theme.overlay_foreground.opacity(TINT_HOVER),
+                false => theme.secondary_hover,
+            }),
+            active: Some(match frosted {
+                true => theme.overlay_foreground.opacity(TINT_ACTIVE),
+                false => theme.secondary_active,
+            }),
             foreground: theme.foreground,
             border,
         };
@@ -257,9 +287,9 @@ impl RenderOnce for Button {
         };
         let hovered = match hoverless {
             true => None,
-            false => state_style(hover, hovered),
+            false => state_style(hover, hovered, frosted && interactive),
         };
-        let pressed = state_style(active, pressed);
+        let pressed = state_style(active, pressed, frosted && interactive);
         let overrides = std::mem::take(base.style());
 
         let mut button = base
@@ -328,6 +358,7 @@ impl RenderOnce for Button {
 fn state_style(
     background: Option<Hsla>,
     overrides: Option<StyleRefinement>,
+    frosted: bool,
 ) -> Option<StyleRefinement> {
     if background.is_none() && overrides.is_none() {
         return None;
@@ -335,7 +366,11 @@ fn state_style(
 
     let mut style = StyleRefinement::default();
     if let Some(background) = background {
-        style = style.bg(background);
+        let filled = style.bg(background);
+        style = match frosted {
+            true => frost(filled),
+            false => filled,
+        };
     }
     if let Some(overrides) = overrides {
         style.refine(&overrides);

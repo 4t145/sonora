@@ -69,6 +69,7 @@ pub struct Look {
     pub transparency: f32,
     pub blur: bool,
     pub tint: Option<Hsla>,
+    pub tint_secondary: Option<Hsla>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -253,6 +254,9 @@ pub struct Theme {
     pub transparent: bool,
     pub blur: bool,
     pub tint: Option<Hsla>,
+    /// The cover's runner-up hue, carried beside the lead tint for two-colour
+    /// surfaces like the fullscreen ambient background. The selection itself stays single.
+    pub tint_secondary: Option<Hsla>,
 }
 
 impl Global for Theme {}
@@ -275,14 +279,14 @@ impl Theme {
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x737373).into(),
             secondary: rgb(0x171717).into(),
-            secondary_hover: rgb(0x232323).into(),
-            secondary_active: rgb(0x303030).into(),
+            secondary_hover: rgba(0x232323b3).into(),
+            secondary_active: rgba(0x303030b3).into(),
             primary: rgb(0xfafafa).into(),
             primary_foreground: rgb(0x171717).into(),
-            primary_hover: rgb(0xe5e5e5).into(),
+            primary_hover: rgba(0xe5e5e5b3).into(),
             danger: rgb(0x7f1d1d).into(),
             danger_foreground: rgb(0xfef2f2).into(),
-            danger_hover: rgb(0x8b2020).into(),
+            danger_hover: rgba(0x8b2020b3).into(),
             popover: rgb(0x141414).into(),
             popover_foreground: rgb(0xfafafa).into(),
             progress_bar: rgb(0xf5f5f5).into(),
@@ -294,7 +298,7 @@ impl Theme {
             table_head: rgba(0x171717cc).into(),
             table_head_foreground: rgb(0x525252).into(),
             table_row_border: rgba(0x262626b3).into(),
-            table_hover: rgb(0x262626).into(),
+            table_hover: rgba(0x262626b3).into(),
             table_active: rgba(0x1e40af33).into(),
             table_active_border: rgb(0x1d4ed8).into(),
             radius: px(6.),
@@ -303,6 +307,7 @@ impl Theme {
             transparent: false,
             blur: false,
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -316,14 +321,14 @@ impl Theme {
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x737373).into(),
             secondary: rgb(0xf5f5f5).into(),
-            secondary_hover: rgb(0xe5e5e5).into(),
-            secondary_active: rgb(0xd4d4d4).into(),
+            secondary_hover: rgba(0xe5e5e5b3).into(),
+            secondary_active: rgba(0xd4d4d4b3).into(),
             primary: rgb(0x171717).into(),
             primary_foreground: rgb(0xfafafa).into(),
-            primary_hover: rgb(0x262626).into(),
+            primary_hover: rgba(0x262626b3).into(),
             danger: rgb(0xb91c1c).into(),
             danger_foreground: rgb(0xfef2f2).into(),
-            danger_hover: rgb(0x991b1b).into(),
+            danger_hover: rgba(0x991b1bb3).into(),
             popover: rgb(0xffffff).into(),
             popover_foreground: rgb(0x171717).into(),
             progress_bar: rgb(0x262626).into(),
@@ -335,7 +340,7 @@ impl Theme {
             table_head: rgba(0xf5f5f5e6).into(),
             table_head_foreground: rgb(0x737373).into(),
             table_row_border: rgba(0xd4d4d4b3).into(),
-            table_hover: rgb(0xf0f0f0).into(),
+            table_hover: rgba(0xf0f0f0b3).into(),
             table_active: rgba(0x2563eb1f).into(),
             table_active_border: rgb(0x2563eb).into(),
             radius: px(6.),
@@ -344,6 +349,7 @@ impl Theme {
             transparent: false,
             blur: false,
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -357,14 +363,14 @@ impl Theme {
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x8296ad).into(),
             secondary: rgb(0x102238).into(),
-            secondary_hover: rgb(0x17304d).into(),
-            secondary_active: rgb(0x1e3b5d).into(),
+            secondary_hover: rgba(0x17304db3).into(),
+            secondary_active: rgba(0x1e3b5db3).into(),
             primary: rgb(0x38bdf8).into(),
             primary_foreground: rgb(0x07111f).into(),
-            primary_hover: rgb(0x7dd3fc).into(),
+            primary_hover: rgba(0x7dd3fcb3).into(),
             danger: rgb(0x991b1b).into(),
             danger_foreground: rgb(0xfff1f2).into(),
-            danger_hover: rgb(0xb91c1c).into(),
+            danger_hover: rgba(0xb91c1cb3).into(),
             popover: rgb(0x0b1a2c).into(),
             popover_foreground: rgb(0xe6edf7).into(),
             progress_bar: rgb(0x38bdf8).into(),
@@ -376,7 +382,7 @@ impl Theme {
             table_head: rgba(0x102238e6).into(),
             table_head_foreground: rgb(0x8296ad).into(),
             table_row_border: rgba(0x1e344db3).into(),
-            table_hover: rgb(0x132b45).into(),
+            table_hover: rgba(0x132b45b3).into(),
             table_active: rgba(0x0284c733).into(),
             table_active_border: rgb(0x38bdf8).into(),
             radius: px(6.),
@@ -385,6 +391,7 @@ impl Theme {
             transparent: false,
             blur: false,
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -398,14 +405,14 @@ impl Theme {
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x86a58f).into(),
             secondary: rgb(0x16261d).into(),
-            secondary_hover: rgb(0x203328).into(),
-            secondary_active: rgb(0x2a4334).into(),
+            secondary_hover: rgba(0x203328b3).into(),
+            secondary_active: rgba(0x2a4334b3).into(),
             primary: rgb(0x86efac).into(),
             primary_foreground: rgb(0x0b1410).into(),
-            primary_hover: rgb(0xbbf7d0).into(),
+            primary_hover: rgba(0xbbf7d0b3).into(),
             danger: rgb(0x991b1b).into(),
             danger_foreground: rgb(0xfff1f2).into(),
-            danger_hover: rgb(0xb91c1c).into(),
+            danger_hover: rgba(0xb91c1cb3).into(),
             popover: rgb(0x101d16).into(),
             popover_foreground: rgb(0xecf7ef).into(),
             progress_bar: rgb(0x4ade80).into(),
@@ -417,7 +424,7 @@ impl Theme {
             table_head: rgba(0x16261de6).into(),
             table_head_foreground: rgb(0x86a58f).into(),
             table_row_border: rgba(0x263d30b3).into(),
-            table_hover: rgb(0x1b2e23).into(),
+            table_hover: rgba(0x1b2e23b3).into(),
             table_active: rgba(0x16a34a33).into(),
             table_active_border: rgb(0x4ade80).into(),
             radius: px(6.),
@@ -426,6 +433,7 @@ impl Theme {
             transparent: false,
             blur: false,
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -436,11 +444,11 @@ impl Theme {
         theme.muted = rgb(0x17373b).into();
         theme.muted_foreground = rgb(0x7fa9ad).into();
         theme.secondary = rgb(0x0f292d).into();
-        theme.secondary_hover = rgb(0x17373b).into();
-        theme.secondary_active = rgb(0x20474c).into();
+        theme.secondary_hover = rgba(0x17373bb3).into();
+        theme.secondary_active = rgba(0x20474cb3).into();
         theme.primary = rgb(0x5eead4).into();
         theme.primary_foreground = rgb(0x06171a).into();
-        theme.primary_hover = rgb(0x99f6e4).into();
+        theme.primary_hover = rgba(0x99f6e4b3).into();
         theme.popover = rgb(0x0a2024).into();
         theme.progress_bar = rgb(0x2dd4bf).into();
         theme.selection = rgb(0x0d9488).into();
@@ -451,7 +459,7 @@ impl Theme {
         theme.table_head = rgba(0x0f292de6).into();
         theme.table_head_foreground = rgb(0x5a787b).into();
         theme.table_row_border = rgba(0x1d4145b3).into();
-        theme.table_hover = rgb(0x123136).into();
+        theme.table_hover = rgba(0x123136b3).into();
         theme.table_active = rgba(0x0d948833).into();
         theme.table_active_border = rgb(0x2dd4bf).into();
         theme
@@ -464,11 +472,11 @@ impl Theme {
         theme.muted = rgb(0x3b2029).into();
         theme.muted_foreground = rgb(0xb58a98).into();
         theme.secondary = rgb(0x2b161e).into();
-        theme.secondary_hover = rgb(0x3b2029).into();
-        theme.secondary_active = rgb(0x4b2633).into();
+        theme.secondary_hover = rgba(0x3b2029b3).into();
+        theme.secondary_active = rgba(0x4b2633b3).into();
         theme.primary = rgb(0xfda4af).into();
         theme.primary_foreground = rgb(0x180b10).into();
-        theme.primary_hover = rgb(0xfecdd3).into();
+        theme.primary_hover = rgba(0xfecdd3b3).into();
         theme.popover = rgb(0x211018).into();
         theme.progress_bar = rgb(0xfb7185).into();
         theme.selection = rgb(0xe11d48).into();
@@ -479,7 +487,7 @@ impl Theme {
         theme.table_head = rgba(0x2b161ee6).into();
         theme.table_head_foreground = rgb(0x80626c).into();
         theme.table_row_border = rgba(0x4b2633b3).into();
-        theme.table_hover = rgb(0x341b24).into();
+        theme.table_hover = rgba(0x341b24b3).into();
         theme.table_active = rgba(0xe11d4833).into();
         theme.table_active_border = rgb(0xfb7185).into();
         theme
@@ -492,11 +500,11 @@ impl Theme {
         theme.muted = rgb(0x302745).into();
         theme.muted_foreground = rgb(0xa99bc2).into();
         theme.secondary = rgb(0x241c35).into();
-        theme.secondary_hover = rgb(0x302745).into();
-        theme.secondary_active = rgb(0x3d3158).into();
+        theme.secondary_hover = rgba(0x302745b3).into();
+        theme.secondary_active = rgba(0x3d3158b3).into();
         theme.primary = rgb(0xc4b5fd).into();
         theme.primary_foreground = rgb(0x120e1c).into();
-        theme.primary_hover = rgb(0xddd6fe).into();
+        theme.primary_hover = rgba(0xddd6feb3).into();
         theme.popover = rgb(0x191326).into();
         theme.progress_bar = rgb(0xa78bfa).into();
         theme.selection = rgb(0x7c3aed).into();
@@ -507,7 +515,7 @@ impl Theme {
         theme.table_head = rgba(0x241c35e6).into();
         theme.table_head_foreground = rgb(0x786e8a).into();
         theme.table_row_border = rgba(0x3d3158b3).into();
-        theme.table_hover = rgb(0x2a213d).into();
+        theme.table_hover = rgba(0x2a213db3).into();
         theme.table_active = rgba(0x7c3aed33).into();
         theme.table_active_border = rgb(0xa78bfa).into();
         theme
@@ -520,11 +528,11 @@ impl Theme {
         theme.muted = rgb(0x382b18).into();
         theme.muted_foreground = rgb(0xad9878).into();
         theme.secondary = rgb(0x291f11).into();
-        theme.secondary_hover = rgb(0x382b18).into();
-        theme.secondary_active = rgb(0x49371d).into();
+        theme.secondary_hover = rgba(0x382b18b3).into();
+        theme.secondary_active = rgba(0x49371db3).into();
         theme.primary = rgb(0xfcd34d).into();
         theme.primary_foreground = rgb(0x171108).into();
-        theme.primary_hover = rgb(0xfde68a).into();
+        theme.primary_hover = rgba(0xfde68ab3).into();
         theme.popover = rgb(0x20170c).into();
         theme.progress_bar = rgb(0xf59e0b).into();
         theme.selection = rgb(0xd97706).into();
@@ -535,7 +543,7 @@ impl Theme {
         theme.table_head = rgba(0x291f11e6).into();
         theme.table_head_foreground = rgb(0x7b6c55).into();
         theme.table_row_border = rgba(0x49371db3).into();
-        theme.table_hover = rgb(0x312514).into();
+        theme.table_hover = rgba(0x312514b3).into();
         theme.table_active = rgba(0xd9770633).into();
         theme.table_active_border = rgb(0xf59e0b).into();
         theme
@@ -599,20 +607,38 @@ impl Theme {
         };
 
         self.primary = accent(if dark { 0.72 } else { 0.42 });
-        self.primary_hover = accent(if dark { 0.82 } else { 0.34 });
+        self.primary_hover = Hsla {
+            a: 0.7,
+            ..accent(if dark { 0.82 } else { 0.34 })
+        };
         self.primary_foreground = Hsla {
             s: tint.s.min(0.25),
             l: if dark { 0.08 } else { 0.98 },
             ..self.primary
         };
         self.progress_bar = self.primary;
-        self.selection = accent(if dark { 0.44 } else { 0.5 });
+        self.selection = self.accent(tint);
         self.table_active = Hsla {
             a: 0.22,
             ..self.selection
         };
         self.table_active_border = self.primary;
         self
+    }
+
+    /// The accent this theme carries once `tint` has washed through it, which
+    /// is what `tinted` stores in `selection`. Exposed so a caller can resolve
+    /// a cover hue the theme's own fade has not arrived at yet.
+    pub fn accent(&self, tint: Hsla) -> Hsla {
+        Hsla {
+            h: tint.h,
+            s: tint.s.clamp(MIN_ACCENT_SATURATION, MAX_ACCENT_SATURATION),
+            l: match self.background.l < 0.5 {
+                true => 0.44,
+                false => 0.5,
+            },
+            a: 1.,
+        }
     }
 
     pub fn mixed(&self, other: &Self, delta: f32) -> Self {
@@ -762,6 +788,7 @@ impl Theme {
         theme.transparent = look.transparent;
         theme.blur = look.blur;
         theme.tint = look.tint;
+        theme.tint_secondary = look.tint_secondary;
         theme
     }
 
@@ -943,6 +970,7 @@ mod tests {
             transparency: 0.,
             blur: false,
             tint: Some(TINT),
+            tint_secondary: None,
         };
         let overrides = ThemeOverrides {
             background: Some("#101010".to_owned()),
