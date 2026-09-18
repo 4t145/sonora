@@ -22,9 +22,11 @@ const FILE_PREFIX: &str = "file://";
 
 const FALLBACK_ICON: &str = "icons/music.svg";
 pub(crate) const ROUNDED: Pixels = px(4.);
+/// The one limit on decoded artwork. An insert that crosses it evicts the least
+/// recently drawn covers at once, whatever their age, so the cache never holds
+/// more than this between sweeps either.
 const CACHE_BYTES: usize = 32 * 1024 * 1024;
 const CACHE_ITEMS: usize = 256;
-const HARD_BYTES: usize = 192 * 1024 * 1024;
 const MAX_SAMPLE_EDGE: u32 = 1024;
 const GRACE: Duration = Duration::from_secs(5);
 const KEEP_ITEMS: usize = 96;
@@ -264,17 +266,10 @@ impl ArtworkCache {
             },
         );
 
-        while self.items.len() > 1 {
-            let forced = self.bytes > HARD_BYTES;
-            if !forced && self.bytes <= CACHE_BYTES && self.items.len() <= CACHE_ITEMS {
-                break;
-            }
-            let Some((resource, used)) = self.oldest() else {
+        while self.items.len() > 1 && (self.bytes > CACHE_BYTES || self.items.len() > CACHE_ITEMS) {
+            let Some((resource, _)) = self.oldest() else {
                 break;
             };
-            if !forced && used.elapsed() < GRACE {
-                break;
-            }
             self.evict(&resource, Some(&mut *window), cx);
         }
     }
