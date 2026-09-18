@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Table filters such as the album year span or Favorites only are kept across restarts, the way
+  sorts and views already were.
 - Apple Music similar tracks link to their artist and album again.
 - An Apple Music library song whose catalog copy Apple has pulled is left out of Favorites,
   and the song count leaves it out too, instead of failing when played.
@@ -29,6 +31,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sidebar can hold as many pins as you like.
 - Saving the tag editor no longer erases a release date it could not read, like `99` or
   `平成11年`, when the year was left alone.
+- Lyrics from Apple Music, Musixmatch, LrcLib and NetEase no longer go missing when the provider
+  sends a timestamp or song length out of range.
+- The local library no longer fails to load when a file's date tag is written like `平成11年` or
+  `２００４`.
 
 ## [0.37.0] - 2026-09-17
 

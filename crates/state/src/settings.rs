@@ -385,6 +385,14 @@ impl Default for Values {
     }
 }
 
+/// One narrowed filter axis as stored per table: a flag that is on, or a range the user
+/// shrank. Whole ranges and flags that are off read as untouched and take no space.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FilterValue {
+    Flag(bool),
+    Range(f32, f32),
+}
+
 /// Everything `state.sqlite` holds under the `runtime` key: values the app changes on its own
 /// while running, so saving them never rewrites `settings.json`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -402,6 +410,7 @@ struct StateValues {
     provider: String,
     tables: HashMap<String, Layout>,
     sorting: HashMap<String, Option<Sorting>>,
+    filters: HashMap<String, HashMap<String, FilterValue>>,
     views: HashMap<String, Mode>,
     pinned: Vec<Held>,
     sidebar_pinned_open: bool,
@@ -428,6 +437,7 @@ impl Default for StateValues {
             provider: "spotify".to_owned(),
             tables: HashMap::new(),
             sorting: HashMap::new(),
+            filters: HashMap::new(),
             views: HashMap::new(),
             pinned: Vec::new(),
             sidebar_pinned_open: false,
@@ -1094,6 +1104,32 @@ impl AppSettings {
             return;
         }
         self.state.sorting.insert(table.to_owned(), sorting);
+        self.schedule_state_save(cx);
+    }
+
+    /// The narrowed filter axes stored under a table key, if any.
+    pub fn filters(&self, table: &str) -> Option<HashMap<String, FilterValue>> {
+        self.state.filters.get(table).cloned()
+    }
+
+    /// Stores the narrowed filter axes of a table. An empty map drops the entry, so resetting
+    /// a table clears its stored filters on the next store.
+    pub fn set_filters(
+        &mut self,
+        table: &str,
+        filters: HashMap<String, FilterValue>,
+        cx: &mut Context<Self>,
+    ) {
+        if filters.is_empty() {
+            if self.state.filters.remove(table).is_none() {
+                return;
+            }
+        } else {
+            if self.state.filters.get(table) == Some(&filters) {
+                return;
+            }
+            self.state.filters.insert(table.to_owned(), filters);
+        }
         self.schedule_state_save(cx);
     }
 
