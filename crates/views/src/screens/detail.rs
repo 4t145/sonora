@@ -12,8 +12,8 @@ use ui::{
     ActiveTheme as _, Button, InlineLink, InlineLinks, Menu, Picker, Popovers, Popup, SortAxis,
 };
 use ui::{
-    ColumnSpec, Listing as _, MIN_CONTENT, Pin, PinKind, Scrollbar, Scroller, TableDelegate,
-    TableEvent, TableState, Toggle, clock, table,
+    ColumnSpec, FilterChange, Listing as _, MIN_CONTENT, Pin, PinKind, Scrollbar, Scroller,
+    TableDelegate, TableEvent, TableState, Toggle, clock, table,
 };
 
 use crate::shared::menus::{album_menu, playlist_menu};
@@ -131,6 +131,9 @@ impl DetailView {
                     .scroll()
                     .set_offset(gpui::Point::default());
                 this.restore_sorting(cx);
+                // The rows belong to another detail now, so its filters must not leak across.
+                this.table.filter(FilterChange::Reset, cx);
+                this.restore_filters(cx);
             }
             this.retune(cx);
             this.rebuild(cx);
@@ -198,7 +201,7 @@ impl DetailView {
         let me = cx.entity();
         let toolbar = Toolbar::searchable(&me, cx);
 
-        Self {
+        let mut view = Self {
             detail,
             playback,
             playback_status: current_playback,
@@ -214,7 +217,9 @@ impl DetailView {
             popovers: Popovers::default(),
             sliders: Sliders::default(),
             me: me.downgrade(),
-        }
+        };
+        view.restore_filters(cx);
+        view
     }
 
     fn retune(&mut self, cx: &mut Context<Self>) {
@@ -268,6 +273,18 @@ impl DetailView {
             &key,
             cx,
         );
+    }
+
+    fn sift(&mut self, change: FilterChange, cx: &mut Context<Self>) {
+        self.table.filter(change, cx);
+        self.persist(cx);
+        cx.notify();
+    }
+
+    /// Fills filter axes the storage names for the detail on show. See `LibraryView::restore`.
+    fn restore_filters(&mut self, cx: &mut Context<Self>) {
+        let key = self.sort_key(cx);
+        page::restore(&self.settings.clone(), &self.table, &key, cx);
     }
 
     fn header(&self, cx: &Context<Self>) -> AnyElement {
@@ -562,9 +579,7 @@ impl Tooled for DetailView {
                 &self.sliders,
                 self.table.filters(cx),
                 move |change, cx| {
-                    sifted
-                        .update(cx, |view, cx| view.table.filter(change, cx))
-                        .ok();
+                    sifted.update(cx, |view, cx| view.sift(change, cx)).ok();
                 },
                 cx,
             ),
