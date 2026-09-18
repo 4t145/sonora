@@ -300,6 +300,7 @@ impl LibraryView {
 
         cx.observe(&library, |this, _, cx| {
             this.rebuild(cx);
+            this.restore(cx);
             cx.notify();
         })
         .detach();
@@ -378,7 +379,7 @@ impl LibraryView {
 
         let card_scrollbar = cx.new(|_| Scrollbar::new(ScrollHandle::new()).watching(id));
 
-        Self {
+        let mut view = Self {
             shelf,
             library,
             settings,
@@ -403,7 +404,9 @@ impl LibraryView {
             popovers: Popovers::default(),
             sliders: Section::ALL.map(|_| Sliders::default()),
             me: me.downgrade(),
-        }
+        };
+        view.restore(cx);
+        view
     }
 
     fn create_playlist(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -467,6 +470,16 @@ impl LibraryView {
     fn persist(&mut self, section: Section, cx: &mut Context<Self>) {
         let key = section.key(self.shelf);
         page::store(&self.settings.clone(), self.table(section), key, key, cx);
+    }
+
+    /// Fills filter axes the storage names but the tables have not narrowed yet. This runs at
+    /// construction and whenever the library reloads, so a range saved before its rows arrived
+    /// still lands once the bounds are known.
+    fn restore(&mut self, cx: &mut Context<Self>) {
+        for section in Section::ALL {
+            let key = section.key(self.shelf);
+            page::restore(&self.settings.clone(), self.table(section), key, cx);
+        }
     }
 
     fn unconfigured(&self, cx: &App) -> bool {
@@ -1233,7 +1246,9 @@ impl Tooled for LibraryView {
 impl LibraryView {
     fn filter(&mut self, change: FilterChange, cx: &mut Context<Self>) {
         self.cards_dirty = true;
-        self.table(self.section).filter(change, cx);
+        let section = self.section;
+        self.table(section).filter(change, cx);
+        self.persist(section, cx);
         cx.notify();
     }
 }
