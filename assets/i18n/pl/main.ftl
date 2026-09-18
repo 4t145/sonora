@@ -500,6 +500,7 @@ month-11 = lis
 month-12 = gru
 
 # settings
+settings-search = Szukaj w ustawieniach
 settings-tab-general = Ogólne
 settings-tab-appearance = Wygląd
 settings-tab-playback = Odtwarzanie
@@ -513,6 +514,10 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Otwórz konfigurację
 settings-adaptive = Motyw adaptacyjny
 settings-adaptive-detail = Zabarw paletę okładką odtwarzanego albumu
+settings-ambient = Tło nastrojowe
+settings-ambient-detail = Wypełnij tryb pełnoekranowy barwami okładki
+settings-ambient-motion = Ruch tła
+settings-ambient-motion-detail = Poruszaj barwami tła zamiast trzymać je nieruchomo
 settings-visualizer = Wizualizator
 settings-visualizer-detail = Pokaż słupki widma za okładką w trybie pełnoekranowym
 settings-fullscreen-controls-autohide = Ukryj sterowanie na pełnym ekranie
@@ -660,6 +665,7 @@ settings-group-accounts = Konta
 settings-group-library = Biblioteka
 settings-group-text = Tekst
 settings-group-motion = Animacje
+settings-group-fullscreen = Pełny ekran
 settings-group-title-bar = Pasek tytułu
 settings-group-window-style = Styl okna
 settings-equalizer = Korektor

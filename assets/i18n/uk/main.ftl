@@ -498,6 +498,7 @@ month-11 = лист.
 month-12 = груд.
 
 # settings
+settings-search = Пошук у налаштуваннях
 settings-tab-general = Загальні
 settings-tab-appearance = Вигляд
 settings-tab-playback = Відтворення
@@ -511,6 +512,10 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Відкрити конфіг
 settings-adaptive = Адаптивна тема
 settings-adaptive-detail = Підфарбовувати палітру обкладинкою альбому, що грає
+settings-ambient = Атмосферне тло
+settings-ambient-detail = Заливати повноекранний режим кольорами обкладинки
+settings-ambient-motion = Рух тла
+settings-ambient-motion-detail = Плавно рухати кольори тла, а не тримати їх нерухомими
 settings-visualizer = Візуалізатор
 settings-visualizer-detail = Показувати смужки спектра позаду обкладинки в повноекранному режимі
 settings-fullscreen-controls-autohide = Ховати керування в повноекранному режимі
@@ -658,6 +663,7 @@ settings-group-accounts = Акаунти
 settings-group-library = Медіатека
 settings-group-text = Текст
 settings-group-motion = Анімація
+settings-group-fullscreen = Повноекранний режим
 settings-group-title-bar = Заголовок вікна
 settings-group-window-style = Стиль вікна
 settings-equalizer = Еквалайзер

@@ -401,6 +401,7 @@ month-11 = 11月
 month-12 = 12月
 
 # settings
+settings-search = 設定を検索
 settings-tab-general = 一般
 settings-tab-appearance = 外観
 settings-tab-playback = 再生

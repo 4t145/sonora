@@ -8,7 +8,9 @@ mod drag;
 mod explicit;
 mod filters;
 mod form;
+mod glass;
 mod glide;
+mod grain;
 mod info_card;
 mod inline_links;
 mod input;
@@ -58,7 +60,9 @@ pub use filters::{
     Filter, FilterChange, FlagAxis, RangeAxis, RangeScrubber, RangeState, SortAxis, Unit,
 };
 pub use form::{FORM_CONTEXT, Submit};
+pub use glass::{GLASS_BLUR, GLASS_FILL, frost, glass};
 pub use glide::{Glide, ScrollPosition};
+pub use grain::grain;
 pub use info_card::{Fact, InfoCard};
 pub use inline_links::{InlineLink, InlineLinks};
 pub use input::{
@@ -77,7 +81,7 @@ pub use motion::{
     ease_out_cubic, ease_out_expo, ease_out_quad, entering, entrance_span, mix, veiled,
 };
 pub use notice::Notice;
-pub use palette::tint;
+pub use palette::{CoverPalette, decode, palette, tint};
 pub use panel::{Panel, Side};
 pub use picker::Picker;
 pub use pin::{DraggedPin, Pin, PinKind, Pinnable, Spot};

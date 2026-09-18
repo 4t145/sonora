@@ -313,6 +313,8 @@ struct Values {
 struct Appearance {
     theme: String,
     adaptive_theme: bool,
+    ambient: bool,
+    ambient_motion: bool,
     visualizer: bool,
     icons: String,
     rounding: String,
@@ -499,6 +501,8 @@ impl Default for Appearance {
         Self {
             theme: "dark".to_owned(),
             adaptive_theme: true,
+            ambient: true,
+            ambient_motion: true,
             visualizer: true,
             icons: icons::BASE.to_owned(),
             rounding: Rounding::Rounded.id().to_owned(),
@@ -791,6 +795,24 @@ impl AppSettings {
         self.values.appearance.adaptive_theme
     }
 
+    /// Whether fullscreen paints the ambient background sampled from the cover.
+    pub fn ambient(&self) -> bool {
+        self.values.appearance.ambient
+    }
+
+    /// Whether the ambient background drifts. Off leaves it a still gradient, which is what
+    /// the system reduce-motion preference does too.
+    pub fn ambient_motion(&self) -> bool {
+        self.values.appearance.ambient_motion
+    }
+
+    /// Whether the playing cover should colour the theme, given whether fullscreen is up. The
+    /// ambient background is painted out of the tint, so fullscreen tints whatever the adaptive
+    /// theme setting says.
+    pub fn cover_tint(&self, fullscreen: bool) -> bool {
+        self.adaptive_theme() || (fullscreen && self.ambient())
+    }
+
     pub fn visualizer(&self) -> bool {
         self.values.appearance.visualizer
     }
@@ -836,6 +858,7 @@ impl AppSettings {
             transparency: self.transparency(),
             blur: self.blur(),
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -1361,6 +1384,16 @@ impl AppSettings {
 
     pub fn set_adaptive_theme(&mut self, adaptive: bool, cx: &mut Context<Self>) {
         self.values.appearance.adaptive_theme = adaptive;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_ambient(&mut self, ambient: bool, cx: &mut Context<Self>) {
+        self.values.appearance.ambient = ambient;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_ambient_motion(&mut self, motion: bool, cx: &mut Context<Self>) {
+        self.values.appearance.ambient_motion = motion;
         self.schedule_save(cx);
     }
 
