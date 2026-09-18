@@ -1,33 +1,17 @@
-//! The ambient background: a GPUI-only flowing colour field behind fullscreen.
+//! The ambient background: a flowing colour field behind fullscreen, five soft
+//! blobs under a heavy blur with a dark overlay so lyrics stay readable. `Root`
+//! owns the one entity and paints it under everything, title bar included.
 //!
-//! Two settings own it. `ambient` decides whether it is painted at all, and it
-//! is also what puts the frosted glass on the fullscreen controls, since they
-//! only have something to blur while the field is there. `ambient_motion`
-//! decides whether the field drifts or stands still.
+//! `ambient` decides whether it is painted at all, and with it whether the
+//! fullscreen controls frost what they float over. `ambient_motion` decides
+//! whether the field drifts.
 //!
-//! The effect is five oversized softly-stepped colour blobs drifting very
-//! slowly, merged into one field by a heavy layer blur, with a dark overlay
-//! on top so lyrics stay readable. The palette comes from the theme's `tint`
-//! and `tint_secondary`, the hues sampled off the current cover. Fullscreen
-//! samples it whatever the adaptive theme setting says, so the field has hues
-//! to work with either way.
-//!
-//! Those hues are resolved through `Theme::accent` rather than read off
-//! `Theme::selection`. That distinction matters: a track change snaps `tint` to
-//! the new cover while every colour field is still a frame into its own fade,
-//! so `selection` hands back the untinted theme's default blue for the first
-//! stretch of every change out of a colourless cover. Art with no colour leaves
-//! no tint behind, and then the stage is quiet neutrals, so a grey cover never
-//! turns blue.
-//!
-//! The field never cuts between two palettes either. `painted` holds the
-//! colours actually on screen and every frame eases them toward the theme's, so
-//! a new cover washes in over a couple of seconds.
-//!
-//! This is deliberately isolated: `Root` owns the single `Ambient` entity and
-//! renders it as the bottom layer behind the title bar and the fullscreen
-//! shell, so the effect covers the whole window. Replacing it with a shader
-//! surface later means deleting this file and swapping that one child.
+//! The colours are the theme's `tint` and `tint_secondary`, which fullscreen
+//! samples off the cover whatever the adaptive theme setting says, resolved
+//! through `Theme::accent` rather than read off `Theme::selection`, which lags
+//! a track change by the length of the theme's own fade. Art with no colour
+//! leaves no tint and the stage stays neutral. `painted` eases the colours on
+//! screen toward those, so a cover change washes in rather than cuts.
 
 use std::cell::Cell;
 use std::f32::consts::TAU;

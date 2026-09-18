@@ -678,8 +678,8 @@ fn shifted(words: Vec<LyricsWord>, start: Duration) -> Vec<LyricsWord> {
         false => words
             .into_iter()
             .map(|word| LyricsWord {
-                start: word.start + drift,
-                end: word.end + drift,
+                start: word.start.saturating_add(drift),
+                end: word.end.saturating_add(drift),
                 text: word.text,
             })
             .collect(),

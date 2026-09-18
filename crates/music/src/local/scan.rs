@@ -34,7 +34,11 @@ pub fn scan(roots: &[PathBuf], cache_dir: &Path) -> Scanned {
     let parsed: Vec<(Track, String)> = files
         .into_iter()
         .filter_map(|path| {
-            let artist_hint = path.parent().and_then(Path::parent).map(folder_name);
+            let artist_hint = path
+                .parent()
+                .and_then(Path::parent)
+                .filter(|dir| roots.iter().any(|root| dir.starts_with(root)))
+                .map(folder_name);
             let (album_hint, _) = path
                 .parent()
                 .map(|dir| dated(&folder_name(dir)))

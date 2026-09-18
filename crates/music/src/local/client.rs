@@ -139,7 +139,7 @@ fn playlist_from(id: String, name: String, modified_at: i64, tracks: &[Track]) -
         public: false,
         cover: tracks.iter().find_map(|track| track.cover.clone()),
         track_count: tracks.len() as u32,
-        modified_at: Some(modified_at),
+        modified_at: Some(modified_at / 1_000),
     }
 }
 
