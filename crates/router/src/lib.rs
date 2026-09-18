@@ -170,6 +170,18 @@ impl SettingsTab {
             Self::About => "settings-tab-about",
         }
     }
+
+    /// The icon shown before the category's name in the category bar.
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::General => "icons/settings.svg",
+            Self::Appearance => "icons/palette.svg",
+            Self::Playback => "icons/play.svg",
+            Self::Privacy => "icons/lock.svg",
+            Self::Integrations => "icons/link.svg",
+            Self::About => "icons/info.svg",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
