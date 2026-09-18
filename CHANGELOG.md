@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Table filters such as the album year span or Favorites only are kept across restarts, the way
+  sorts and views already were.
 - Apple Music similar tracks link to their artist and album again.
 - An Apple Music library song whose catalog copy Apple has pulled is left out of Favorites,
   and the song count leaves it out too, instead of failing when played.
