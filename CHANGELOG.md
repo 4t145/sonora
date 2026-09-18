@@ -29,6 +29,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- Saving the tag editor no longer erases a release date it could not read, like `99` or
+  `平成11年`, when the year was left alone.
 - Lyrics from Apple Music, Musixmatch, LrcLib and NetEase no longer go missing when the provider
   sends a timestamp or song length out of range.
 - The local library no longer fails to load when a file's date tag is written like `平成11年` or
