@@ -9,11 +9,11 @@ use gpui::{
     ease_in_out, px, relative, svg, uniform_list,
 };
 use i18n::t;
-use music::{Track, Voice};
+use music::{Shape, Track, Voice};
 use router::{Destination, LibraryTab, Link as _};
 use state::{
-    AppSettings, Lyrics, LyricsState, Playback, PlaybackState, Queue, RomanizationScripts, SideTab,
-    Sonora, Whence,
+    AppSettings, Lyrics, LyricsState, Playback, PlaybackState, Queue, RomanizationScripts, Shelf,
+    SideTab, Sonora, Whence,
 };
 use ui::{
     ActiveTheme as _, Button, Card, DraggedPin, Edge, Motion, Motioned as _, Pin, Pinnable as _,
@@ -1660,7 +1660,10 @@ impl Aside {
             Whence::Local => Destination::Local(LibraryTab::Songs),
         };
         let name = match origin.whence {
-            Whence::Saved => t!("library-liked-songs"),
+            Whence::Saved => match Sonora::global(cx).library.read(cx).shape(Shelf::Streaming) {
+                Shape::Saved => t!("library-liked-songs"),
+                Shape::Catalog => t!("nav-songs"),
+            },
             Whence::Local => t!("nav-local"),
             _ => origin.name.clone()?,
         };
