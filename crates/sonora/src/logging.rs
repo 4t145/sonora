@@ -3,9 +3,8 @@ use std::fs::{self, File, OpenOptions};
 use env_logger::{Env, Logger, Target};
 use log::{Log, Metadata, Record};
 
-const CONSOLE: &str = "warn,symphonia=error,lofty=error";
-const DISK: &str =
-    "warn,symphonia=error,lofty=error,sonora=debug,ui=debug,music=debug,ytmusic=debug";
+const CONSOLE: &str = "warn,symphonia=error,lofty=error,discord_rich_presence=error";
+const DISK: &str = "warn,symphonia=error,lofty=error,discord_rich_presence=error,sonora=debug,ui=debug,music=debug,ytmusic=debug";
 const FILTER: &str = "SONORA_LOG";
 const PREVIOUS: &str = "sonora.log.1";
 const LIMIT: u64 = 8 * 1024 * 1024;
