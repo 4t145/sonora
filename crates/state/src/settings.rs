@@ -316,6 +316,7 @@ struct Appearance {
     ambient: bool,
     ambient_motion: bool,
     visualizer: bool,
+    visualizer_style: String,
     icons: String,
     rounding: String,
     blur: bool,
@@ -504,6 +505,7 @@ impl Default for Appearance {
             ambient: true,
             ambient_motion: true,
             visualizer: true,
+            visualizer_style: ui::VisualizerStyle::default().id().to_owned(),
             icons: icons::BASE.to_owned(),
             rounding: Rounding::Rounded.id().to_owned(),
             blur: true,
@@ -813,8 +815,13 @@ impl AppSettings {
         self.adaptive_theme() || (fullscreen && self.ambient())
     }
 
-    pub fn visualizer(&self) -> bool {
-        self.values.appearance.visualizer
+    /// The visualizer's style, `None` when it is off. The old `visualizer` switch is still the
+    /// off state, so a settings file written before the two were one setting keeps its answer.
+    pub fn visualizer_style(&self) -> ui::VisualizerStyle {
+        match self.values.appearance.visualizer {
+            true => ui::VisualizerStyle::from_id(&self.values.appearance.visualizer_style),
+            false => ui::VisualizerStyle::None,
+        }
     }
 
     pub fn fullscreen_controls_autohide(&self) -> FullscreenControlsAutohide {
@@ -1397,8 +1404,13 @@ impl AppSettings {
         self.schedule_save(cx);
     }
 
-    pub fn set_visualizer(&mut self, visualizer: bool, cx: &mut Context<Self>) {
-        self.values.appearance.visualizer = visualizer;
+    /// Picking a style turns the visualizer on; picking `None` turns it off and leaves the style
+    /// behind it alone, so the old choice comes back with it.
+    pub fn set_visualizer_style(&mut self, style: ui::VisualizerStyle, cx: &mut Context<Self>) {
+        self.values.appearance.visualizer = style.shown();
+        if style.shown() {
+            self.values.appearance.visualizer_style = style.id().to_owned();
+        }
         self.schedule_save(cx);
     }
 

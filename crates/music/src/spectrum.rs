@@ -7,28 +7,29 @@ use rustfft::FftPlanner;
 use rustfft::num_complex::Complex32;
 
 const N_BANDS: usize = 32;
-const FFT_SIZE: usize = 1024;
+const FFT_SIZE: usize = 2048;
 const RING_CAPACITY: usize = FFT_SIZE * 8;
-const MIN_FREQ: f32 = 40.;
-const MAX_FREQ: f32 = 16_000.;
+const MIN_FREQ: f32 = 100.;
+const MAX_FREQ: f32 = 6_000.;
 const GAIN: f32 = 8.;
 const ATTACK: f32 = 0.9;
 const DECAY: f32 = 0.12;
 const IDLE_POLL: Duration = Duration::from_millis(4);
 
+/// The band levels of one channel, published by the analyzer thread and read by the UI.
 #[derive(Clone)]
-pub struct Spectrum {
+struct Lane {
     bands: Arc<Vec<AtomicU32>>,
 }
 
-impl Spectrum {
-    pub fn new() -> Self {
+impl Lane {
+    fn new() -> Self {
         Self {
             bands: Arc::new((0..N_BANDS).map(|_| AtomicU32::new(0)).collect()),
         }
     }
 
-    pub fn bands(&self) -> Vec<f32> {
+    fn read(&self) -> Vec<f32> {
         self.bands
             .iter()
             .map(|band| f32::from_bits(band.load(Ordering::Relaxed)))
@@ -37,6 +38,42 @@ impl Spectrum {
 
     fn set(&self, index: usize, value: f32) {
         self.bands[index].store(value.to_bits(), Ordering::Relaxed);
+    }
+}
+
+/// The running spectrum of what is playing, one band set per channel. A mono source publishes
+/// the same levels on both.
+#[derive(Clone)]
+pub struct Spectrum {
+    left: Lane,
+    right: Lane,
+}
+
+impl Spectrum {
+    pub fn new() -> Self {
+        Self {
+            left: Lane::new(),
+            right: Lane::new(),
+        }
+    }
+
+    /// The left channel's bands.
+    pub fn left(&self) -> Vec<f32> {
+        self.left.read()
+    }
+
+    /// The right channel's bands.
+    pub fn right(&self) -> Vec<f32> {
+        self.right.read()
+    }
+
+    /// Both channels folded together, the louder of the two per band.
+    pub fn bands(&self) -> Vec<f32> {
+        let mut bands = self.left.read();
+        for (band, right) in bands.iter_mut().zip(self.right.read()) {
+            *band = band.max(right);
+        }
+        bands
     }
 
     pub fn attach(&self, rate: u32, channels: u16) -> Tap {
@@ -68,61 +105,19 @@ impl Tap {
     }
 }
 
-fn analyze(mut consumer: rtrb::Consumer<f32>, spectrum: Spectrum, rate: u32, channels: usize) {
-    let mut planner = FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(FFT_SIZE);
-    let window = hann_window();
-    let edges = band_edges(rate as f32);
-    let mut smoothed = [0f32; N_BANDS];
-    let mut mono = [0f32; FFT_SIZE];
-    let mut filled = 0usize;
-    let mut lane = vec![0f32; channels];
-    let mut lane_index = 0usize;
-    let mut buffer = vec![Complex32::default(); FFT_SIZE];
+/// One channel's window of samples and the smoothing that follows it.
+struct Side {
+    lane: Lane,
+    samples: [f32; FFT_SIZE],
+    smoothed: [f32; N_BANDS],
+}
 
-    loop {
-        let sample = match consumer.pop() {
-            Ok(sample) => sample,
-            Err(PopError::Empty) if consumer.is_abandoned() => return,
-            Err(PopError::Empty) => {
-                std::thread::sleep(IDLE_POLL);
-                continue;
-            }
-        };
-
-        lane[lane_index] = sample;
-        lane_index += 1;
-        if lane_index < channels {
-            continue;
-        }
-        lane_index = 0;
-
-        mono[filled] = lane.iter().sum::<f32>() / channels as f32;
-        filled += 1;
-        if filled < FFT_SIZE {
-            continue;
-        }
-        filled = 0;
-
-        for ((slot, sample), weight) in buffer.iter_mut().zip(mono).zip(&window) {
-            *slot = Complex32::new(sample * weight, 0.);
-        }
-        fft.process(&mut buffer);
-
-        for (band, edge) in edges.windows(2).enumerate() {
-            let lo = edge[0];
-            let hi = edge[1].max(lo + 1);
-            let magnitude = buffer[lo..hi]
-                .iter()
-                .map(|bin| bin.norm())
-                .fold(0f32, f32::max);
-            let target = (magnitude * GAIN / (FFT_SIZE as f32 / 2.)).sqrt().min(1.);
-            let rate = match target > smoothed[band] {
-                true => ATTACK,
-                false => DECAY,
-            };
-            smoothed[band] += (target - smoothed[band]) * rate;
-            spectrum.set(band, smoothed[band]);
+impl Side {
+    fn new(lane: Lane) -> Self {
+        Self {
+            lane,
+            samples: [0.; FFT_SIZE],
+            smoothed: [0.; N_BANDS],
         }
     }
 }
@@ -148,4 +143,77 @@ fn band_edges(rate: f32) -> Vec<usize> {
             ((freq / bin_hz) as usize).clamp(1, FFT_SIZE / 2 - 1)
         })
         .collect()
+}
+
+fn analyze(mut consumer: rtrb::Consumer<f32>, spectrum: Spectrum, rate: u32, channels: usize) {
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(FFT_SIZE);
+    let window = hann_window();
+    let edges = band_edges(rate as f32);
+    // One accumulator per side: a source with more than two channels folds its odd lanes left
+    // and its even ones right, which is close enough for a visualizer.
+    let mut sides = [Side::new(spectrum.left), Side::new(spectrum.right)];
+    let mut filled = 0usize;
+    let mut frame = vec![0f32; channels];
+    let mut lane_index = 0usize;
+    let mut buffer = vec![Complex32::default(); FFT_SIZE];
+
+    loop {
+        let sample = match consumer.pop() {
+            Ok(sample) => sample,
+            Err(PopError::Empty) if consumer.is_abandoned() => return,
+            Err(PopError::Empty) => {
+                std::thread::sleep(IDLE_POLL);
+                continue;
+            }
+        };
+
+        frame[lane_index] = sample;
+        lane_index += 1;
+        if lane_index < channels {
+            continue;
+        }
+        lane_index = 0;
+
+        for (index, side) in sides.iter_mut().enumerate() {
+            let mut sum = 0.;
+            let mut taken = 0usize;
+            for sample in frame.iter().skip(index).step_by(2) {
+                sum += sample;
+                taken += 1;
+            }
+            side.samples[filled] = match taken {
+                0 => frame.iter().sum::<f32>() / channels as f32,
+                taken => sum / taken as f32,
+            };
+        }
+        filled += 1;
+        if filled < FFT_SIZE {
+            continue;
+        }
+        filled = 0;
+
+        for side in sides.iter_mut() {
+            for ((slot, sample), weight) in buffer.iter_mut().zip(side.samples).zip(&window) {
+                *slot = Complex32::new(sample * weight, 0.);
+            }
+            fft.process(&mut buffer);
+
+            for (band, edge) in edges.windows(2).enumerate() {
+                let lo = edge[0];
+                let hi = edge[1].max(lo + 1);
+                let magnitude = buffer[lo..hi]
+                    .iter()
+                    .map(|bin| bin.norm())
+                    .fold(0f32, f32::max);
+                let target = (magnitude * GAIN / (FFT_SIZE as f32 / 2.)).sqrt().min(1.);
+                let rate = match target > side.smoothed[band] {
+                    true => ATTACK,
+                    false => DECAY,
+                };
+                side.smoothed[band] += (target - side.smoothed[band]) * rate;
+                side.lane.set(band, side.smoothed[band]);
+            }
+        }
+    }
 }

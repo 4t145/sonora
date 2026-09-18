@@ -113,4 +113,4 @@ pub use tooltip::{Perch, Tooltip};
 pub use traffic_light_controls::TrafficLightControls;
 pub use vacancy::Vacancy;
 pub use view::Mode;
-pub use visualizer::Visualizer;
+pub use visualizer::{Levels, Visualizer, VisualizerStyle};

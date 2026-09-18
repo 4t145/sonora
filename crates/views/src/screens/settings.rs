@@ -9,6 +9,7 @@ use crate::shared::effects;
 use crate::shared::local;
 use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_query};
 use crate::shared::text;
+use crate::shared::veil::{Edge, veil};
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, MouseUpEvent, Pixels, Render, SharedString, Task,
     Window, div, px, relative,
@@ -29,6 +30,7 @@ use ui::{
     Avatar, Button, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
     MIN_FONT, MIN_LYRICS_SCALE, MenuItem, Modal, Pace, Picker, Popovers, Rounding, Saver, Scrubber,
     ScrubberState, Separator, Skeleton, Stillness, Switch, TabBar, Text, Theme, ThemeKind, Vacancy,
+    VisualizerStyle,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -40,13 +42,6 @@ const TITLE_WEIGHT: u32 = 2;
 /// strip, so this is also the widest the haze gets. The renderer cuts a kernel off at 24 taps
 /// on a quarter-resolution frame, so past about 32px a wider radius only flattens the curve.
 const HEADER_BLUR: Pixels = px(1.);
-/// How many strips the blur fades in through on its way up from the rows. They cost nothing
-/// beyond a quad each, so more of them only make the crossfade smoother.
-const HEADER_BLUR_STRIPS: usize = 64;
-/// The curve of the crossfade: the exponent on a strip's distance up from the bottom edge. One
-/// is linear, above one starts slower, below one starts faster. Kept well below one so the
-/// haze reaches working strength quickly and only the bottom edge reads as clear.
-const HEADER_HAZE: f32 = 0.4;
 /// How far past the header the rows keep dissolving, so the handoff under the blur has
 /// no hard edge where sharp content emerges from the haze.
 const HEADER_FADE_TAIL: Pixels = px(48.);
@@ -59,6 +54,7 @@ const CORNERS: &str = "corners";
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 const WINDOW_ROUNDING: &str = "window-rounding";
 const FULLSCREEN_CONTROLS_AUTOHIDE: &str = "fullscreen-controls-autohide";
+const VISUALIZER_STYLE: &str = "visualizer-style";
 const LANGUAGES: &str = "languages";
 const TYPEFACES: &str = "typefaces";
 const TYPEFACE_LIMIT: usize = 200;
@@ -845,7 +841,7 @@ impl SettingsView {
             Slot::Adaptive => self.adaptive_row(cx).element,
             Slot::Ambient => self.ambient_row(cx).element,
             Slot::AmbientMotion => self.ambient_motion_row(cx).element,
-            Slot::Visualizer => self.visualizer_row(cx).element,
+            Slot::Visualizer => self.visualizer_style_row(cx).element,
             Slot::Icons => self.icons_row(cx).element,
             Slot::Opacity => self.opacity_row(cx).element,
             Slot::Blur => self.blur_row(cx).element,
@@ -1728,23 +1724,31 @@ impl SettingsView {
         )
     }
 
-    fn visualizer_row(&self, cx: &mut Context<Self>) -> Setting {
+    /// How the spectrum is drawn behind the fullscreen artwork, off included.
+    fn visualizer_style_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
-        let on = self.settings.read(cx).visualizer();
+        let chosen = self.settings.read(cx).visualizer_style();
+
+        let picker = Picker::new(VISUALIZER_STYLE, &self.popovers, chosen.label())
+            .width(Picker::NARROW)
+            .items(VisualizerStyle::ALL.map(|style| {
+                MenuItem::new(style.id(), style.label())
+                    .selected(style == chosen)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.settings
+                            .update(cx, |settings, cx| settings.set_visualizer_style(style, cx));
+                        cx.notify();
+                    }))
+            }));
 
         self.row(
             t!("settings-visualizer"),
             t!("settings-visualizer-detail"),
             muted,
             small,
-            Switch::new("visualizer", on)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.settings
-                        .update(cx, |settings, cx| settings.set_visualizer(!on, cx));
-                }))
-                .into_any_element(),
+            picker.into_any_element(),
         )
     }
 
@@ -3866,7 +3870,13 @@ impl Render for SettingsHeader {
                 view.update(cx, |view, cx| view.set_header_height(height, cx));
             })
             .when(!theme.transparent, |this| {
-                this.child(veil(theme.background, height, window))
+                this.child(veil(
+                    Edge::Top,
+                    height,
+                    HEADER_BLUR,
+                    theme.background,
+                    window,
+                ))
             })
             .child(
                 div()
@@ -3880,34 +3890,6 @@ impl Render for SettingsHeader {
                     .child(search)
                     .child(div().flex().justify_center().child(categories)),
             )
-    }
-}
-
-fn veil(background: gpui::Hsla, height: Pixels, window: &Window) -> impl IntoElement {
-    let edges: Vec<Pixels> = (0..=HEADER_BLUR_STRIPS)
-        .map(|edge| snapped(height * (edge as f32 / HEADER_BLUR_STRIPS as f32), window))
-        .collect();
-    let strips = edges.windows(2).enumerate().filter_map(|(strip, edge)| {
-        let cut = edge[1] - edge[0];
-        let up = 1. - (strip as f32 + 0.5) / HEADER_BLUR_STRIPS as f32;
-        (cut > Pixels::ZERO).then(|| {
-            div()
-                .flex_none()
-                .w_full()
-                .h(cut)
-                .opacity(up.powf(HEADER_HAZE))
-                .backdrop_blur(HEADER_BLUR)
-        })
-    });
-
-    match effects() {
-        true => div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .children(strips),
-        false => div().absolute().inset_0().bg(background),
     }
 }
 
