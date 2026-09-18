@@ -9,8 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Fullscreen fills its background with colours drawn from the cover. Settings > Appearance >
-  Fullscreen switches it off, and Ambient motion holds the colours still.
+- Fullscreen fills its background with colours drawn from the cover, and wears a dark palette
+  while it does, whatever theme the rest of the app is on. Settings > Appearance > Fullscreen
+  switches it off, and Ambient motion holds the colours still.
 - A Play last item on track, album, artist and playlist menus queues them for after everything
   else.
 
