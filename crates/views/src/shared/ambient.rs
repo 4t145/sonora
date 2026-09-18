@@ -18,8 +18,10 @@ use std::f32::consts::TAU;
 use std::rc::Rc;
 use std::time::Instant;
 
+use std::time::Duration;
+
 use gpui::prelude::*;
-use gpui::{App, Bounds, Context, Hsla, Render, Rgba, Window, canvas, div, px};
+use gpui::{App, Bounds, Context, Hsla, Render, Rgba, Task, Window, canvas, div, point, px};
 use state::Sonora;
 use ui::{ActiveTheme as _, Theme};
 
@@ -29,8 +31,19 @@ const BLOBS: usize = 5;
 /// falloff is baked into the discs below and the layer blur only has to erase
 /// the small steps between them, which a true gaussian at this radius does.
 const MERGE_BLUR: f32 = 24.;
+/// How many times smaller the field is drawn than it is shown. The layer is
+/// laid out at this fraction of the window and the compositor scales it back
+/// up with a bilinear sample, so the discs and the blur cost a sixteenth of
+/// the pixels. Nothing in the field is sharper than the blur, so the upscale
+/// shows nothing.
+const DOWNSCALE: f32 = 4.;
 /// Dark overlay keeping lyrics readable over the field.
 const SHADE: f32 = 0.55;
+/// How often the field is redrawn while it drifts. The blobs move on periods of
+/// tens of seconds, so a frame at the display rate moves them a fraction of a
+/// pixel and only makes everything above them repaint that often too.
+const TICK_HZ: u32 = 24;
+const TICK: Duration = Duration::from_nanos(1_000_000_000 / TICK_HZ as u64);
 
 /// One blob: base centre (fractions of the layer), diameter (fraction of the
 /// layer's smaller side), drift period in seconds, phase, drift amplitude
@@ -43,10 +56,10 @@ const SPECS: [(f32, f32, f32, f32, f32, f32, f32); BLOBS] = [
     (0.85, 0.72, 0.72, 31., 2.5, 0.12, 0.11),
 ];
 
-/// Concentric discs faking a radial falloff. Sixteen shallow steps stay
-/// invisible even if the layer blur ever misses a frame; three steep ones
-/// read as rings wherever the blur kernel runs thin.
-const DISCS: usize = 16;
+/// Concentric discs faking a radial falloff. Eight steps disappear under the
+/// layer blur; three steep ones read as rings wherever the blur kernel runs
+/// thin, and every disc is a window-sized quad, so more is fill for nothing.
+const DISCS: usize = 8;
 /// Opacity ramp from the outermost disc to the core.
 const DISC_FAINT: f32 = 0.08;
 const DISC_STRONG: f32 = 0.22;
@@ -59,6 +72,8 @@ pub(crate) struct Ambient {
     stepped: Instant,
     bounds: Rc<Cell<Bounds<gpui::Pixels>>>,
     painted: Option<[Hsla; BLOBS]>,
+    ticked: Instant,
+    ticking: Option<Task<()>>,
 }
 
 impl Ambient {
@@ -74,7 +89,29 @@ impl Ambient {
             stepped: now,
             bounds: Rc::new(Cell::new(Bounds::default())),
             painted: None,
+            ticked: now,
+            ticking: None,
         }
+    }
+
+    /// Asks for the next frame of drift once `TICK` has passed since the last
+    /// one, instead of at the display rate. Nothing else redraws fullscreen
+    /// while a track plays undisturbed, so this is the rate the whole window
+    /// repaints at.
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        if self.ticking.is_some() {
+            return;
+        }
+        let wait = TICK.saturating_sub(self.ticked.elapsed());
+        self.ticking = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            this.update(cx, |this, cx| {
+                this.ticked = Instant::now();
+                this.ticking = None;
+                cx.notify();
+            })
+            .ok();
+        }));
     }
 
     /// Eases the painted colours one frame toward `target` and returns them.
@@ -162,7 +199,7 @@ impl Ambient {
 }
 
 impl Render for Ambient {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         // Without motion the field is a still gradient: no frame requests, so
         // fullscreen stops redrawing once settled. Either the system preference
@@ -171,12 +208,19 @@ impl Render for Ambient {
             ui::motion::animates(cx) && Sonora::global(cx).settings.read(cx).ambient_motion();
         let elapsed = match animates {
             true => {
-                window.request_animation_frame();
+                self.tick(cx);
                 self.started.elapsed().as_secs_f32()
             }
             false => 0.,
         };
         let colors = self.wash(Self::colors(&theme), animates);
+        // Geometry resolves against the layer's own pixel bounds, measured a
+        // frame ago by the canvas, so the discs stay circular at any window
+        // aspect ratio. The field is laid out at a fraction of those bounds
+        // and scaled back up from the top left corner.
+        let bounds = self.bounds.get();
+        let wide = bounds.size.width.as_f32().max(1.) / DOWNSCALE;
+        let high = bounds.size.height.as_f32().max(1.) / DOWNSCALE;
 
         div()
             .id("ambient")
@@ -195,41 +239,46 @@ impl Render for Ambient {
                 .size_full(),
             )
             .child(div().absolute().inset_0().bg(theme.background))
-            .child(div().absolute().inset_0().blur(px(MERGE_BLUR)).children(
-                SPECS.iter().enumerate().map(|(index, spec)| {
-                    let (base_x, base_y, size, period, phase, amp_x, amp_y) = *spec;
-                    let spin = TAU * elapsed / period;
-                    let x = base_x + amp_x * (spin + phase).sin();
-                    let y = base_y + amp_y * (spin * 0.83 + phase * 1.7).cos();
-                    // Geometry resolves against the layer's own pixel bounds so
-                    // the discs stay circular at any window aspect ratio.
-                    let bounds = self.bounds.get();
-                    let wide = bounds.size.width.as_f32().max(1.);
-                    let high = bounds.size.height.as_f32().max(1.);
-                    let grown =
-                        wide.min(high) * size * (1. + 0.12 * (spin * 0.6 + phase * 2.3).sin());
-                    let color = colors[index];
-                    div()
-                        .absolute()
-                        .left(px(x * wide - grown / 2.))
-                        .top(px(y * high - grown / 2.))
-                        .size(px(grown))
-                        .children((0..DISCS).map(move |step| {
-                            let fraction =
-                                1. - step as f32 / DISCS as f32 * (1. - 1. / DISCS as f32);
-                            let opacity = DISC_FAINT
-                                + step as f32 / (DISCS as f32 - 1.) * (DISC_STRONG - DISC_FAINT);
-                            let stepped = grown * fraction;
-                            div()
-                                .absolute()
-                                .left(px((grown - stepped) / 2.))
-                                .top(px((grown - stepped) / 2.))
-                                .size(px(stepped))
-                                .rounded_full()
-                                .bg(color.opacity(opacity))
-                        }))
-                }),
-            ))
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .w(px(wide))
+                    .h(px(high))
+                    .layer_scale(DOWNSCALE)
+                    .layer_scale_origin(point(0., 0.))
+                    .blur(px(MERGE_BLUR / DOWNSCALE))
+                    .children(SPECS.iter().enumerate().map(|(index, spec)| {
+                        let (base_x, base_y, size, period, phase, amp_x, amp_y) = *spec;
+                        let spin = TAU * elapsed / period;
+                        let x = base_x + amp_x * (spin + phase).sin();
+                        let y = base_y + amp_y * (spin * 0.83 + phase * 1.7).cos();
+                        let grown =
+                            wide.min(high) * size * (1. + 0.12 * (spin * 0.6 + phase * 2.3).sin());
+                        let color = colors[index];
+                        div()
+                            .absolute()
+                            .left(px(x * wide - grown / 2.))
+                            .top(px(y * high - grown / 2.))
+                            .size(px(grown))
+                            .children((0..DISCS).map(move |step| {
+                                let fraction =
+                                    1. - step as f32 / DISCS as f32 * (1. - 1. / DISCS as f32);
+                                let opacity = DISC_FAINT
+                                    + step as f32 / (DISCS as f32 - 1.)
+                                        * (DISC_STRONG - DISC_FAINT);
+                                let stepped = grown * fraction;
+                                div()
+                                    .absolute()
+                                    .left(px((grown - stepped) / 2.))
+                                    .top(px((grown - stepped) / 2.))
+                                    .size(px(stepped))
+                                    .rounded_full()
+                                    .bg(color.opacity(opacity))
+                            }))
+                    })),
+            )
             .child(div().absolute().inset_0().bg(gpui::black().opacity(SHADE)))
     }
 }
