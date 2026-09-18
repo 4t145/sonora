@@ -10,6 +10,7 @@ mod filters;
 mod form;
 mod glass;
 mod glide;
+mod grain;
 mod info_card;
 mod inline_links;
 mod input;
@@ -61,6 +62,7 @@ pub use filters::{
 pub use form::{FORM_CONTEXT, Submit};
 pub use glass::{GLASS_BLUR, GLASS_FILL, frost, glass};
 pub use glide::{Glide, ScrollPosition};
+pub use grain::grain;
 pub use info_card::{Fact, InfoCard};
 pub use inline_links::{InlineLink, InlineLinks};
 pub use input::{
