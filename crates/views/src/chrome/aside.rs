@@ -411,6 +411,15 @@ impl Aside {
         self.tab
     }
 
+    /// Whether the pointer is parked on the panel's scrollbar. Fullscreen
+    /// reads this to keep its chrome awake while the reader holds it.
+    pub(crate) fn scrollbar_active(&self, cx: &App) -> bool {
+        match self.tab {
+            SideTab::Lyrics => self.verse_bar.read(cx).hovered(),
+            SideTab::Queue => self.scrollbar.read(cx).hovered(),
+        }
+    }
+
     pub(crate) fn show(&mut self, tab: SideTab, cx: &mut Context<Self>) {
         if self.tab != tab {
             self.tab = tab;

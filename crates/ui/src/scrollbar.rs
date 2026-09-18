@@ -236,6 +236,12 @@ impl Scrollbar {
         self.nudges
     }
 
+    /// Whether the pointer is parked on the bar. Fullscreen reads this to keep
+    /// its chrome awake while the reader holds the scrollbar.
+    pub fn hovered(&self) -> bool {
+        self.hovered
+    }
+
     /// Records that the reader moved the view themselves. A precise scroll needs
     /// no smoothing, but it is still theirs, and anything following the view has
     /// to know to stop.

@@ -17,6 +17,7 @@ use ui::{ActiveTheme as _, Dismiss, Look, Stillness, Theme, ThemeKind, clear_lis
 use crate::chrome::{TitleBar, TitleBarEvent, TitleBarOptions, Toolbar, Tooled};
 use crate::screens::search::SearchView;
 use crate::screens::settings::SettingsHeader;
+use crate::shared::ambient::{self, Ambient};
 use crate::shared::tracks::{LIBRARY_COLUMNS, album_columns};
 use crate::shells::Shell;
 use crate::shells::workspace::Workspace;
@@ -70,6 +71,7 @@ pub struct Root {
     io: Io,
     login: Entity<LoginView>,
     title_bar: Entity<TitleBar>,
+    ambient: Entity<Ambient>,
     shells: Shells,
     view: RootView,
     signing_in: bool,
@@ -77,7 +79,7 @@ pub struct Root {
     pending: Option<Focus>,
     navigation_transition: Option<Task<()>>,
     screens: Screens,
-    _adaptive: Entity<Adaptive>,
+    adaptive: Entity<Adaptive>,
     background: Option<gpui::WindowBackgroundAppearance>,
     #[cfg(target_os = "windows")]
     rounded: Option<ui::Rounding>,
@@ -163,6 +165,7 @@ impl Root {
             )
         });
         let fullscreen = cx.new(|cx| FullscreenView::new(playback.clone(), queue.clone(), cx));
+        let ambient = cx.new(Ambient::new);
 
         let title_bar = cx.new(TitleBar::new);
         cx.subscribe(&title_bar, |this, _, event, cx| match event {
@@ -257,7 +260,8 @@ impl Root {
                 settings,
                 settings_header,
             },
-            _adaptive: adaptive,
+            adaptive,
+            ambient,
             background: None,
             #[cfg(target_os = "windows")]
             rounded: None,
@@ -374,6 +378,14 @@ impl Root {
             .update(cx, |workspace, cx| workspace.show_side(tab, cx));
     }
 
+    /// Tells the adaptive theme whether fullscreen is up. The ambient background is painted
+    /// out of the cover's hues, so fullscreen samples the cover even with the adaptive theme
+    /// off, and leaving drops the tint again.
+    fn tinting(&self, fullscreen: bool, cx: &mut Context<Self>) {
+        self.adaptive
+            .update(cx, |adaptive, cx| adaptive.set_fullscreen(fullscreen, cx));
+    }
+
     fn toggle_fullscreen(&mut self, cx: &mut Context<Self>) {
         match self.view {
             RootView::Workspace => navigate(Destination::Fullscreen, cx),
@@ -436,11 +448,13 @@ impl Root {
         clear_listing(cx);
         if let Destination::Fullscreen = destination {
             self.view = RootView::Fullscreen;
+            self.tinting(true, cx);
             self.pending = Some(Focus::Fullscreen);
             cx.notify();
             return;
         }
         self.view = RootView::Workspace;
+        self.tinting(false, cx);
         self.pending = Some(match destination {
             Destination::Search => Focus::Search,
             _ => Focus::Workspace,
@@ -703,6 +717,11 @@ impl Render for Root {
             )
             .on_action(
                 cx.listener(|this, _: &ToggleLyrics, _, cx| this.show_side(SideTab::Lyrics, cx)),
+            )
+            // The ambient background sits behind everything, title bar included.
+            .when(
+                matches!(self.view, RootView::Fullscreen) && ambient::shown(cx),
+                |this| this.child(self.ambient.clone()),
             )
             .child(self.title_bar.clone())
             .when_else(

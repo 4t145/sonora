@@ -79,7 +79,7 @@ pub use motion::{
     ease_out_cubic, ease_out_expo, ease_out_quad, entering, entrance_span, mix, veiled,
 };
 pub use notice::Notice;
-pub use palette::tint;
+pub use palette::{CoverPalette, decode, palette, tint};
 pub use panel::{Panel, Side};
 pub use picker::Picker;
 pub use pin::{DraggedPin, Pin, PinKind, Pinnable, Spot};

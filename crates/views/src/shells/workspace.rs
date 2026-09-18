@@ -173,6 +173,7 @@ impl Shell for Workspace {
             offset: sidebar.occupied_width(),
             border: true,
             content,
+            transparent: false,
         }
     }
 }
