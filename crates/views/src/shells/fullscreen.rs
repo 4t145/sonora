@@ -20,10 +20,11 @@ use ui::{
 };
 
 use crate::chrome::{Aside, TitleBarOptions};
-use crate::shared::ambient;
 use crate::shared::menus::ItemMenu;
 use crate::shared::transport::{NOTCH, like, moved, percent, transport, volume_icon};
+use crate::shared::veil::{Edge, veil};
 use crate::shared::visualizer::VisualizerDrive;
+use crate::shared::{self, ambient};
 use crate::shells::Shell;
 
 const COVER_TALL: f32 = 0.46;
@@ -50,6 +51,14 @@ const VOLUME_ZONE: f32 = 14.;
 const CLOCK_SHORT: f32 = 3.4;
 const CLOCK_LONG: f32 = 5.4;
 const VISUALIZER_MIN: f32 = 160.;
+/// How tall the band under the controls is, as a share of the window. It carries the seek bar,
+/// the transport and the meta line over a visualizer that reaches the bottom edge, so it runs
+/// a good deal taller than the chrome itself and fades out well above it.
+const VEIL: f32 = 0.34;
+/// How hard that band blurs what passes under it. The settings header has flat page under it
+/// and gets by on a pixel; a bar of the visualizer is a hard edge and needs a real radius
+/// before it stops reading through the text over it.
+const VEIL_BLUR: Pixels = px(12.);
 const REST: Duration = Duration::from_millis(1500);
 const WAKE_DEBOUNCE: Duration = Duration::from_millis(400);
 const SPRING_REST: f32 = 0.001;
@@ -1114,6 +1123,28 @@ impl Render for FullscreenView {
                         )
                     }),
             )
+            // Under the controls, not under the artwork: the visualizer draws right up to the
+            // bottom edge and its bars read straight through the transport otherwise. The band
+            // fades with the controls, so a hidden set takes it along.
+            .when(visualizer_on && shown && shared::effects(), |this| {
+                let band = viewport.height * VEIL;
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .h(band)
+                        .opacity(1. - hide)
+                        .child(veil(
+                            Edge::Bottom,
+                            band,
+                            VEIL_BLUR,
+                            theme.background,
+                            window,
+                        )),
+                )
+            })
             .when(!split && self.panel.is_some(), |this| {
                 this.child(self.strip(hide, window, cx))
             })

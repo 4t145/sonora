@@ -9,6 +9,7 @@ use crate::shared::effects;
 use crate::shared::local;
 use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_query};
 use crate::shared::text;
+use crate::shared::veil::{Edge, veil};
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, MouseUpEvent, Pixels, Render, SharedString, Task,
     Window, div, px, relative,
@@ -41,13 +42,6 @@ const TITLE_WEIGHT: u32 = 2;
 /// strip, so this is also the widest the haze gets. The renderer cuts a kernel off at 24 taps
 /// on a quarter-resolution frame, so past about 32px a wider radius only flattens the curve.
 const HEADER_BLUR: Pixels = px(1.);
-/// How many strips the blur fades in through on its way up from the rows. They cost nothing
-/// beyond a quad each, so more of them only make the crossfade smoother.
-const HEADER_BLUR_STRIPS: usize = 64;
-/// The curve of the crossfade: the exponent on a strip's distance up from the bottom edge. One
-/// is linear, above one starts slower, below one starts faster. Kept well below one so the
-/// haze reaches working strength quickly and only the bottom edge reads as clear.
-const HEADER_HAZE: f32 = 0.4;
 /// How far past the header the rows keep dissolving, so the handoff under the blur has
 /// no hard edge where sharp content emerges from the haze.
 const HEADER_FADE_TAIL: Pixels = px(48.);
@@ -3876,7 +3870,13 @@ impl Render for SettingsHeader {
                 view.update(cx, |view, cx| view.set_header_height(height, cx));
             })
             .when(!theme.transparent, |this| {
-                this.child(veil(theme.background, height, window))
+                this.child(veil(
+                    Edge::Top,
+                    height,
+                    HEADER_BLUR,
+                    theme.background,
+                    window,
+                ))
             })
             .child(
                 div()
@@ -3890,34 +3890,6 @@ impl Render for SettingsHeader {
                     .child(search)
                     .child(div().flex().justify_center().child(categories)),
             )
-    }
-}
-
-fn veil(background: gpui::Hsla, height: Pixels, window: &Window) -> impl IntoElement {
-    let edges: Vec<Pixels> = (0..=HEADER_BLUR_STRIPS)
-        .map(|edge| snapped(height * (edge as f32 / HEADER_BLUR_STRIPS as f32), window))
-        .collect();
-    let strips = edges.windows(2).enumerate().filter_map(|(strip, edge)| {
-        let cut = edge[1] - edge[0];
-        let up = 1. - (strip as f32 + 0.5) / HEADER_BLUR_STRIPS as f32;
-        (cut > Pixels::ZERO).then(|| {
-            div()
-                .flex_none()
-                .w_full()
-                .h(cut)
-                .opacity(up.powf(HEADER_HAZE))
-                .backdrop_blur(HEADER_BLUR)
-        })
-    });
-
-    match effects() {
-        true => div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .children(strips),
-        false => div().absolute().inset_0().bg(background),
     }
 }
 
