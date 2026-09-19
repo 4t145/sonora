@@ -1,10 +1,10 @@
 use gpui::prelude::*;
 use gpui::{App, ElementId, Entity, FontWeight, SharedString, div};
 use i18n::t;
-use music::{Album, ArtistRef, Playlist, SavedArtist};
+use music::{Album, ArtistRef, Genre, GenreItem, Playlist, ReleaseType, SavedArtist, Track};
 use router::{Destination, navigate};
 use state::{Origin, Playback, PlaybackState};
-use ui::{ActiveTheme as _, Card, Pinnable, Text, Theme};
+use ui::{ActiveTheme as _, Card, InlineLinks, Pinnable, Text, Theme};
 
 use crate::shared::cells;
 use crate::shared::pins::Pinned as _;
@@ -35,6 +35,7 @@ pub(crate) fn album_card(
         .bare_meta(released(
             SharedString::new_static("album-card-artist"),
             album.year,
+            Some(album.release_type),
             album.artist_refs.clone(),
             album.artists.clone(),
             cx.theme(),
@@ -73,9 +74,180 @@ pub(crate) fn playlist_card(
         .when_some(pin, Pinnable::pin)
 }
 
+/// The card of a track with nothing wired to play it: name, cover, explicit mark and pin,
+/// tinted while it is the one playing. Whoever lists it adds the caption and the play and
+/// press it wants; `track_status` tells them where playback stands.
+pub(crate) fn track_card(
+    id: impl Into<ElementId>,
+    track: &Track,
+    playback: &Entity<Playback>,
+    cx: &App,
+) -> Card {
+    let theme = *cx.theme();
+    let (current, _) = track_status(track, playback, cx);
+    let tint = match current {
+        true => theme.primary,
+        false => theme.foreground,
+    };
+
+    Card::new(id, SharedString::from(track.name.clone()))
+        .cover(track.cover.clone())
+        .tint(tint)
+        .hint()
+        .when(track.explicit, Card::explicit)
+        .when_some(track.pin(), Pinnable::pin)
+}
+
+/// Whether the track is the one in the player, and whether that one is playing.
+pub(crate) fn track_status(track: &Track, playback: &Entity<Playback>, cx: &App) -> (bool, bool) {
+    let playback = playback.read(cx);
+    let current = track.id.is_some()
+        && playback.track().and_then(|playing| playing.id.as_deref()) == track.id.as_deref();
+
+    (
+        current,
+        current && playback.state() == &PlaybackState::Playing,
+    )
+}
+
+/// The artists of a track as the small muted links under its name.
+pub(crate) fn track_artists(
+    id: impl Into<SharedString>,
+    track: &Track,
+    theme: &Theme,
+) -> InlineLinks {
+    cells::artist_links(
+        id,
+        track.artist_refs.clone(),
+        track.artists.clone(),
+        theme.muted_foreground,
+    )
+    .text_size(theme.text(Text::Small))
+    .truncate()
+}
+
+/// A shelf item as a card, whatever it is: an album, playlist or artist opens its page and
+/// plays from its play control, a track starts its radio, a genre opens its page.
+pub(crate) fn item_card(
+    id: impl Into<ElementId>,
+    item: &GenreItem,
+    playback: &Entity<Playback>,
+    cx: &App,
+) -> Card {
+    match item {
+        GenreItem::Album(album) => album_card(id, album, playback, cx),
+        GenreItem::Playlist(playlist) => {
+            playlist_card(id, playlist, playback, cx).meta(playlist_meta(playlist))
+        }
+        GenreItem::Artist(artist) => artist_card(id, artist, playback, cx),
+        GenreItem::Genre(genre) => genre_card(id, genre),
+        GenreItem::Track(track) => {
+            let theme = *cx.theme();
+            let (current, playing) = track_status(track, playback, cx);
+            let toggled = playback.clone();
+            let pressed = playback.clone();
+            let seed = track.clone();
+            let restarted = track.clone();
+
+            track_card(id, track, playback, cx)
+                .weight(FontWeight::SEMIBOLD)
+                .bare_meta(track_artists(
+                    SharedString::new_static("item-card-artist"),
+                    track,
+                    &theme,
+                ))
+                .play(playing, move |_, _, cx| match current {
+                    true => toggled.update(cx, |playback, cx| playback.toggle_play(cx)),
+                    false => toggled.update(cx, |playback, cx| playback.play_radio(&seed, cx)),
+                })
+                .press(move |_, _, cx| {
+                    pressed.update(cx, |playback, cx| playback.play_radio(&restarted, cx));
+                })
+        }
+    }
+}
+
+pub(crate) fn genre_card(id: impl Into<ElementId>, genre: &Genre) -> Card {
+    let opened = SharedString::from(genre.id.clone());
+
+    Card::new(id, SharedString::from(genre.name.clone()))
+        .cover(genre.cover.clone())
+        .fallback("icons/music.svg")
+        .weight(FontWeight::SEMIBOLD)
+        .press(move |_, _, cx| navigate(Destination::Genre(opened.clone()), cx))
+}
+
+/// A shelf item as one row of a list: `item_card` at the plain weight of a listed row, and
+/// a track or a playlist saying what it is under its name, so a mix is never mistaken for a
+/// song: "Song · Artist", "Playlist · Made for you · 50 songs".
+pub(crate) fn listed(
+    id: impl Into<ElementId>,
+    item: &GenreItem,
+    playback: &Entity<Playback>,
+    cx: &App,
+) -> Card {
+    let theme = *cx.theme();
+    let card = item_card(id, item, playback, cx).weight(FontWeight::NORMAL);
+
+    match item {
+        GenreItem::Track(track) => card.bare_meta(tagged(
+            t!("kind-song"),
+            track_artists(SharedString::new_static("listed-artist"), track, &theme),
+            &theme,
+        )),
+        GenreItem::Playlist(playlist) => {
+            card.meta(tagged(t!("kind-playlist"), playlist_meta(playlist), &theme))
+        }
+        _ => card,
+    }
+}
+
+/// A caption led by what kind of thing it captions: "Song · " and then the rest.
+fn tagged(kind: SharedString, rest: impl IntoElement, theme: &Theme) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .min_w_0()
+        .text_size(theme.text(Text::Small))
+        .text_color(theme.muted_foreground)
+        .child(div().flex_none().child(format!("{kind} {BULLET}")))
+        .child(div().min_w_0().truncate().child(rest))
+}
+
+/// The line under a playlist on a shelf: who it is by, and how many songs when that is known,
+/// so a recap reads "Made for you · 50 songs" the way its provider lists it. A library card
+/// keeps the owner alone.
+fn playlist_meta(playlist: &Playlist) -> SharedString {
+    let owner = playlist.owner.as_str();
+    match (owner.is_empty(), playlist.track_count) {
+        (_, 0) => SharedString::from(owner.to_owned()),
+        (true, count) => t!("count-songs", count = count),
+        (false, count) => SharedString::from(format!(
+            "{owner} {BULLET} {}",
+            t!("count-songs", count = count)
+        )),
+    }
+}
+
+/// The i18n key naming a release kind.
+pub(crate) fn release_key(kind: ReleaseType) -> &'static str {
+    match kind {
+        ReleaseType::Album => "release-album",
+        ReleaseType::Single => "release-single",
+        ReleaseType::Compilation => "release-compilation",
+        ReleaseType::Ep => "release-ep",
+        ReleaseType::Audiobook => "release-audiobook",
+        ReleaseType::Podcast => "release-podcast",
+    }
+}
+
+/// The line under an album: the year and the artists, or the kind of release in the year's
+/// place when the provider gave none, so a new single still says it is one.
 pub(crate) fn released(
     id: impl Into<SharedString>,
     year: i32,
+    kind: Option<ReleaseType>,
     artists: Vec<ArtistRef>,
     fallback: impl Into<SharedString>,
     theme: &Theme,
@@ -83,7 +255,7 @@ pub(crate) fn released(
     let small = theme.text(Text::Small);
     let muted = theme.muted_foreground;
     let year = match year {
-        0 => None,
+        0 => kind.map(|kind| i18n::lookup(release_key(kind), None)),
         year => Some(SharedString::from(year.to_string())),
     };
     let artists = cells::artist_links(id, artists, fallback, muted)

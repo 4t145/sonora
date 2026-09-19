@@ -1095,7 +1095,10 @@ impl Render for LibraryView {
 
         let context_menu = self.context_menu.clone().map(|(target, position)| {
             let menu = match target {
-                LibraryMenu::Item(item) => item.menu(self.playback.clone(), false, cx),
+                LibraryMenu::Item(item) => {
+                    let menus = self.tracks().read(cx).delegate().source().menu();
+                    item.menu(menus, self.playback.clone(), false, cx)
+                }
                 LibraryMenu::Track(track) => self
                     .tracks()
                     .read(cx)

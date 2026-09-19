@@ -300,8 +300,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = クイックピック
-home-listen-again = もう一度聴く
-home-quick-picks-eyebrow = 好きな1曲から始める
 home-quick-picks-empty = 何曲かお気に入りに追加するとここに表示されます
 
 # search page

@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Selección rápida
-home-listen-again = Escuchar de nuevo
-home-quick-picks-eyebrow = Empieza por una canción
 home-quick-picks-empty = Marca algunas canciones como favoritas y aparecerán aquí
 
 # search page

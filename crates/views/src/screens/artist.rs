@@ -710,12 +710,11 @@ impl ArtistView {
             "artist-popular",
             tracks,
             self.playback.clone(),
-            self.playback_status.0.clone(),
             self.width,
             self.popular_page,
         )
         .title("artist-popular")
-        .eyebrow("artist-popular-eyebrow")
+        .eyebrow(i18n::lookup("artist-popular-eyebrow", None))
         .vacancy("artist-popular-empty")
         .detailed()
         .loading(self.detail.read(cx).is_loading())

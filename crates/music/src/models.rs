@@ -141,11 +141,15 @@ pub struct Genre {
     pub cover: Option<String>,
 }
 
+/// One card of a browse shelf. A provider's home and genre pages mix whatever the shelf holds,
+/// so a track or an artist sits beside albums and playlists in the same row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GenreItem {
     Playlist(Playlist),
     Album(Album),
     Genre(Genre),
+    Track(Track),
+    Artist(SavedArtist),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,7 +160,9 @@ pub struct GenreSection {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HomeFeed {
-    pub listen_again: Vec<Track>,
+    /// What the user has been playing lately, in every shape the provider lists it: songs and
+    /// videos, but also the albums, playlists and artists they came from.
+    pub listen_again: Vec<GenreItem>,
     pub quick_picks: Option<Vec<Track>>,
     pub sections: Vec<GenreSection>,
 }
