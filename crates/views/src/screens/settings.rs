@@ -23,7 +23,7 @@ use music::{AccountChoice, SignIn, SignInPrompt, WritingSystem};
 use router::{Destination, NavEntry, Screen, SettingsTab, navigate};
 use state::{
     AppSettings, CdmState, DiscordName, Drm, Failure, FullscreenControlsAutohide, Io, Playback,
-    SYSTEM_FONT, ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
+    SYSTEM_FONT, Scan, ScrobbleState, Scrobbling, Session, SessionState, Sleep, Sonora,
 };
 use ui::{ActiveTheme as _, Deck, LEADING, Scrollbar, Scroller, eyebrow, snapped};
 use ui::{
@@ -346,6 +346,8 @@ impl SettingsView {
         cx.observe(&scrobbling, |_, _, cx| cx.notify()).detach();
         cx.observe(&settings, |_, _, cx| cx.notify()).detach();
         cx.observe(&playback, |_, _, cx| cx.notify()).detach();
+        cx.observe(&Scan::global(cx), |_, _, cx| cx.notify())
+            .detach();
         let me = cx.entity_id();
         let languages = SearchPopup::new("settings-language-search", me, cx);
         cx.observe(&languages.input(), |this, _, cx| {
@@ -2682,11 +2684,32 @@ impl SettingsView {
             .small()
             .outline();
 
+        let scan = Scan::global(cx).read(cx);
+        let scanning = scan.progress();
+        // Until the walk is over there is no total to be a fraction of, and on a network share
+        // that is the longest part, so it says so rather than showing nothing.
+        let note = match (scanning, scan.done()) {
+            (Some(progress), _) => Some(match progress.percent() {
+                Some(percent) => t!("settings-scan-progress", percent = percent),
+                None => t!("settings-scan-walking"),
+            }),
+            (None, Some(took)) => Some(t!("settings-scan-done", seconds = text::lapsed(took))),
+            (None, None) => None,
+        };
+        let note = note.map(|text| {
+            div()
+                .text_color(muted)
+                .text_size(small)
+                .child(text)
+                .into_any_element()
+        });
+
         let rescan = (!paths.is_empty()).then(|| {
             Button::new("rescan-local-folder")
                 .label(t!("settings-rescan"))
                 .small()
                 .ghost()
+                .disabled(scanning.is_some())
                 .on_click(cx.listener(|this, _, _, cx| this.rescan_local_folder(cx)))
         });
 
@@ -2704,7 +2727,9 @@ impl SettingsView {
             small,
             div()
                 .flex()
+                .items_center()
                 .gap_2()
+                .children(note)
                 .child(add)
                 .children(rescan)
                 .into_any_element(),
@@ -2771,10 +2796,11 @@ impl SettingsView {
     }
 
     fn rescan_local_folder(&mut self, cx: &mut Context<Self>) {
+        Scan::global(cx).update(cx, |scan, _| scan.asked());
         Sonora::global(cx)
             .library
             .clone()
-            .update(cx, |library, cx| library.rescan_local(cx));
+            .update(cx, |library, cx| library.rescan_local(true, cx));
     }
 
     fn remove_local_folder(&mut self, path: String, cx: &mut Context<Self>) {

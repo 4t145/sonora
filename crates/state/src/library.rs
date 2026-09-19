@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use gpui::{App, Context, Entity, SharedString, Task};
 use music::{Album, MediaKind, MusicApi, Page, Pages, Playlist, SavedArtist, Shape, Track};
 
+use crate::snapshot::{Kind, Remembered, Snapshots};
 use crate::{Io, Outcome, Session, SessionEvent, Target, Toasts, join, mosaic};
 
 const FATAL: [LibraryPart; 3] = [
@@ -37,6 +38,14 @@ impl Shelf {
         self == Self::Local
     }
 
+    /// What a log line calls the shelf.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Streaming => "streaming",
+            Self::Local => "local",
+        }
+    }
+
     fn slot(self) -> usize {
         match self {
             Self::Streaming => 0,
@@ -63,6 +72,9 @@ struct Held {
     /// How many rows each part will have once it has all arrived, for the parts whose
     /// provider said so on the first page. Absent, the rows so far are the count.
     expected: HashMap<LibraryPart, usize>,
+    /// The parts whose rows come from the last run's snapshot rather than from this run's
+    /// provider. The first real rows of such a part replace them instead of joining them.
+    stale: HashSet<LibraryPart>,
     starred: Starred,
     tasks: Vec<Task<()>>,
 }
@@ -74,6 +86,7 @@ impl Held {
             state: LibraryState::Empty,
             awaited: Vec::new(),
             expected: HashMap::new(),
+            stale: HashSet::new(),
             starred: Starred::default(),
             tasks: Vec::new(),
         }
@@ -154,6 +167,37 @@ struct FavoritesMut<'a> {
     artists: &'a mut Vec<SavedArtist>,
 }
 
+/// The rows of one part on their way to a snapshot, owned so the write can happen off the main
+/// thread.
+enum Kept {
+    Tracks(Vec<Track>),
+    Playlists(Vec<Playlist>),
+    Albums(Vec<Album>),
+    Artists(Vec<SavedArtist>),
+}
+
+impl Kept {
+    fn listed(ready: &Ready, part: LibraryPart) -> Self {
+        match part {
+            LibraryPart::Tracks => Self::Tracks(ready.tracks.clone()),
+            LibraryPart::Playlists => Self::Playlists(ready.playlists.clone()),
+            LibraryPart::Albums => Self::Albums(ready.albums.clone()),
+            LibraryPart::Artists => Self::Artists(ready.artists.clone()),
+        }
+    }
+
+    /// The favorites of one part. Playlists have none, so they answer an empty list that the
+    /// caller never asks for.
+    fn starred(starred: &Starred, part: LibraryPart) -> Self {
+        match part {
+            LibraryPart::Tracks => Self::Tracks(starred.tracks.clone()),
+            LibraryPart::Albums => Self::Albums(starred.albums.clone()),
+            LibraryPart::Artists => Self::Artists(starred.artists.clone()),
+            LibraryPart::Playlists => Self::Playlists(Vec::new()),
+        }
+    }
+}
+
 enum Landed {
     Tracks(anyhow::Result<Vec<Track>>),
     Playlists(anyhow::Result<Vec<Playlist>>),
@@ -162,6 +206,17 @@ enum Landed {
 }
 
 impl Landed {
+    /// Whether the provider answered at all. A part that failed keeps whatever the snapshot
+    /// put there, so a launch without a network still shows the library it saw last time.
+    fn arrived(&self) -> bool {
+        match self {
+            Self::Tracks(result) => result.is_ok(),
+            Self::Playlists(result) => result.is_ok(),
+            Self::Albums(result) => result.is_ok(),
+            Self::Artists(result) => result.is_ok(),
+        }
+    }
+
     fn part(&self) -> LibraryPart {
         match self {
             Self::Tracks(_) => LibraryPart::Tracks,
@@ -223,6 +278,27 @@ fn extend(state: &mut LibraryState, landed: Landed) {
     }
 }
 
+/// Drops the rows a snapshot put on one part, the first time that part's own rows arrive. A
+/// part that was never primed passes through untouched.
+fn shed(state: &mut LibraryState, stale: &mut HashSet<LibraryPart>, part: LibraryPart) {
+    if stale.remove(&part) {
+        empty(state, part);
+    }
+}
+
+/// Takes one part's rows off the shelf, leaving the others where they are.
+fn empty(state: &mut LibraryState, part: LibraryPart) {
+    let LibraryState::Ready(ready) = state else {
+        return;
+    };
+    match part {
+        LibraryPart::Tracks => ready.tracks.clear(),
+        LibraryPart::Playlists => ready.playlists.clear(),
+        LibraryPart::Albums => ready.albums.clear(),
+        LibraryPart::Artists => ready.artists.clear(),
+    }
+}
+
 /// Marks one part as fully arrived. Once every part has, a shelf whose fatal parts all failed
 /// is failed as a whole.
 fn settle(
@@ -251,22 +327,34 @@ fn settle(
     }
 }
 
-/// Puts one loaded favorites set onto a catalog shelf; a failure only logs, since the catalog
-/// itself is still there to show.
-fn star(held: &mut Held, landed: Landed) {
+/// Puts one loaded favorites set onto a catalog shelf and says whether it arrived. A failure
+/// only logs and leaves the set alone, since the catalog is still there to show and a snapshot
+/// may have filled it.
+///
+/// Playlists never arrive here. The favorites sets exist because a catalog shelf lists
+/// everything the provider has and needs the starred ones beside it; a shelf's playlists are
+/// the listener's own whatever its shape, so there is no second set to load and no
+/// `saved_playlists` on `MusicApi` to load it from.
+fn star(held: &mut Held, landed: Landed) -> bool {
     match landed {
-        Landed::Tracks(result) => held.starred.tracks = lenient("tracks", result),
-        Landed::Albums(result) => held.starred.albums = lenient("albums", result),
-        Landed::Artists(result) => held.starred.artists = lenient("artists", result),
-        Landed::Playlists(_) => {}
+        Landed::Tracks(result) => hold("tracks", result, &mut held.starred.tracks),
+        Landed::Albums(result) => hold("albums", result, &mut held.starred.albums),
+        Landed::Artists(result) => hold("artists", result, &mut held.starred.artists),
+        Landed::Playlists(_) => false,
     }
 }
 
-fn lenient<T>(what: &str, result: anyhow::Result<Vec<T>>) -> Vec<T> {
-    result.unwrap_or_else(|error| {
-        log::warn!("library: cannot load the starred {what}: {error:#}");
-        Vec::new()
-    })
+fn hold<T>(what: &str, result: anyhow::Result<Vec<T>>, into: &mut Vec<T>) -> bool {
+    match result {
+        Ok(rows) => {
+            *into = rows;
+            true
+        }
+        Err(error) => {
+            log::warn!("library: cannot load the starred {what}: {error:#}");
+            false
+        }
+    }
 }
 
 fn stamp() -> i64 {
@@ -443,6 +531,10 @@ impl Savable for Album {
         Some(Target::Album(SharedString::from(id.to_owned())))
     }
 
+    fn stamp_added(&mut self) {
+        self.added_at = Some(stamp());
+    }
+
     fn saved_now(library: &Library, id: &str) -> Option<Self> {
         let favorites = library.favorites(id)?;
         favorites
@@ -524,6 +616,11 @@ pub enum LibraryPart {
 impl LibraryPart {
     const ALL: [Self; 4] = [Self::Tracks, Self::Playlists, Self::Albums, Self::Artists];
 
+    /// How the part names itself in a snapshot key, which is also how a log line calls it.
+    pub(crate) fn key(self) -> &'static str {
+        self.label()
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::Tracks => "songs",
@@ -600,10 +697,17 @@ pub struct Library {
     hidden_local_tracks: HashSet<String>,
     reading: HashMap<String, Task<()>>,
     mosaics: HashMap<String, Task<()>>,
+    snapshots: Snapshots,
+    priming: [Option<Task<()>>; 2],
 }
 
 impl Library {
-    pub fn new(session: Entity<Session>, io: Io, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        session: Entity<Session>,
+        io: Io,
+        cache: storage::Cache,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.subscribe(&session, |this, session, event, cx| match event {
             SessionEvent::SignedIn => {
                 this.sidebar_pin_task = None;
@@ -616,9 +720,11 @@ impl Library {
                 }
                 this.sidebar_items = None;
                 this.sync_sidebar(cx);
+                this.prime(Shelf::Streaming, cx);
                 this.load(Shelf::Streaming, cx);
             }
             SessionEvent::SignedOut => {
+                this.forget(Shelf::Streaming, cx);
                 this.sidebar_pin_task = None;
                 this.sidebar_task = None;
                 this.sidebar_items = None;
@@ -667,12 +773,134 @@ impl Library {
             hidden_local_tracks: HashSet::new(),
             reading: HashMap::new(),
             mosaics: HashMap::new(),
+            snapshots: Snapshots::new(cache),
+            priming: [None, None],
         };
         library.held_mut(Shelf::Streaming).state = LibraryState::Loading;
-        if library.session.read(cx).client_of(Shelf::Local).is_some() {
-            library.load(Shelf::Local, cx);
+        library.prime(Shelf::Streaming, cx);
+        match library.session.read(cx).client_of(Shelf::Local).is_some() {
+            true => library.load(Shelf::Local, cx),
+            false => library.prime(Shelf::Local, cx),
         }
         library
+    }
+
+    /// Puts the last run's rows on a shelf while this run's are still on their way, so a launch
+    /// shows a library before the provider has answered. Every part stays awaited, so the page
+    /// still reads as loading and the first rows the provider sends replace what was primed.
+    /// A shelf that has already heard from its provider is left alone.
+    fn prime(&mut self, shelf: Shelf, cx: &mut Context<Self>) {
+        let session = self.session.read(cx);
+        let provider = match shelf {
+            Shelf::Streaming => session.provider_slug(),
+            Shelf::Local => (!session.local_paths().is_empty()).then(|| session.local_slug()),
+        };
+        let Some(provider) = provider else {
+            return;
+        };
+
+        let snapshots = self.snapshots.clone();
+        let io = self.io.clone();
+        self.priming[shelf.slot()] = Some(cx.spawn(async move |this, cx| {
+            let Ok(Some(remembered)) = io.spawn_blocking(move || snapshots.restore(provider)).await
+            else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                let held = this.held_mut(shelf);
+                if !matches!(held.state, LibraryState::Empty | LibraryState::Loading) {
+                    return;
+                }
+                let Remembered {
+                    shape,
+                    totals,
+                    parts,
+                    tracks,
+                    playlists,
+                    albums,
+                    artists,
+                    starred_tracks,
+                    starred_albums,
+                    starred_artists,
+                } = remembered;
+                log::debug!(
+                    "library: the {} shelf starts from a snapshot of {} songs, {} playlists, \
+                     {} albums and {} artists",
+                    shelf.name(),
+                    tracks.len(),
+                    playlists.len(),
+                    albums.len(),
+                    artists.len()
+                );
+                held.shape = shape;
+                held.expected = totals;
+                held.stale = parts.into_iter().collect();
+                held.awaited = LibraryPart::ALL.to_vec();
+                held.starred = Starred {
+                    tracks: starred_tracks,
+                    albums: starred_albums,
+                    artists: starred_artists,
+                };
+                held.state = LibraryState::Ready(Ready {
+                    tracks,
+                    playlists,
+                    albums,
+                    artists,
+                    problems: Vec::new(),
+                });
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// Remembers a list that has just arrived in full, for the next launch to show. A part that
+    /// failed keeps whatever was remembered before it.
+    fn keep(&self, shelf: Shelf, kind: Kind, part: LibraryPart, cx: &App) {
+        let Some(provider) = self.provider_of(shelf, cx) else {
+            return;
+        };
+        let held = self.held(shelf);
+        let rows = match kind {
+            Kind::Listed => {
+                let LibraryState::Ready(ready) = &held.state else {
+                    return;
+                };
+                if ready.problems.iter().any(|problem| problem.part == part) {
+                    return;
+                }
+                Kept::listed(ready, part)
+            }
+            Kind::Starred => Kept::starred(&held.starred, part),
+        };
+
+        let snapshots = self.snapshots.clone();
+        let shape = held.shape;
+        drop(self.io.spawn_blocking(move || match rows {
+            Kept::Tracks(rows) => snapshots.keep(provider, kind, part, shape, &rows),
+            Kept::Playlists(rows) => snapshots.keep(provider, kind, part, shape, &rows),
+            Kept::Albums(rows) => snapshots.keep(provider, kind, part, shape, &rows),
+            Kept::Artists(rows) => snapshots.keep(provider, kind, part, shape, &rows),
+        }));
+    }
+
+    /// Drops what a shelf remembered, so signing out of a provider takes its library with it.
+    fn forget(&mut self, shelf: Shelf, cx: &App) {
+        let Some(provider) = self.provider_of(shelf, cx) else {
+            return;
+        };
+        self.priming[shelf.slot()] = None;
+        let snapshots = self.snapshots.clone();
+        drop(self.io.spawn_blocking(move || snapshots.forget(provider)));
+    }
+
+    /// The provider whose name a shelf's snapshots are filed under.
+    fn provider_of(&self, shelf: Shelf, cx: &App) -> Option<&'static str> {
+        let session = self.session.read(cx);
+        match shelf {
+            Shelf::Streaming => session.provider_slug(),
+            Shelf::Local => Some(session.local_slug()),
+        }
     }
 
     pub fn sidebar_items(&self) -> Option<&[music::LibraryItem]> {
@@ -800,6 +1028,13 @@ impl Library {
         &self.held(shelf).state
     }
 
+    /// Whether the shelf has rows to show, this run's or a snapshot's. The sidebar asks, so
+    /// Your Library is there from the first frame a snapshot is read rather than from the
+    /// moment the session finishes restoring.
+    pub fn stocked(&self, shelf: Shelf) -> bool {
+        self.held(shelf).ready().is_some()
+    }
+
     /// What the shelf's pages list: favorites on a `Saved` shelf, everything on a `Catalog` one.
     pub fn shape(&self, shelf: Shelf) -> Shape {
         self.held(shelf).shape
@@ -833,9 +1068,11 @@ impl Library {
             .update(cx, |session, cx| session.remove_local_folder(&path, cx));
     }
 
-    pub fn rescan_local(&mut self, cx: &mut Context<Self>) {
+    /// Reads the local folders again. `thorough` is the Rescan button: it distrusts the scan
+    /// index, so nothing is taken on the word of a folder's modification time.
+    pub fn rescan_local(&mut self, thorough: bool, cx: &mut Context<Self>) {
         self.session
-            .update(cx, |session, cx| session.rescan_local(cx));
+            .update(cx, |session, cx| session.rescan_local(thorough, cx));
     }
 
     pub fn hide_local_tracks(&mut self, ids: &[String], cx: &mut Context<Self>) {
@@ -1651,6 +1888,10 @@ impl Library {
 
     /// Loads a shelf from its provider. A `Saved` shape reads the `saved_*` lists; a `Catalog`
     /// shape reads the `all_*` lists and the `saved_*` ones beside them for hearts and filters.
+    /// Rows a snapshot primed stay on screen while this runs, each part until its own rows
+    /// arrive; a shelf with nothing primed goes back to loading, as a refresh does. The
+    /// favorites stay up either way until the new ones land, so a Favorites only filter shows
+    /// what it showed before rather than nothing.
     fn load(&mut self, shelf: Shelf, cx: &mut Context<Self>) {
         let session = self.session.read(cx);
         let Some(client) = session.client_of(shelf) else {
@@ -1666,10 +1907,21 @@ impl Library {
 
         let held = self.held_mut(shelf);
         held.shape = shape;
-        held.state = LibraryState::Loading;
         held.awaited = LibraryPart::ALL.to_vec();
-        held.expected.clear();
-        held.starred = Starred::default();
+        match held.stale.is_empty() {
+            true => {
+                held.state = LibraryState::Loading;
+                held.expected.clear();
+            }
+            false => {
+                for part in LibraryPart::ALL {
+                    if !held.stale.contains(&part) {
+                        held.expected.remove(&part);
+                        empty(&mut held.state, part);
+                    }
+                }
+            }
+        }
         cx.notify();
 
         let tracks = client.clone();
@@ -1789,6 +2041,7 @@ impl Library {
                             if let Some(total) = total {
                                 held.expected.insert(part, total);
                             }
+                            shed(&mut held.state, &mut held.stale, part);
                             extend(&mut held.state, wrap(Ok(items)));
                             cx.notify();
                         });
@@ -1806,7 +2059,9 @@ impl Library {
             this.update(cx, |this, cx| {
                 let held = this.held_mut(shelf);
                 held.expected.remove(&part);
+                shed(&mut held.state, &mut held.stale, part);
                 settle(&mut held.state, &mut held.awaited, part, shelf.fatal());
+                this.keep(shelf, Kind::Listed, part, cx);
                 cx.notify();
             })
             .ok();
@@ -1815,9 +2070,16 @@ impl Library {
 
     fn land(&mut self, shelf: Shelf, landed: Landed, cx: &mut Context<Self>) {
         let part = landed.part();
+        let arrived = landed.arrived();
         let held = self.held_mut(shelf);
         held.expected.remove(&part);
+        if arrived {
+            shed(&mut held.state, &mut held.stale, part);
+        }
         place(&mut held.state, &mut held.awaited, landed, shelf.fatal());
+        if arrived {
+            self.keep(shelf, Kind::Listed, part, cx);
+        }
         if part == LibraryPart::Playlists {
             self.read_playlists(shelf, cx);
             if shelf == Shelf::Streaming {
@@ -1828,7 +2090,10 @@ impl Library {
     }
 
     fn land_starred(&mut self, shelf: Shelf, landed: Landed, cx: &mut Context<Self>) {
-        star(self.held_mut(shelf), landed);
+        let part = landed.part();
+        if star(self.held_mut(shelf), landed) {
+            self.keep(shelf, Kind::Starred, part, cx);
+        }
         cx.notify();
     }
 }
