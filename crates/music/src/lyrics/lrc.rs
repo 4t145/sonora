@@ -625,13 +625,27 @@ fn close(lines: &mut [LyricsLine]) {
 }
 
 pub fn stamp_of(stamp: &str) -> Option<Duration> {
-    let (minutes, rest) = stamp.split_once(':')?;
-    let minutes: u64 = minutes.trim().parse().ok()?;
-    let seconds: f64 = rest.replace(',', ".").parse().ok()?;
+    let stamp = stamp.trim().replace(',', ".");
+    let mut parts = stamp.split(':');
+    let first = parts.next()?;
+    let second = parts.next()?;
+    let (hours, minutes, seconds) = match parts.next() {
+        Some(third) => {
+            if parts.next().is_some() {
+                return None;
+            }
+            (
+                first.parse::<u64>().ok()?,
+                second.parse::<u64>().ok()?,
+                third.parse::<f64>().ok()?,
+            )
+        }
+        None => (0, first.parse::<u64>().ok()?, second.parse::<f64>().ok()?),
+    };
     if !seconds.is_finite() || seconds < 0. {
         return None;
     }
-    Duration::try_from_secs_f64(minutes as f64 * 60. + seconds).ok()
+    Duration::try_from_secs_f64(hours as f64 * 3_600. + minutes as f64 * 60. + seconds).ok()
 }
 
 struct Segment {
