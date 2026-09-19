@@ -38,6 +38,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- An untagged song whose filename splits title and artist with a fullwidth hyphen keeps both
+  names, instead of treating the whole filename as the title.
 - The Play button on a library page no longer sits on Loading while the track you left off on is
   being made ready to resume.
 - Listening history shows when you played a song in your own time zone instead of UTC.

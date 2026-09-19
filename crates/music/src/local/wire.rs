@@ -164,7 +164,8 @@ fn infer_from_stem(stem: &str) -> (Option<String>, Option<String>) {
     let split = stem
         .rsplit_once(" - ")
         .or_else(|| stem.rsplit_once(" \u{2013} "))
-        .or_else(|| stem.rsplit_once(" \u{2014} "));
+        .or_else(|| stem.rsplit_once(" \u{2014} "))
+        .or_else(|| stem.rsplit_once(" \u{ff0d} "));
 
     if let Some((left, right)) = split {
         let left = left.trim();
