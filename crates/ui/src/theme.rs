@@ -9,6 +9,7 @@ use i18n::t;
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::{Metrics, Rounding, Text};
+use crate::palette::CoverPalette;
 
 pub const MIN_FONT: f32 = 10.;
 pub const MAX_FONT: f32 = 24.;
@@ -26,6 +27,9 @@ const TEXT_TINT: f32 = 0.12;
 const MAX_WASH_SATURATION: f32 = 0.7;
 const MIN_ACCENT_SATURATION: f32 = 0.6;
 const MAX_ACCENT_SATURATION: f32 = 0.85;
+/// Art lighter than this wears a dark control and art darker than it a light
+/// one, which is the whole of what tells a white sleeve from a black one.
+const NEUTRAL_PIVOT: f32 = 0.5;
 const SYSTEM_FILLS: bool = cfg!(target_os = "windows");
 
 /// What a fill keeps of itself once the window is fully see-through. The page
@@ -214,6 +218,16 @@ pub struct ThemeOverrides {
     pub table_active_border: Option<String>,
     pub radius: Option<f32>,
     pub font_size: Option<f32>,
+}
+
+/// What a control wears when it takes its colours from a cover rather than
+/// from the theme: the fill, the fill it lifts to on hover, and the glyph on
+/// top of both.
+#[derive(Clone, Copy)]
+pub struct CoverFill {
+    pub background: Hsla,
+    pub hover: Hsla,
+    pub foreground: Hsla,
 }
 
 #[derive(Clone, Copy)]
@@ -639,6 +653,49 @@ impl Theme {
                 false => 0.42,
             },
             a: 1.,
+        }
+    }
+
+    /// The colours a control wears over `cover`, or the theme's own primary when
+    /// the art has not been sampled yet. Art that names a hue keeps the accent
+    /// weights, so every cover reads at the same strength; art that names none
+    /// goes neutral against its own lightness, since a black sleeve and a white
+    /// one both want a control the theme's colour would only hide.
+    pub fn cover_fill(&self, cover: Option<CoverPalette>) -> CoverFill {
+        let Some(cover) = cover else {
+            return CoverFill {
+                background: self.primary,
+                hover: self.primary_hover,
+                foreground: self.primary_foreground,
+            };
+        };
+        let dark = self.background.l < 0.5;
+
+        let Some(tint) = cover.primary else {
+            let (background, hover, foreground) = match cover.lightness < NEUTRAL_PIVOT {
+                true => (0.88, 0.97, 0.1),
+                false => (0.16, 0.06, 0.94),
+            };
+            let grey = |l, a| Hsla { h: 0., s: 0., l, a };
+
+            return CoverFill {
+                background: grey(background, 1.),
+                hover: grey(hover, 0.7),
+                foreground: grey(foreground, 1.),
+            };
+        };
+
+        CoverFill {
+            background: self.primary_of(tint),
+            hover: self.primary_hover_of(tint),
+            foreground: Hsla {
+                s: tint.s.min(0.25),
+                l: match dark {
+                    true => 0.08,
+                    false => 0.98,
+                },
+                ..self.primary_of(tint)
+            },
         }
     }
 

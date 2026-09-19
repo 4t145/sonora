@@ -551,15 +551,14 @@ pub(crate) fn resource(url: impl Into<SharedString>) -> Resource {
     }
 }
 
-/// The dominant hue of a cover the artwork cache has already decoded, or none
-/// while it has not been drawn yet and for art that names no colour. Nothing is
-/// decoded here, so the hue lands on the frame the cover appears and never
-/// before it.
-pub fn cover_tint(url: &str, cx: &App) -> Option<Hsla> {
+/// The palette of a cover the artwork cache has already decoded, or none while
+/// it has not been drawn yet. Nothing is decoded here, so the colours land on
+/// the frame the cover appears and never before it.
+pub fn cover_palette(url: &str, cx: &App) -> Option<CoverPalette> {
     let installed = cx.try_global::<Installed>()?;
     let resource = resource(url.to_owned());
 
-    installed.0.read(cx).tints.get(&resource)?.primary
+    installed.0.read(cx).tints.get(&resource).copied()
 }
 
 pub fn artwork_usage(cx: &App) -> Option<(usize, usize)> {

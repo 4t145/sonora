@@ -46,7 +46,7 @@ mod vacancy;
 mod view;
 mod visualizer;
 
-pub use artwork::{Artwork, Avatar, artwork_usage, cover_tint};
+pub use artwork::{Artwork, Avatar, artwork_usage, cover_palette};
 pub use button::Button;
 pub use card::CARD_GROUP;
 pub use card::Card;
@@ -106,8 +106,8 @@ pub use table::{
 };
 pub use tabs::{TabBar, Tabs};
 pub use theme::{
-    ActiveTheme, BACKDROP_TRANSPARENCY, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
-    MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, backdrop,
+    ActiveTheme, BACKDROP_TRANSPARENCY, CoverFill, Look, MAX_FONT, MAX_LYRICS_SCALE,
+    MAX_TRANSPARENCY, MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, backdrop,
 };
 pub use time::{clock, tabular};
 pub use toast::Toast;
