@@ -38,6 +38,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Opening a `file:///C:/…` link on Windows plays the file, instead of looking for a path that
+  starts with a slash.
 - The Play button on a library page no longer sits on Loading while the track you left off on is
   being made ready to resume.
 - Listening history shows when you played a song in your own time zone instead of UTC.

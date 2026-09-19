@@ -218,9 +218,32 @@ fn follow(items: &[String], cx: &mut App) {
 /// With" launch or drop hands us across platforms.
 fn local_path_from_arg(arg: &str) -> Option<PathBuf> {
     match arg.strip_prefix("file://") {
-        Some(rest) => Some(PathBuf::from(percent_decode(rest))),
+        Some(rest) => Some(PathBuf::from(file_uri_path(rest))),
         None => Some(PathBuf::from(arg)),
     }
+}
+
+/// A `file://` URI body turned into a filesystem path. Windows `file:///C:/…`
+/// keeps a slash in front of the drive, which is not a path the OS will open.
+fn file_uri_path(rest: &str) -> String {
+    let decoded = percent_decode(rest);
+    let path = decoded
+        .strip_prefix("localhost")
+        .or_else(|| decoded.strip_prefix("LOCALHOST"))
+        .unwrap_or(decoded.as_str());
+    #[cfg(windows)]
+    {
+        if let Some(drive) = path.strip_prefix('/')
+            && drive
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic)
+            && drive.as_bytes().get(1) == Some(&b':')
+        {
+            return drive.to_owned();
+        }
+    }
+    path.to_owned()
 }
 
 fn percent_decode(value: &str) -> String {
