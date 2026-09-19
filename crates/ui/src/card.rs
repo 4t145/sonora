@@ -318,10 +318,11 @@ impl RenderOnce for Card {
         let listed = art.is_none() && tile.is_none();
         // The play button wears the cover's own colour once the cache has the art,
         // and the theme's primary until then.
-        let play_fill = cover
-            .as_deref()
-            .and_then(|cover| cover_tint(cover, cx))
-            .map_or(theme.primary, |tint| theme.primary_of(tint));
+        let (play_fill, play_hover) = match cover.as_deref().and_then(|cover| cover_tint(cover, cx))
+        {
+            Some(tint) => (theme.primary_of(tint), theme.primary_hover_of(tint)),
+            None => (theme.primary, theme.primary_hover),
+        };
         let art_radius = art_radius.or_else(|| tile.map(|_| theme.radius));
         let art = art.or(tile).unwrap_or(snapped(height - inset * 2., window));
         let hovered = match (hovered, fill) {
@@ -376,7 +377,7 @@ impl RenderOnce for Card {
                                     .tooltip(hint)
                                     .size(size)
                                     .rounded_full()
-                                    .bg(play_fill.opacity(PLAY_FILL))
+                                    .fill(play_fill.opacity(PLAY_FILL), play_hover)
                                     .backdrop_blur(GLASS_BLUR)
                                     .shadow_sm()
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {

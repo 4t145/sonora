@@ -642,6 +642,20 @@ impl Theme {
         }
     }
 
+    /// The fill `primary_of` lifts to on hover, for the same hue. Follows the
+    /// theme's own polarity: lighter than the base on a dark theme, darker on a
+    /// light one, and less transparent either way.
+    pub fn primary_hover_of(&self, tint: Hsla) -> Hsla {
+        Hsla {
+            a: 0.7,
+            l: match self.background.l < 0.5 {
+                true => 0.82,
+                false => 0.34,
+            },
+            ..self.primary_of(tint)
+        }
+    }
+
     /// The accent this theme carries once `tint` has washed through it, which
     /// is what `tinted` stores in `selection`. Exposed so a caller can resolve
     /// a cover hue the theme's own fade has not arrived at yet.
