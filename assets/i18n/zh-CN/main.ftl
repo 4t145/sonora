@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = 快速推荐
-home-listen-again = 再次收听
-home-quick-picks-eyebrow = 从一首歌开始
 home-quick-picks-empty = 收藏几首歌后，它们会显示在这里
 
 # search page

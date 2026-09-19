@@ -449,6 +449,10 @@ impl Root {
         // Leaving settings is what clears the note about the last scan, so every move tells it.
         let settings = matches!(destination, Destination::Settings(_));
         Scan::global(cx).update(cx, |scan, cx| scan.viewing_settings(settings, cx));
+        let home = matches!(destination, Destination::Home);
+        self.screens
+            .home
+            .update(cx, |view, cx| view.set_visible(home, cx));
         if let Destination::Fullscreen = destination {
             self.view = RootView::Fullscreen;
             self.tinting(true, cx);

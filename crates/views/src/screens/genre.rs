@@ -36,7 +36,7 @@ impl GenreView {
         let settings = Sonora::global(cx).settings.clone();
         let mode = settings.read(cx).view_or(SECTION, Mode::Grid);
         let id = cx.entity_id();
-        let shelves = cx.new(|_| Shelves::new("genre-shelf", id, playback.clone()));
+        let shelves = cx.new(|cx| Shelves::new("genre-shelf", id, playback.clone(), cx));
 
         cx.observe(&detail, |this, _, cx| {
             this.shelves.update(cx, |shelves, _| shelves.reset());

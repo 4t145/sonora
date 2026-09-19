@@ -221,6 +221,13 @@ pub trait MusicApi: Send + Sync {
         Ok(HomeFeed::default())
     }
 
+    /// The home feed as it fills, so a page draws its first shelves before its last have
+    /// arrived. Defaults to `home` delivered at once, so a provider that has the feed in one go
+    /// writes nothing.
+    async fn home_paged(&self) -> Result<Feed> {
+        Ok(at_once(self.home().await?))
+    }
+
     async fn name_home_playlists(&self, sections: Vec<GenreSection>) -> Vec<GenreSection> {
         sections
     }
@@ -482,6 +489,20 @@ pub struct Page<T> {
 /// carries the error a page broke on, after which nothing more comes. Dropping it stops the
 /// provider fetching.
 pub type Pages<T> = tokio::sync::mpsc::Receiver<Result<Page<T>>>;
+
+/// The home feed arriving a lot at a time: every message is the whole feed so far, arranged
+/// the way the provider wants it drawn, so each one can replace the last on the page. The
+/// channel closes after the last lot, or carries the error one broke on, after which nothing
+/// more comes. Dropping it stops the provider fetching.
+pub type Feed = tokio::sync::mpsc::Receiver<Result<HomeFeed>>;
+
+/// A home feed that arrived whole, as its one and only message.
+pub fn at_once(feed: HomeFeed) -> Feed {
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    // Room for one message was made above, so this never waits and never fails.
+    sender.try_send(Ok(feed)).ok();
+    receiver
+}
 
 /// A listing that arrived whole, as its one and only page. What a provider that lists in one
 /// go answers the paged calls with.
