@@ -16,6 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by Sonora, since Apple Music has no pins of its own.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- A YouTube Music track whose download stalls is tried again and then skipped, instead of
+  leaving the player silent until a restart.
 
 ## [0.37.0] - 2026-09-17
 

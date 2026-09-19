@@ -14,6 +14,17 @@ use crate::{PlaybackConfig, PlaybackEvent, PlaybackEvents, PlaybackFactory, Play
 
 const NORMAL_CAP: f32 = 1.0;
 const POLL: Duration = Duration::from_millis(20);
+/// How long the stream metadata, or a download with nothing known about its size, may take
+/// before the attempt is given up. The stream host has no timeout of its own, so a
+/// connection it dropped halfway would otherwise hold the engine on a silent track forever.
+const PATIENCE: Duration = Duration::from_secs(15);
+/// What every mebibyte of a download adds to `PATIENCE`; a link slower than that is not one
+/// the track would play over anyway.
+const PER_MIB: Duration = Duration::from_secs(4);
+/// The size a download is budgeted at when the stream host announced none.
+const UNSIZED_MIB: u64 = 8;
+/// The attempts a fetch gets before the track is reported unavailable.
+const ATTEMPTS: u32 = 2;
 
 enum Command {
     Load {
@@ -626,13 +637,49 @@ fn refusal(id: String, error: &anyhow::Error) -> PlaybackEvent {
     }
 }
 
+/// Loads a track's audio, giving a stalled attempt one more go before failing. Only a
+/// timeout is retried: a refusal from the stream host is as final the second time.
 async fn fetch(api: &YtMusic, id: &str) -> Result<Loaded> {
-    let (format, data) = api.load_audio(id).await?;
+    let mut attempt = 1;
+    loop {
+        match attempt_fetch(api, id).await {
+            Err(error) if attempt < ATTEMPTS && error.is::<tokio::time::error::Elapsed>() => {
+                log::warn!("playback: {id} stalled, trying again: {error:#}");
+                attempt += 1;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn attempt_fetch(api: &YtMusic, id: &str) -> Result<Loaded> {
+    let started = std::time::Instant::now();
+    let format = tokio::time::timeout(PATIENCE, api.best_audio(id))
+        .await
+        .context("stream metadata timed out")??;
+    let data = tokio::time::timeout(allowance(format.content_length), api.download(&format))
+        .await
+        .context("stream download timed out")??;
+    log::debug!(
+        "playback: {id} loaded, itag {} {} {} kbps, {:.1} MiB in {:?}",
+        format.itag,
+        format.codec,
+        format.bitrate / 1000,
+        data.len() as f64 / (1024.0 * 1024.0),
+        started.elapsed()
+    );
     Ok(Loaded {
         data: Arc::new(data),
         loudness_db: format.loudness_db,
         duration: format.duration,
     })
+}
+
+/// How long a download of `bytes` may take: `PATIENCE` plus `PER_MIB` for every mebibyte.
+/// A size the host did not announce is budgeted as a long track, `UNSIZED_MIB`.
+fn allowance(bytes: Option<u64>) -> Duration {
+    let mib = bytes.map_or(UNSIZED_MIB, |bytes| bytes.div_ceil(1024 * 1024));
+    PATIENCE + PER_MIB * mib as u32
 }
 
 fn decode(data: Arc<Vec<u8>>) -> Result<impl rodio::Source + Send + 'static> {
