@@ -81,6 +81,8 @@ pub struct ProviderInfo {
     pub web_sign_in: bool,
     pub protected: bool,
     pub stored: bool,
+    /// Whether what is stored is an anonymous session rather than an account.
+    pub guest: bool,
     pub active: bool,
     pub pending: bool,
     pub error: Option<Failure>,
@@ -234,6 +236,7 @@ impl Session {
                 web_sign_in: provider.web_sign_in().is_some() && webview::supported(),
                 protected: provider.protected(),
                 stored: provider.stored(),
+                guest: provider.stored_guest(),
                 active: self.active == Some(index),
                 pending: self.awaiting == Some(index),
                 error: match &self.error {
