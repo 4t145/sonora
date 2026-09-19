@@ -74,9 +74,24 @@ pub struct Io(Arc<Runtime>);
 
 impl Global for Io {}
 
+/// Worker threads for the tokio runtime. The work here is network calls and the json they
+/// answer with, never a long computation, so the default of one worker per core buys nothing
+/// and costs a stack and an allocator arena each.
+const WORKERS: usize = 4;
+/// The ceiling on blocking threads, which is where the sqlite reads and the tag writes go. The
+/// default is 512, far past anything Sonora queues at once.
+const BLOCKING: usize = 16;
+
 impl Io {
     pub fn new() -> Result<Self> {
-        Ok(Self(Arc::new(Runtime::new()?)))
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(WORKERS)
+            .max_blocking_threads(BLOCKING)
+            .thread_name("sonora-io")
+            .enable_all()
+            .build()?;
+
+        Ok(Self(Arc::new(runtime)))
     }
 
     pub fn global(cx: &App) -> Self {
