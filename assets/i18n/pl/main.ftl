@@ -328,6 +328,8 @@ login-password-hint = Hasło
 login-server-submit = Połącz
 login-account-title = Wybierz konto
 login-account-detail = W tej sesji zalogowano więcej niż jedno konto Google. Wybierz to, którego ma używać Sonora.
+login-choose-title = Zaloguj się do { $provider }
+login-choose-detail = Wybierz sposób logowania do { $provider }.
 
 # album and playlist pages
 detail-album = Album

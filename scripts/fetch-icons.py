@@ -38,6 +38,7 @@ MAP = {
     "folder-plus": ("folder-plus", "add-folder-linear", "folder-add-line"),
     "funnel": ("filter", "filter-linear", "filter-3-line"),
     "guitar": (None, None, None),
+    "hat-glasses": ("glasses", "glasses-linear", "glasses-line"),
     "heart": ("heart", "heart-linear", "heart-3-line"),
     "heart-filled": ("heart-solid", "heart-bold", "heart-3-fill"),
     "heart-off": (None, None, None),

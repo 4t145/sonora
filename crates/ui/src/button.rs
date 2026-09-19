@@ -19,11 +19,11 @@ const TINT_ACTIVE: f32 = 0.24;
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 enum Variant {
-    Secondary,
     Ghost,
+    Secondary,
     Outline,
     Primary,
-    Danger,
+    Destructive,
 }
 
 #[derive(IntoElement)]
@@ -54,7 +54,7 @@ impl Button {
             label: None,
             icon: None,
             trailing: None,
-            variant: Variant::Secondary,
+            variant: Variant::Ghost,
             small: false,
             disabled: false,
             selected: false,
@@ -84,8 +84,16 @@ impl Button {
         self
     }
 
+    /// What a button is without asking, kept for a call site that wants to say so.
     pub fn ghost(mut self) -> Self {
         self.variant = Variant::Ghost;
+        self
+    }
+
+    /// A filled neutral button, for one that floats over content and would go unseen
+    /// without a surface of its own.
+    pub fn secondary(mut self) -> Self {
+        self.variant = Variant::Secondary;
         self
     }
 
@@ -99,8 +107,9 @@ impl Button {
         self
     }
 
-    pub fn danger(mut self) -> Self {
-        self.variant = Variant::Danger;
+    /// Filled in the danger colour, for an action that takes something away.
+    pub fn destructive(mut self) -> Self {
+        self.variant = Variant::Destructive;
         self
     }
 
@@ -253,7 +262,9 @@ impl RenderOnce for Button {
             Variant::Ghost => subtle(None),
             Variant::Outline => subtle(Some(theme.border)),
             Variant::Primary => solid(theme.primary, theme.primary_hover, theme.primary_foreground),
-            Variant::Danger => solid(theme.danger, theme.danger_hover, theme.danger_foreground),
+            Variant::Destructive => {
+                solid(theme.danger, theme.danger_hover, theme.danger_foreground)
+            }
         };
         if backgroundless {
             palette.background = None;
@@ -266,6 +277,7 @@ impl RenderOnce for Button {
                 false => theme.muted_foreground.opacity(FADED),
             };
             palette.background = palette.background.map(|_| theme.muted);
+            palette.border = palette.border.map(|_| theme.border);
             palette.hover = None;
             palette.active = None;
         }

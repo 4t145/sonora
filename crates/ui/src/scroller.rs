@@ -203,6 +203,7 @@ pub fn return_to(
 
     Some(perched(
         Button::new(id)
+            .secondary()
             .icon("icons/undo-2.svg")
             .tooltip(tooltip)
             .on_click(move |_, window, cx| {

@@ -11,8 +11,8 @@ use crate::shared::popups::{AccountPicker, CookiePrompt, SearchPopup, matches_qu
 use crate::shared::text;
 use crate::shared::veil::{Edge, veil};
 use gpui::{
-    AnyElement, App, Context, Entity, FontWeight, MouseUpEvent, Pixels, Render, SharedString, Task,
-    Window, div, px, relative,
+    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, FontWeight, MouseButton,
+    MouseUpEvent, Pixels, Render, SharedString, Task, Window, div, px, relative,
 };
 use gpui::{ScrollHandle, prelude::*, svg};
 use i18n::{Language, t};
@@ -27,10 +27,10 @@ use state::{
 };
 use ui::{ActiveTheme as _, Deck, LEADING, Scrollbar, Scroller, eyebrow, snapped};
 use ui::{
-    Avatar, Button, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
-    MIN_FONT, MIN_LYRICS_SCALE, MenuItem, Modal, Pace, Picker, Popovers, Rounding, Saver, Scrubber,
-    ScrubberState, Separator, Skeleton, Stillness, Switch, TabBar, Text, Theme, ThemeKind, Vacancy,
-    VisualizerStyle,
+    Avatar, Button, Dismiss, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE,
+    MAX_TRANSPARENCY, MIN_FONT, MIN_LYRICS_SCALE, MenuItem, Modal, Pace, Picker, Popovers, Radio,
+    Rounding, Saver, Scrubber, ScrubberState, Separator, Skeleton, Stillness, Switch, TabBar, Text,
+    Theme, ThemeKind, Vacancy, VisualizerStyle,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -110,6 +110,10 @@ const SECTION_GAP: Pixels = px(12.);
 const HALF_GAP: Pixels = px(2.);
 /// The icon beside a provider's sign-in error.
 const ERROR_ICON: Pixels = px(14.);
+/// The arrow at the end of a card that signs in when it is clicked.
+const ARROW: Pixels = px(14.);
+/// How many buttons tall the sign-in choice stands, however few it lists.
+const CHOICES: f32 = 3.;
 
 /// One row of the settings page, described without building anything. The deck scores and
 /// measures slots and only builds the ones in view, so typing a search or scrolling never
@@ -194,6 +198,12 @@ struct Field {
     masked: bool,
 }
 
+/// What the guest card answers to, where a provider card answers to its slug.
+const GUEST: &str = "guest";
+
+/// What a whole account card does when it is clicked.
+type Press = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
 struct Account {
     slug: &'static str,
     name: &'static str,
@@ -201,17 +211,26 @@ struct Account {
     web_sign_in: bool,
     stored: bool,
     active: bool,
-    guest: bool,
     cancel: bool,
     error: Option<Failure>,
 }
 
-fn offered(method: &SignIn, stored: bool, guest: bool) -> bool {
+/// The guest entry the accounts block draws under the providers. It is a card of the app's
+/// own, not a provider: it stands for the anonymous session `slug` offers, so signing out of
+/// it signs that provider out.
+#[derive(Clone, Copy)]
+struct Guest {
+    slug: &'static str,
+    stored: bool,
+    active: bool,
+}
+
+/// Which sign-in methods a provider card lists. Anonymous never appears there, because guest
+/// mode has a card of its own, and a stored account is asked for nothing.
+fn offered(method: &SignIn, stored: bool) -> bool {
     match method {
-        SignIn::Default | SignIn::Anonymous => !stored,
-        SignIn::Secret => !stored || guest,
-        SignIn::Credentials { .. } => !stored,
-        SignIn::Path(_) => false,
+        SignIn::Default | SignIn::Secret | SignIn::Credentials { .. } => !stored,
+        SignIn::Anonymous | SignIn::Path(_) => false,
     }
 }
 
@@ -291,6 +310,20 @@ pub struct SettingsView {
     scrobble_second: Entity<Input>,
     /// The service whose link dialog is open, by slug.
     scrobble_prompt: Option<&'static str>,
+    /// The provider whose sign-in choice is up, by slug and name.
+    sign_in_for: Option<(&'static str, &'static str)>,
+    /// Holds the key focus while a dialog is up, so escape reaches the page and closes it.
+    focus: FocusHandle,
+    /// Whether the focus has already been taken for the dialog that is up.
+    grabbed: bool,
+    /// Whether the choice the dialog offered has been taken. The dialog stays up until the
+    /// sign-in it started is over, so the veil never blinks away between it and the prompt
+    /// that follows.
+    sign_in_running: bool,
+    /// The card the user just switched to, by slug or `guest`. Its radio fills while the
+    /// session tears the old provider down and brings the new one up, which reports nothing
+    /// active in between.
+    chosen: Option<&'static str>,
     languages: SearchPopup,
     typefaces: SearchPopup,
     typeface_faced: RefCell<HashSet<SharedString>>,
@@ -367,6 +400,11 @@ impl SettingsView {
             credentials_for: None,
             secret: cx.new(|cx| Input::new("login-cookie-hint", cx)),
             manual_secret: None,
+            sign_in_for: None,
+            focus: cx.focus_handle(),
+            grabbed: false,
+            sign_in_running: false,
+            chosen: None,
             scrobbling,
             scrobble_first: cx.new(|cx| Input::new("settings-scrobble-key", cx)),
             scrobble_second: cx.new(|cx| Input::new("settings-scrobble-secret", cx)),
@@ -586,12 +624,7 @@ impl SettingsView {
             ),
             Slot::Accounts => {
                 let detail = t!("settings-accounts-detail");
-                let names = self
-                    .providers(cx)
-                    .iter()
-                    .map(|account| account.name.to_owned())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let names = self.account_words(cx);
                 (t!("settings-accounts"), format!("{detail} {names}").into())
             }
             Slot::LocalFolder => (
@@ -772,32 +805,12 @@ impl SettingsView {
         let head = line(theme, Text::Body) + ROW_GAP + line(theme, Text::Small);
         let mut total = SECTION_GAP + head + SECTION_GAP;
         for account in self.providers(cx) {
-            total += SECTION_GAP + self.card_height(&account, theme);
+            total += SECTION_GAP + card_height(theme, account.error.is_some());
+        }
+        if self.guest(cx).is_some() {
+            total += SECTION_GAP + card_height(theme, false);
         }
         total + ACCOUNTS_SLACK
-    }
-
-    /// One provider card: the headline, the sign-in error when one is shown, and the sign-in
-    /// buttons stacked below.
-    fn card_height(&self, account: &Account, theme: &Theme) -> Pixels {
-        let head = line(theme, Text::Body) + HALF_GAP + line(theme, Text::Small);
-        let mut inner = head;
-        if account.error.is_some() {
-            inner += SECTION_GAP + line(theme, Text::Small).max(ERROR_ICON);
-        }
-        let buttons = account
-            .options
-            .iter()
-            .filter(|option| offered(option, account.stored, account.guest))
-            .map(|option| method_count(option, account.web_sign_in))
-            .sum::<usize>()
-            + usize::from(account.cancel);
-        if buttons > 0 {
-            inner += SECTION_GAP
-                + theme.metrics.control_small * buttons as f32
-                + BLOCK_GAP * buttons.saturating_sub(1) as f32;
-        }
-        px(2.) + theme.metrics.pad * 2. + inner
     }
 
     /// The local folder block: the header over one line per watched folder.
@@ -3002,6 +3015,8 @@ impl SettingsView {
             SessionState::Authorizing(prompt) => !matches!(prompt, Some(SignInPrompt::Accounts(_))),
             _ => false,
         };
+        let loading = session.is_pending();
+        let chosen = self.chosen.filter(|_| loading);
         session
             .providers()
             .map(|info| Account {
@@ -3009,23 +3024,67 @@ impl SettingsView {
                 name: info.name,
                 options: info.options,
                 web_sign_in: info.web_sign_in,
-                stored: info.stored,
-                active: info.active && !signed_out,
-                guest: info.active && !signed_out && guest,
+                stored: info.stored && !info.guest,
+                // a session on its way up reports no account yet, so while it loads the card
+                // it belongs to keeps the radio rather than leaving the list blank
+                active: match chosen {
+                    Some(picked) => picked == info.slug,
+                    None if loading => info.active && !info.guest,
+                    None => info.active && !signed_out && !guest,
+                },
                 cancel: waiting && info.pending,
                 error: info.error,
             })
             .collect()
     }
 
+    /// The guest card, when a provider offers an anonymous session at all. A guest run leaves
+    /// that provider's own card connected to nothing, so only this card reports it.
+    fn guest(&self, cx: &App) -> Option<Guest> {
+        let session = self.session.read(cx);
+        let signed_out = matches!(session.state(), SessionState::SignedOut);
+        let info = session.providers().find(|info| {
+            info.options
+                .iter()
+                .any(|option| matches!(option, SignIn::Anonymous))
+        })?;
+        let loading = session.is_pending();
+        let active = match self.chosen.filter(|_| loading) {
+            Some(picked) => picked == GUEST,
+            None if loading => info.active && info.guest,
+            None => info.active && !signed_out && !session.authenticated(),
+        };
+        Some(Guest {
+            slug: info.slug,
+            stored: info.guest,
+            active,
+        })
+    }
+
+    /// The words the accounts row answers a search with: every provider name, and the guest
+    /// entry when one is shown.
+    fn account_words(&self, cx: &App) -> String {
+        let mut names: Vec<String> = self
+            .providers(cx)
+            .iter()
+            .map(|account| account.name.to_string())
+            .collect();
+        if self.guest(cx).is_some() {
+            names.push(t!("login-guest-title").to_string());
+        }
+        names.join(" ")
+    }
+
     fn accounts_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let pending = self.session.read(cx).is_pending();
-        let accounts = self.providers(cx);
-        let names: Vec<&str> = accounts.iter().map(|account| account.name).collect();
+        let names = self.account_words(cx);
         let mut cards = Vec::new();
-        for account in accounts {
+        for account in self.providers(cx) {
             cards.push(self.account_card(account, pending, cx).into_any_element());
+        }
+        if let Some(guest) = self.guest(cx) {
+            cards.push(self.guest_card(guest, pending, cx).into_any_element());
         }
         let title = t!("settings-accounts");
         let detail = t!("settings-accounts-detail");
@@ -3066,7 +3125,7 @@ impl SettingsView {
         // the provider names are words too, so "spotify" finds the accounts
         Setting {
             title,
-            detail: format!("{detail} {}", names.join(" ")).into(),
+            detail: format!("{detail} {names}").into(),
             element,
         }
     }
@@ -3077,7 +3136,6 @@ impl SettingsView {
         pending: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let theme = *cx.theme();
         let Account {
             slug,
             name,
@@ -3085,128 +3143,245 @@ impl SettingsView {
             web_sign_in,
             stored,
             active,
-            guest,
             cancel,
             error,
         } = account;
-        let status = match (active, guest, stored) {
-            (true, true, _) => t!("settings-provider-guest"),
-            (true, false, _) => t!("settings-provider-current"),
-            (false, _, true) => t!("settings-provider-connected"),
-            (false, _, false) => t!("settings-provider-none"),
+        let status = Some(match (active, stored) {
+            (true, _) => t!("settings-provider-current"),
+            (false, true) => t!("settings-provider-connected"),
+            (false, false) => t!("settings-provider-none"),
+        });
+        let press: Option<Press> = match (cancel, stored, active) {
+            (true, ..) | (_, true, true) => None,
+            (false, true, false) => Some(Box::new(cx.listener(move |this, _, _, cx| {
+                this.chosen = Some(slug);
+                this.session
+                    .update(cx, |session, cx| session.switch(slug, cx));
+            }))),
+            (false, false, _) => Some(Box::new(cx.listener(move |this, _, _, cx| {
+                this.chosen = None;
+                this.start_sign_in(slug, name, &options, web_sign_in, cx);
+            }))),
         };
-        let methods: Vec<SignIn> = options
-            .into_iter()
-            .filter(|option| offered(option, stored, guest))
-            .collect();
-        let mut actions = methods
-            .into_iter()
-            .flat_map(|method| self.method_buttons(slug, name, method, web_sign_in, pending, cx))
-            .collect::<Vec<_>>();
+
+        card(
+            AccountCard {
+                id: SharedString::from(format!("account-{slug}")),
+                logo: crate::shared::provider_logo(slug),
+                name: name.into(),
+                status,
+                selected: active,
+                trailing: self.trailing(slug, slug, stored, cancel, pending, cx),
+                error,
+                press: press.filter(|_| !pending),
+            },
+            cx,
+        )
+    }
+
+    /// The guest card. Its buttons drive the provider the anonymous session belongs to, so
+    /// they carry ids of their own rather than that provider's, which has a card too.
+    fn guest_card(&self, guest: Guest, pending: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let Guest {
+            slug,
+            stored,
+            active,
+        } = guest;
+        let status = active.then(|| t!("settings-provider-guest"));
+        let press: Option<Press> = match (stored, active) {
+            (_, true) => None,
+            (true, false) => Some(Box::new(cx.listener(move |this, _, _, cx| {
+                this.chosen = Some(GUEST);
+                this.session
+                    .update(cx, |session, cx| session.switch(slug, cx));
+            }))),
+            (false, false) => Some(Box::new(cx.listener(move |this, _, _, cx| {
+                this.chosen = Some(GUEST);
+                this.session.update(cx, |session, cx| {
+                    session.sign_in(slug, SignIn::Anonymous, cx)
+                });
+            }))),
+        };
+
+        card(
+            AccountCard {
+                id: SharedString::from("account-guest"),
+                logo: "icons/hat-glasses.svg",
+                name: t!("login-guest-title"),
+                status,
+                selected: active,
+                trailing: self.trailing(GUEST, slug, active, false, pending, cx),
+                error: None,
+                press: press.filter(|_| !pending),
+            },
+            cx,
+        )
+    }
+
+    /// What sits at the right end of a card: the one button it has while an account is
+    /// connected, the same shape carrying a cancel while a sign-in is in flight, and an arrow
+    /// for a card whose whole surface starts a sign-in.
+    fn trailing(
+        &self,
+        id: &'static str,
+        slug: &'static str,
+        stored: bool,
+        cancel: bool,
+        pending: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = *cx.theme();
         if cancel {
-            actions.push(
-                Button::new(SharedString::from(format!("cancel-{slug}")))
-                    .label(t!("common-cancel"))
-                    .small()
-                    .outline()
-                    .on_click(cx.listener(|this, _, _, cx| this.abandon(cx)))
-                    .into_any_element(),
-            );
+            return Button::new(SharedString::from(format!("cancel-{id}")))
+                .icon("icons/x.svg")
+                .tooltip("common-cancel")
+                .w(theme.metrics.control)
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(|this, _, _, cx| this.abandon(cx)))
+                .into_any_element();
+        }
+        if !stored {
+            return div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .w(theme.metrics.control)
+                .h(theme.metrics.control)
+                .child(
+                    svg()
+                        .path(icons::path("icons/chevron-right.svg"))
+                        .size(ARROW)
+                        .flex_none()
+                        .text_color(theme.muted_foreground),
+                )
+                .into_any_element();
         }
 
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .p(theme.metrics.pad)
-            .rounded(theme.radius)
-            .border_1()
-            .border_color(theme.border)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .pl_2()
-                    .child(
-                        svg()
-                            .path(icons::path(crate::shared::provider_logo(slug)))
-                            .size(theme.metrics.control_small)
-                            .flex_none()
-                            .text_color(theme.foreground),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_0p5()
-                            .child(
-                                div()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .line_height(relative(LEADING))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(name),
-                            )
-                            .child(
-                                div()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .line_height(relative(LEADING))
-                                    .text_color(theme.muted_foreground)
-                                    .text_size(theme.text(Text::Small))
-                                    .child(status),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .gap_2()
-                            .when(stored && !active, |this| {
-                                this.child(
-                                    Button::new(SharedString::from(format!("switch-{slug}")))
-                                        .label(t!("settings-provider-switch"))
-                                        .small()
-                                        .outline()
-                                        .disabled(pending)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.session
-                                                .update(cx, |session, cx| session.switch(slug, cx));
-                                        })),
-                                )
-                            })
-                            .when(stored, |this| {
-                                this.child(
-                                    Button::new(SharedString::from(format!("sign-out-{slug}")))
-                                        .label(t!("settings-sign-out"))
-                                        .small()
-                                        .ghost()
-                                        .icon("icons/log-out.svg")
-                                        .disabled(pending)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.session
-                                                .update(cx, |session, cx| session.forget(slug, cx));
-                                        })),
-                                )
-                            }),
-                    ),
-            )
-            .when_some(error, |this, error| this.child(account_error(&error, cx)))
-            .when(!actions.is_empty(), |this| {
-                this.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .items_start()
-                        .gap_2()
-                        .children(actions),
-                )
-            })
+        Button::new(SharedString::from(format!("sign-out-{id}")))
+            .icon("icons/log-out.svg")
+            .tooltip("settings-sign-out")
+            .w(theme.metrics.control)
+            .disabled(pending)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.chosen = None;
+                this.session
+                    .update(cx, |session, cx| session.forget(slug, cx));
+            }))
+            .into_any_element()
+    }
+
+    /// Starts a sign-in the way the provider asks for it. One method goes straight through,
+    /// a server asks for its address and credentials, and anything with a choice to make puts
+    /// the choice up in a dialog.
+    fn start_sign_in(
+        &mut self,
+        slug: &'static str,
+        provider: &'static str,
+        options: &[SignIn],
+        web_sign_in: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let methods: Vec<&SignIn> = options
+            .iter()
+            .filter(|option| offered(option, false))
+            .collect();
+        let buttons: usize = methods
+            .iter()
+            .map(|method| method_count(method, web_sign_in))
+            .sum();
+        match methods.as_slice() {
+            [SignIn::Credentials { .. }] => self.open_credentials(slug, cx),
+            [SignIn::Secret] if buttons == 1 => self.start_manual(slug, provider, cx),
+            [method] if buttons == 1 => {
+                let method = (*method).clone();
+                self.session
+                    .update(cx, |session, cx| session.sign_in(slug, method, cx));
+            }
+            [] => {}
+            _ => {
+                self.sign_in_for = Some((slug, provider));
+                cx.notify();
+            }
+        }
+    }
+
+    /// Closes the dialog that is up, topmost first, the way clicking outside it does. A
+    /// prompt a sign-in raised takes the sign-in down with it.
+    fn escape(&mut self, cx: &mut Context<Self>) {
+        if self.credentials_for.is_some() {
+            return self.abandon_credentials(cx);
+        }
+        if self.scrobble_prompt.is_some() {
+            return self.close_scrobble(cx);
+        }
+        let prompted = matches!(
+            self.session.read(cx).state(),
+            SessionState::Authorizing(Some(_))
+        );
+        if prompted {
+            return self.abandon(cx);
+        }
+        if self.sign_in_for.is_some() {
+            self.close_sign_in(cx);
+        }
+    }
+
+    fn close_sign_in(&mut self, cx: &mut Context<Self>) {
+        self.sign_in_for = None;
+        self.sign_in_running = false;
+        cx.notify();
+    }
+
+    /// The choice of sign-in methods, for a provider that has more than one. The buttons are
+    /// the same ones the card used to carry.
+    fn sign_in_prompt(
+        &self,
+        slug: &'static str,
+        provider: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let theme = *cx.theme();
+        let pending = self.session.read(cx).is_pending();
+        let options = self
+            .session
+            .read(cx)
+            .providers()
+            .find(|info| info.slug == slug)
+            .map(|info| info.options)
+            .unwrap_or_default();
+        let web_sign_in = self
+            .session
+            .read(cx)
+            .providers()
+            .find(|info| info.slug == slug)
+            .is_some_and(|info| info.web_sign_in);
+        let buttons = options
+            .into_iter()
+            .filter(|option| offered(option, false))
+            .flat_map(|method| {
+                self.method_buttons(slug, provider, method, web_sign_in, pending, cx)
+            });
+
+        Modal::new(
+            "settings-sign-in-prompt",
+            t!("login-choose-title", provider = provider),
+        )
+        .w(px(420.))
+        .close_button()
+        .detail(t!("login-choose-detail", provider = provider))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .justify_center()
+                .gap_3()
+                .w_full()
+                .min_h(theme.metrics.control * CHOICES)
+                .children(buttons.map(|button| div().w_full().child(button))),
+        )
+        .on_dismiss(cx.listener(|this, _, _, cx| this.close_sign_in(cx)))
     }
 
     fn abandon(&mut self, cx: &mut Context<Self>) {
@@ -3336,12 +3511,12 @@ impl SettingsView {
             buttons.push(
                 Button::new(SharedString::from(format!("connect-{slug}-cookies-manual")))
                     .label(t!("login-connect-cookies"))
-                    .small()
-                    .outline()
+                    .secondary()
                     .disabled(pending)
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.start_manual(slug, provider, cx)),
-                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.sign_in_running = true;
+                        this.start_manual(slug, provider, cx);
+                    }))
                     .into_any_element(),
             );
         }
@@ -3378,15 +3553,17 @@ impl SettingsView {
 
         Button::new(SharedString::from(id))
             .label(label)
-            .small()
-            .outline()
+            .primary()
             .disabled(pending)
-            .on_click(cx.listener(move |this, _, _, cx| match &method {
-                SignIn::Credentials { .. } => this.open_credentials(slug, cx),
-                method => {
-                    let method = method.clone();
-                    this.session
-                        .update(cx, |session, cx| session.sign_in(slug, method, cx));
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.sign_in_running = true;
+                match &method {
+                    SignIn::Credentials { .. } => this.open_credentials(slug, cx),
+                    method => {
+                        let method = method.clone();
+                        this.session
+                            .update(cx, |session, cx| session.sign_in(slug, method, cx));
+                    }
                 }
             }))
     }
@@ -3595,8 +3772,111 @@ fn samples(pack: &'static icons::Pack, tint: gpui::Hsla) -> impl IntoElement {
         }))
 }
 
-/// How many buttons one sign-in method draws: the method itself, and the manual paste
-/// beside a cookie one. Shared by the card and its height, so the two never disagree.
+/// One card: the headline with every button beside it, and the sign-in error when one is
+/// shown. Summed from the same fixed parts `card` is built of, so the deck never clips one.
+fn card_height(theme: &Theme, error: bool) -> Pixels {
+    let head = line(theme, Text::Body) + HALF_GAP + line(theme, Text::Small);
+    let mut inner = head.max(theme.metrics.control);
+    if error {
+        inner += SECTION_GAP + line(theme, Text::Small).max(ERROR_ICON);
+    }
+    px(2.) + theme.metrics.pad * 2. + inner
+}
+
+/// The shell every account draws in: the radio saying whether it is the one playing, the logo,
+/// the name over its status, and whatever the card ends with. The whole surface takes the click
+/// when there is one, so the trailing button has to stop the press from reaching it.
+struct AccountCard {
+    id: SharedString,
+    logo: &'static str,
+    name: SharedString,
+    status: Option<SharedString>,
+    selected: bool,
+    trailing: AnyElement,
+    error: Option<Failure>,
+    press: Option<Press>,
+}
+
+fn card(card: AccountCard, cx: &App) -> impl IntoElement {
+    let AccountCard {
+        id,
+        logo,
+        name,
+        status,
+        selected,
+        trailing,
+        error,
+        press,
+    } = card;
+    let theme = *cx.theme();
+    // every card stands as tall as the tallest thing it can hold, so the one without a status
+    // line under its name is no shorter than the rest
+    let head = line(&theme, Text::Body) + HALF_GAP + line(&theme, Text::Small);
+    div()
+        .id(id.clone())
+        .flex()
+        .flex_col()
+        .gap_3()
+        .p(theme.metrics.pad)
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(theme.border)
+        .when_some(press, |this, press| {
+            this.cursor_pointer()
+                .hover(|this| this.bg(theme.secondary))
+                .on_click(move |event, window, cx| press(event, window, cx))
+        })
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .min_h(head.max(theme.metrics.control))
+                .child(Radio::new(
+                    SharedString::from(format!("{id}-radio")),
+                    selected,
+                ))
+                .child(
+                    svg()
+                        .path(icons::path(logo))
+                        .size(theme.metrics.control_small)
+                        .flex_none()
+                        .text_color(theme.foreground),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .line_height(relative(LEADING))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(name),
+                        )
+                        .children(status.map(|status| {
+                            div()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .line_height(relative(LEADING))
+                                .text_color(theme.muted_foreground)
+                                .text_size(theme.text(Text::Small))
+                                .child(status)
+                        })),
+                )
+                .child(div().flex().flex_none().items_center().child(trailing)),
+        )
+        .when_some(error, |this, error| this.child(account_error(&error, cx)))
+}
+
+/// How many buttons one sign-in method draws: the method itself, and the manual paste beside
+/// a cookie one. A provider that draws exactly one never opens the choice dialog.
 fn method_count(method: &SignIn, web_sign_in: bool) -> usize {
     let manual = matches!(method, SignIn::Secret);
     usize::from(!manual || web_sign_in) + usize::from(manual)
@@ -3738,6 +4018,10 @@ impl Render for SettingsView {
             }
             _ => None,
         };
+        if self.sign_in_running && !self.session.read(cx).is_pending() {
+            self.sign_in_running = false;
+            self.sign_in_for = None;
+        }
         let manual_secret = self.manual_secret.filter(|_| {
             matches!(
                 self.session.read(cx).state(),
@@ -3745,12 +4029,33 @@ impl Render for SettingsView {
             )
         });
 
+        // only one of these is ever up: a prompt the sign-in raised hides the choice behind
+        // it, and the choice holds the veil until that prompt arrives
+        let taken = accounts.is_some() || manual_secret.is_some() || self.credentials_for.is_some();
+        let sign_in_for = self.sign_in_for.filter(|_| !taken);
+
+        // a dialog takes the key focus, since escape only reaches the page from inside it
+        let dialog = taken || sign_in_for.is_some() || self.scrobble_prompt.is_some();
+        match (dialog, self.grabbed) {
+            (true, false) => {
+                window.focus(&self.focus, cx);
+                self.grabbed = true;
+            }
+            (false, true) => self.grabbed = false,
+            _ => {}
+        }
+
         let general = self.tab == SettingsTab::General && !searching;
         let about = self.tab == SettingsTab::About && !searching;
 
         div()
             .relative()
             .size_full()
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &Dismiss, _, cx| {
+                cx.stop_propagation();
+                this.escape(cx);
+            }))
             // the padding, the fade and the scrollbar all hang off the header's measured
             // height, so the page sits out the first frame rather than snapping into place
             .when(!self.header_measured, |this| this.invisible())
@@ -3797,6 +4102,9 @@ impl Render for SettingsView {
             })
             .when_some(self.scrobble_prompt, |this, service| {
                 this.child(self.scrobble_modal(service, cx).into_any_element())
+            })
+            .when_some(sign_in_for, |this, (slug, provider)| {
+                this.child(self.sign_in_prompt(slug, provider, cx).into_any_element())
             })
     }
 }

@@ -920,6 +920,7 @@ impl Aside {
         Some(
             self.raised(ui::perched(
                 Button::new("resume-pin")
+                    .secondary()
                     .icon("icons/undo-2.svg")
                     .tooltip("lyrics-follow")
                     .on_click(cx.listener(|this, _, _, cx| {
