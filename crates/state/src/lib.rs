@@ -16,11 +16,13 @@ mod playback;
 mod profile;
 mod queue;
 mod remote;
+mod scan;
 mod scrobble;
 mod search;
 mod session;
 mod settings;
 mod sheets;
+mod snapshot;
 mod song;
 mod tags;
 mod toast;
@@ -43,6 +45,7 @@ pub use playback::{Origin, Playback, PlaybackState, Repeat, Sleep, Whence};
 pub use profile::Profile;
 pub use queue::{Named, Queue, Resume, Stub};
 pub use remote::{Remote, attach as attach_remote};
+pub use scan::Scan;
 pub use scrobble::{ScrobbleRow, ScrobbleState, Scrobbling};
 pub use search::{AlbumHit, ArtistHit, Hit, Kind, PlaylistHit, Search};
 pub use session::{Failure, ProviderInfo, Session, SessionEvent, SessionState};
@@ -115,6 +118,7 @@ pub struct Sonora {
     pub pins: Entity<Pins>,
     pub playback: Entity<Playback>,
     pub queue: Entity<Queue>,
+    pub scan: Entity<Scan>,
     pub scrobbling: Entity<Scrobbling>,
     pub settings: Entity<AppSettings>,
     pub updates: Entity<Updates>,
@@ -144,7 +148,8 @@ pub fn init(
     let settings = cx.new(|_| AppSettings::load(database.clone()));
     let session =
         cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
-    let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cx));
+    let cache = storage::Cache::standard();
+    let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cache, cx));
     let queue = cx.new(|cx| Queue::new(session.clone(), settings.clone(), cx));
     let playback = cx.new(|cx| Playback::new(session.clone(), queue.clone(), settings.clone(), cx));
     let history = cx.new(|cx| {
@@ -156,6 +161,7 @@ pub fn init(
             cx,
         )
     });
+    let scan = cx.new(|cx| Scan::new(session.clone(), cx));
     let scrobbling =
         cx.new(|cx| Scrobbling::new(playback.clone(), settings.clone(), io.clone(), cx));
     let lyrics = cx.new(|cx| {
@@ -193,6 +199,7 @@ pub fn init(
         pins,
         playback,
         queue,
+        scan,
         scrobbling,
         settings,
         updates,

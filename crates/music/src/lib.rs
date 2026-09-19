@@ -15,6 +15,7 @@ pub mod lyrics;
 mod models;
 pub mod musixmatch;
 pub mod netease;
+pub mod progress;
 pub mod scrobble;
 mod sink;
 mod spectrum;
@@ -345,7 +346,7 @@ pub trait PlaybackFactory: Send + Sync {
 
 /// What a provider's library is made of. It decides which `MusicApi` methods fill the library
 /// pages and whether a favorites filter is offered on them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Shape {
     /// The library is what the user starred, read through the `saved_*` methods.
     Saved,
@@ -512,6 +513,11 @@ pub struct WebSignIn {
 pub trait MusicProvider: Send + Sync {
     fn name(&self) -> &'static str;
     fn slug(&self) -> &'static str;
+
+    /// Forgets whatever the provider remembers about its last scan, so the next one reads
+    /// everything again. Only a provider that scans files has anything to forget, and only a
+    /// rescan the user asked for should ask it to.
+    fn forget_scan(&self) {}
     fn sign_in_options(&self) -> Vec<SignIn>;
     fn stored(&self) -> bool;
     /// Whether what is stored is an anonymous session rather than an account, so a caller

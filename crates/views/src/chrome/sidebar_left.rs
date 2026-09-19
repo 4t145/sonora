@@ -15,7 +15,9 @@ use gpui::{Window, div, px};
 use router::{
     Destination, LibraryTab, NavEntry, Navigation, NavigationEvent, SettingsTab, navigate,
 };
-use state::{AppSettings, Origin, PinSort, Pins, Playback, PlaybackState, Session, Sonora};
+use state::{
+    AppSettings, Library, Origin, PinSort, Pins, Playback, PlaybackState, Session, Shelf, Sonora,
+};
 
 use crate::shared::menus::{ItemMenu, item_menu};
 
@@ -100,6 +102,7 @@ pub(crate) struct SidebarLeft {
     drop_gap: Option<usize>,
     playback: Entity<Playback>,
     pins: Entity<Pins>,
+    library: Entity<Library>,
     track_menu: ItemMenu,
     context_menu: Option<(Pin, Point<Pixels>)>,
     scrollbar: Entity<ui::Scrollbar>,
@@ -112,6 +115,8 @@ impl SidebarLeft {
         let session = Sonora::global(cx).session.clone();
         let playback = Sonora::global(cx).playback.clone();
         let pins = Sonora::global(cx).pins.clone();
+        let library = Sonora::global(cx).library.clone();
+        cx.observe(&library, |_, _, cx| cx.notify()).detach();
         cx.observe(&pins, |_, _, cx| cx.notify()).detach();
         cx.observe(&playback, |_, _, cx| cx.notify()).detach();
         let me = cx.entity_id();
@@ -151,6 +156,7 @@ impl SidebarLeft {
             drop_gap: None,
             playback,
             pins,
+            library,
             track_menu: ItemMenu::new(playlist_scrollbar),
             context_menu: None,
             scrollbar,
@@ -252,14 +258,17 @@ impl SidebarLeft {
 
     /// The navigation entries, each followed by its tabs while its group is open.
     fn navigation(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let authenticated = self.session.read(cx).authenticated();
+        // A shelf with rows on it belongs in the sidebar even before the session has restored,
+        // since a snapshot fills it while the provider is still answering.
+        let stocked = self.session.read(cx).authenticated()
+            || self.library.read(cx).stocked(Shelf::Streaming);
         let mut rows = Vec::new();
         for (index, (entry, _, destination)) in NAV.iter().enumerate() {
             if entry.is_some_and(|entry| !self.settings.read(cx).nav_shown(entry.id())) {
                 continue;
             }
             let group = Group::of(destination);
-            if group == Some(Group::Library) && !authenticated {
+            if group == Some(Group::Library) && !stocked {
                 continue;
             }
             rows.push(self.nav(index, cx));

@@ -1,9 +1,13 @@
+mod cache;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
 use rusqlite::{Connection, params};
+
+pub use cache::Cache;
 
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS app_state (
@@ -95,24 +99,7 @@ impl Database {
     }
 
     pub fn open(&self) -> Result<Connection> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).context("cannot create the state directory")?;
-        }
-        let connection = Connection::open(&self.path).context("cannot open app state")?;
-        connection
-            .busy_timeout(Duration::from_secs(5))
-            .context("cannot configure app state")?;
-        let mut ready = self
-            .ready
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !*ready {
-            connection
-                .execute_batch(SCHEMA)
-                .context("cannot prepare app state")?;
-            *ready = true;
-        }
-        Ok(connection)
+        connect(&self.path, SCHEMA, &self.ready, "app state")
     }
 
     /// Imports every pre-state.sqlite database. Each source is independent: a broken legacy
@@ -186,6 +173,34 @@ impl Database {
         std::fs::remove_file(source).context("cannot remove migrated state")?;
         Ok(())
     }
+}
+
+/// Opens `path`, applying `schema` the first time this process opens it. `what` names the
+/// database in the errors a caller sees.
+pub(crate) fn connect(
+    path: &Path,
+    schema: &str,
+    ready: &Mutex<bool>,
+    what: &str,
+) -> Result<Connection> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("cannot create the {what} directory"))?;
+    }
+    let connection = Connection::open(path).with_context(|| format!("cannot open {what}"))?;
+    connection
+        .busy_timeout(Duration::from_secs(5))
+        .with_context(|| format!("cannot configure {what}"))?;
+    let mut ready = ready
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !*ready {
+        connection
+            .execute_batch(schema)
+            .with_context(|| format!("cannot prepare {what}"))?;
+        *ready = true;
+    }
+    Ok(connection)
 }
 
 #[cfg(test)]

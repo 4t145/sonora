@@ -19,7 +19,8 @@ use i18n::t;
 use music::{Shape, Track};
 use router::{Destination, LibraryTab, navigate};
 use state::{
-    AppSettings, Library, LibraryPart, LibraryState, Origin, Playback, PlaybackState, Shelf, Sonora,
+    AppSettings, Library, LibraryPart, LibraryState, Origin, Playback, PlaybackState, Scan, Shelf,
+    Sonora,
 };
 use ui::{
     ActiveTheme as _, Button, Card, Deck, FilterChange, LEADING, Mode, Pinnable, Popovers, Popup,
@@ -307,6 +308,8 @@ impl LibraryView {
 
         let chrome = Chrome::entity(cx);
         cx.observe(&chrome, |_, _, cx| cx.notify()).detach();
+        cx.observe(&Scan::global(cx), |_, _, cx| cx.notify())
+            .detach();
 
         let current_playback = playback_status(&playback, cx);
         cx.observe(&playback, |this, playback, cx| {
@@ -482,11 +485,38 @@ impl LibraryView {
         }
     }
 
+    /// Whether the shelf has no folder to list. A scan in flight is not that: a folder is only
+    /// recorded once its scan lands, so the setup screen would otherwise cover the whole of the
+    /// first import, which is the longest one there is.
     fn unconfigured(&self, cx: &App) -> bool {
-        self.shelf.local() && Sonora::global(cx).session.read(cx).local_paths().is_empty()
+        self.shelf.local()
+            && Sonora::global(cx).session.read(cx).local_paths().is_empty()
+            && Scan::global(cx).read(cx).progress().is_none()
+    }
+
+    /// What an empty local page says while a scan is filling it. The page is not empty, it is
+    /// early, so it counts the files read instead of offering the vacancy's caption.
+    fn scanning(&self, cx: &App) -> Option<Vacancy> {
+        if !self.shelf.local() || self.table(self.section).row_count(cx) > 0 {
+            return None;
+        }
+        let progress = Scan::global(cx).read(cx).progress()?;
+        let caption = match progress.found {
+            0 => t!("library-scanning"),
+            found => t!(
+                "library-scanning-progress",
+                read = progress.read,
+                found = found
+            ),
+        };
+        let shape = self.library.read(cx).shape(self.shelf);
+        Some(Vacancy::new(caption).icon(self.section.glyph(shape)))
     }
 
     fn note(&self, cx: &App) -> Option<Vacancy> {
+        if let Some(scanning) = self.scanning(cx) {
+            return Some(scanning);
+        }
         if loading(&self.library, self.shelf, self.section, cx) {
             return None;
         }

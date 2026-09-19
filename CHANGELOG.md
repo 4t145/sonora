@@ -17,9 +17,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The fullscreen visualizer can be drawn as a smooth wave instead of bars, one line per stereo
   channel, or as both at once. The Visualizer setting under Appearance now picks between them
   and holds the off switch.
+- Scanning local music shows how far it has got: a percentage beside Rescan in Settings, and the
+  count of files read on a Local Music page that has nothing to show yet. A rescan you asked for
+  reports how long it took when it finishes.
 
 ### Changed
 
+- Your Library and Local Music open on the songs, albums, artists and playlists they held last
+  time, right at startup, and swap them for the fresh ones as the provider answers.
+- Local music is scanned on several threads, and only what changed since the last scan is read
+  again, so a large library on a disk or a network share opens in a fraction of the time. Rescan
+  still reads everything.
+- Removing a music folder stops a scan that is still reading it, instead of leaving it to finish
+  for nothing.
 - Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
   the album or playlist, in the order you added them. The queue panel lists them under Next in
   queue, above what the album or playlist plays next.
