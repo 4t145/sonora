@@ -460,6 +460,17 @@ impl Queue {
         self.changed(cx);
     }
 
+    /// Adds suggestions after the ones already there, for a station topped up before the queue
+    /// has played through it.
+    pub fn extend_similar(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
+        if tracks.is_empty() {
+            return;
+        }
+        self.similar += tracks.len();
+        self.upcoming.extend(tracks);
+        self.changed(cx);
+    }
+
     pub fn clear_similar(&mut self, cx: &mut Context<Self>) {
         if self.similar == 0 {
             return;

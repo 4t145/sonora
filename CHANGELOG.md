@@ -35,6 +35,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   queue, above what the album or playlist plays next.
 - Settings is one page. A search box at the top finds a setting in any category, and the
   categories sit in a bar at the bottom of the page instead of under Settings in the sidebar.
+- Radio builds its suggestions from the track that is playing rather than the last one in the
+  queue, and asks for the next batch while ten tracks are still left to play, so it never stops
+  to load between songs.
 
 ### Fixed
 
