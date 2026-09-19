@@ -1689,6 +1689,16 @@ impl Playback {
         matches!(self.state, PlaybackState::Loading)
     }
 
+    /// The state a play button should show. A restored track the engine is only holding ready
+    /// reads as paused, however long that takes: nobody asked for it yet, and pressing play
+    /// resumes it from where it stopped.
+    pub fn apparent(&self) -> PlaybackState {
+        match (&self.state, self.resume_at.is_some()) {
+            (PlaybackState::Loading, true) => PlaybackState::Paused,
+            (state, _) => state.clone(),
+        }
+    }
+
     /// Whether a track is loaded, whatever it is doing.
     fn has_active_playback(&self) -> bool {
         self.track.is_some()
