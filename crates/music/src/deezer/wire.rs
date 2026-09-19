@@ -194,8 +194,7 @@ pub fn track(value: &Value) -> Option<Track> {
         popularity: number(value, &["RANK", "rank"])
             .map(|rank| (rank / 10_000).min(100) as u32)
             .unwrap_or(0),
-        explicit: truthy(value, &["explicit_lyrics"])
-            || text(value, &["EXPLICIT_LYRICS"]) == Some("1"),
+        explicit: truthy(value, &["explicit_lyrics", "EXPLICIT_LYRICS"]),
         track_number: number(value, &["TRACK_NUMBER", "track_position"]).unwrap_or(0) as u32,
         disc_number: number(value, &["DISK_NUMBER"]).unwrap_or(1) as u32,
         tags: Vec::new(),
