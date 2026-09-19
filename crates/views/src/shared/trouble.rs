@@ -23,6 +23,14 @@ pub(crate) fn trouble(failure: Failure, centered: bool) -> AnyElement {
         .into_any_element()
 }
 
+/// The failure's message alone, for the places that only have room for one line.
+pub(crate) fn short(failure: &Failure) -> SharedString {
+    match failure.problem {
+        Some(problem) => i18n::lookup(reason(problem), None),
+        None => SharedString::from(sentence(failure.summary.clone(), failure.detail.clone())),
+    }
+}
+
 fn sentence(summary: String, detail: Option<String>) -> String {
     let summary = summary.trim_end_matches('.').to_owned();
     match detail.map(|detail| unwrapped_reason(&detail)) {

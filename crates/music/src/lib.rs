@@ -514,6 +514,11 @@ pub trait MusicProvider: Send + Sync {
     fn slug(&self) -> &'static str;
     fn sign_in_options(&self) -> Vec<SignIn>;
     fn stored(&self) -> bool;
+    /// Whether what is stored is an anonymous session rather than an account, so a caller
+    /// can tell the two apart. A provider without an anonymous sign-in never says yes.
+    fn stored_guest(&self) -> bool {
+        false
+    }
     fn location(&self) -> Option<String> {
         None
     }

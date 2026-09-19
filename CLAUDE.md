@@ -682,15 +682,36 @@ library tab); it maps to a `Destination` through `Screen::destination` and is st
 `settings.json` as `startup`. `sonora/src/main.rs` resolves it at boot, and a link on the command
 line still wins over it.
 
-**Sidebar sections only ever expand on their own.** `SidebarLeft` opens Your Library or Settings
+**Sidebar sections only ever expand on their own.** `SidebarLeft` opens Your Library or Local Music
 whenever the route enters one (`expanded(&Destination)` in `sidebar_left.rs`), but nothing collapses
 a group except the chevron — leaving through a card, back/forward or an external `spotify:` link
 keeps it open. Don't reintroduce route-driven collapsing.
 
-**The Your Library, Local Music and Settings rows navigate nowhere.** They are expanders: a click
-toggles the group and nothing else, so a route change only ever comes from a tab underneath. That is
-also why an overlaid `SidebarLeft` survives opening a group — it dismisses on navigation, and there
-is none.
+**The Your Library and Local Music rows navigate nowhere.** They are expanders: a click toggles
+the group and nothing else, so a route change only ever comes from a tab underneath. That is also
+why an overlaid `SidebarLeft` survives opening a group — it dismisses on navigation, and there is
+none. Settings is a plain entry that leads to `Destination::Settings(SettingsTab::General)`.
+
+**Settings is one page.** `SettingsView` draws the rows of the current category, and
+`SettingsHeader`, a second entity holding the view, draws the search field with a `TabBar` of
+every `SettingsTab` under it; the sidebar lists no categories. `Root` hands the header to
+`Workspace::set_content` beside the page, and the workspace floats it over the top of the page,
+painted after the transition's veil and scrim, so a category switch fades the rows and the header
+stays put while the rows scroll beneath it. The header measures itself with
+`on_children_prepainted` and hands the height to `SettingsView::set_header_height`, which is the
+page's top padding, so nothing about the header's size is guessed from metrics. Behind the field
+and the bar the header lays a veil for readability: the page colour fading out downward over a
+backdrop blur faded in the same way, skipped when `shared::effects()` is off. Over flat page the
+blur shows nothing, as any blur does: what reads as a surface is the smear of the rows beneath,
+so the fade stays light enough to leave it visible. The renderer
+blurs a run of consecutive backdrops once, by the widest radius among them, and honours each
+one's opacity, so the veil's strips share one radius and fade it in through opacity, one blur pass
+a frame. Interleaving anything between the strips splits them into a pass each, which lags. A category
+click calls `select` on the view and then `navigate`, so back and forward work as they did, and
+`select` clears the search, so a route always lands on a plain page. Every row builder returns a
+`Setting`, which carries the title and detail beside the element. While the field has text, `found`
+scores the rows of every category with `shared::text::fuzzy` and lists the hits best first, group
+titles left out, so nothing else on the page mixes categories.
 
 **A library has a shape, and the shape decides what its pages list.** `music::Shape` sits on
 `ProviderSession` beside `authenticated` and `playcounts`. `Saved` means the library is what the
@@ -771,7 +792,10 @@ force the content view out of its `cached` layout path for the length of the ani
 `FullscreenView`; `Root` swaps between them. A shell owns its own chrome — `Workspace` builds both
 sidebars and the player bar — and answers for its title bar through the `shells::Shell` trait
 (`title_bar(content, cx) -> TitleBarOptions`). `Root` supplies only the current screen's toolbar and
-asks the active shell; it never reaches into a panel.
+asks the active shell; it never reaches into a panel. `Workspace::set_content` takes the page
+and an optional header: the header floats over the top of the page, painted last so the veil and
+the scrim never touch it, and it arrives with the page, so it cannot outlive its screen. A screen
+with a header pads its own content to start beneath it.
 
 **New screen checklist:** add a `Destination` variant → add a state entity if it loads data → add
 the view under `crates/views/src/` → construct it in `Root::new` and wire it in `Root::show` →

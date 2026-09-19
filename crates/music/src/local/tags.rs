@@ -92,10 +92,11 @@ fn update(path: &Path, change: impl FnOnce(&mut Tag)) -> Result<()> {
     Ok(())
 }
 
-/// Writes the year, leaving a date that already falls in it alone so its month and day survive.
+/// Writes the year, leaving the date alone while its year reads the same, so a month and day
+/// survive, and so does a date the editor showed no year for.
 fn set_year(tag: &mut Tag, value: &str) {
     let wanted = year(value);
-    if wanted.is_some() && wanted == tag.date().map(|date| date.year) {
+    if wanted == tag.date().map(|date| date.year) {
         return;
     }
     match wanted {

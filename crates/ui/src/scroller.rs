@@ -5,6 +5,7 @@ use gpui::{
 };
 
 use crate::button::Button;
+use crate::glass::glass;
 use crate::scrollbar::{Scrollbar, activate_middle_scroll, cancel_middle_scroll};
 use crate::theme::ActiveTheme as _;
 
@@ -158,13 +159,12 @@ pub fn perched(button: Button, cx: &App) -> Div {
         .justify_center()
         .child(
             div().flex().flex_none().block_mouse_except_scroll().child(
-                button
+                glass(button, cx)
                     .ghost()
                     .small()
                     .rounded_full()
                     .border_1()
-                    .border_color(theme.border)
-                    .bg(theme.popover),
+                    .border_color(theme.border),
             ),
         )
 }
@@ -203,6 +203,7 @@ pub fn return_to(
 
     Some(perched(
         Button::new(id)
+            .secondary()
             .icon("icons/undo-2.svg")
             .tooltip(tooltip)
             .on_click(move |_, window, cx| {

@@ -426,6 +426,7 @@ month-11 = Kas
 month-12 = Ara
 
 # settings
+settings-search = Ayarlarda ara
 settings-tab-general = Genel
 settings-tab-appearance = Görünüm
 settings-tab-playback = Çalma

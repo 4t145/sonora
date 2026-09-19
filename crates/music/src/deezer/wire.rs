@@ -265,22 +265,18 @@ pub fn playlist(value: &Value, user_id: &str) -> Option<Playlist> {
         .get("PLAYLIST_ID")
         .or_else(|| value.get("id"))
         .and_then(id)?;
+    // a fetched playlist names its owner `creator`, one found by search names it `user`
+    let creator = value.get("creator").or_else(|| value.get("user"));
     let owner = text(value, &["PARENT_USERNAME", "CREATOR_NAME"])
         .or_else(|| {
-            value
-                .get("creator")
+            creator
                 .and_then(|creator| creator.get("name"))
                 .and_then(Value::as_str)
         })
         .unwrap_or_default();
     let owner_id = text(value, &["PARENT_USER_ID"])
         .map(str::to_owned)
-        .or_else(|| {
-            value
-                .get("creator")
-                .and_then(|creator| creator.get("id"))
-                .and_then(id)
-        })
+        .or_else(|| creator.and_then(|creator| creator.get("id")).and_then(id))
         .unwrap_or_default();
     // a playlist with no picture of its own answers with a collage of four album hashes, and
     // PICTURE_TYPE is what says the url is built under `cover` rather than `playlist`

@@ -297,7 +297,10 @@ fn probe_symphonia_at(path: &Path, skip: u64) -> Option<FallbackProbe> {
                 Some(StandardTagKey::Date) if year.is_none() => {
                     let s = tag.value.to_string();
                     if s.len() >= 4 {
-                        year = s[..4].parse::<i32>().ok().filter(|y| *y > 0);
+                        year = s
+                            .get(..4)
+                            .and_then(|y| y.parse::<i32>().ok())
+                            .filter(|y| *y > 0);
                     }
                 }
                 _ => {}

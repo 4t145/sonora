@@ -139,6 +139,12 @@ menu-add-tracks-to-queue = { $count ->
     [few] Додати { $count } треки до черги
    *[other] Додати { $count } треків до черги
 }
+menu-play-last = Відтворити наприкінці
+menu-play-tracks-last = { $count ->
+    [one] Відтворити { $count } трек наприкінці
+    [few] Відтворити { $count } треки наприкінці
+   *[other] Відтворити { $count } треків наприкінці
+}
 menu-song-radio = Радіо за треком
 menu-go-to-album = Перейти до альбому
 menu-go-to-artist = Перейти до виконавця
@@ -223,6 +229,7 @@ queue-title = Черга
 queue-history = Історія
 queue-now-playing = Зараз грає
 queue-from = З
+queue-next-in-queue = Наступні в черзі
 queue-up-next = Далі
 queue-reset = Скинути
 queue-clear = Очистити
@@ -319,6 +326,8 @@ login-password-hint = Пароль
 login-server-submit = Підключитися
 login-account-title = Виберіть акаунт
 login-account-detail = У цій сесії виконано вхід у кілька акаунтів Google. Виберіть той, який має використовувати Sonora.
+login-choose-title = Вхід у { $provider }
+login-choose-detail = Виберіть спосіб входу в { $provider }.
 
 # album and playlist pages
 detail-album = Альбом
@@ -491,6 +500,7 @@ month-11 = лист.
 month-12 = груд.
 
 # settings
+settings-search = Пошук у налаштуваннях
 settings-tab-general = Загальні
 settings-tab-appearance = Вигляд
 settings-tab-playback = Відтворення
@@ -504,8 +514,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Відкрити конфіг
 settings-adaptive = Адаптивна тема
 settings-adaptive-detail = Підфарбовувати палітру обкладинкою альбому, що грає
+settings-ambient = Атмосферне тло
+settings-ambient-detail = Заливати повноекранний режим кольорами обкладинки
+settings-ambient-motion = Рух тла
+settings-ambient-motion-detail = Плавно рухати кольори тла, а не тримати їх нерухомими
 settings-visualizer = Візуалізатор
-settings-visualizer-detail = Показувати смужки спектра позаду обкладинки в повноекранному режимі
+settings-visualizer-detail = Як малюється спектр позаду обкладинки в повноекранному режимі
+settings-visualizer-style-none = Вимкнено
+settings-visualizer-style-bars = Смужки
+settings-visualizer-style-wave = Хвиля
+settings-visualizer-style-both = Смужки і хвиля
 settings-fullscreen-controls-autohide = Ховати керування в повноекранному режимі
 settings-fullscreen-controls-autohide-detail = Плавно ховати керування відтворенням, коли в повноекранному режимі немає дій
 settings-icons = Набір піктограм
@@ -651,6 +669,7 @@ settings-group-accounts = Акаунти
 settings-group-library = Медіатека
 settings-group-text = Текст
 settings-group-motion = Анімація
+settings-group-fullscreen = Повноекранний режим
 settings-group-title-bar = Заголовок вікна
 settings-group-window-style = Стиль вікна
 settings-equalizer = Еквалайзер
@@ -773,12 +792,16 @@ toast-playlist-busy = Інша зміна ще виконується
 toast-playlist-signed-out = Увійдіть, щоб змінювати плейлисти
 toast-queued-track = { $name } додано до черги
 toast-next-track = { $name } прозвучить наступним
+toast-last-track = { $name } прозвучить наприкінці
 toast-queued-album = Альбом додано до черги
 toast-next-album = Альбом прозвучить наступним
+toast-last-album = Альбом прозвучить наприкінці
 toast-queued-playlist = Плейлист додано до черги
 toast-next-playlist = Плейлист прозвучить наступним
+toast-last-playlist = Плейлист прозвучить наприкінці
 toast-queued-artist = Виконавця додано до черги
 toast-next-artist = Виконавець прозвучить наступним
+toast-last-artist = Виконавець прозвучить наприкінці
 toast-queue-failed = Не вдалося додати до черги
 toast-keys-refused = Spotify не надає цьому обліковому запису ключі відтворення
 toast-sign-in-to-play = { $name } віддає музику лише тим, хто увійшов в акаунт

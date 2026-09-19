@@ -141,6 +141,12 @@ menu-add-tracks-to-queue = { $count ->
     [few] Dodaj { $count } utwory do kolejki
    *[other] Dodaj { $count } utworów do kolejki
 }
+menu-play-last = Odtwórz na końcu
+menu-play-tracks-last = { $count ->
+    [one] Odtwórz { $count } utwór na końcu
+    [few] Odtwórz { $count } utwory na końcu
+   *[other] Odtwórz { $count } utworów na końcu
+}
 menu-song-radio = Radio utworu
 menu-go-to-album = Przejdź do albumu
 menu-go-to-artist = Przejdź do wykonawcy
@@ -225,6 +231,7 @@ queue-title = Kolejka
 queue-history = Historia
 queue-now-playing = Teraz odtwarzane
 queue-from = Z
+queue-next-in-queue = Następne w kolejce
 queue-up-next = Następne
 queue-reset = Resetuj
 queue-clear = Wyczyść
@@ -321,6 +328,8 @@ login-password-hint = Hasło
 login-server-submit = Połącz
 login-account-title = Wybierz konto
 login-account-detail = W tej sesji zalogowano więcej niż jedno konto Google. Wybierz to, którego ma używać Sonora.
+login-choose-title = Zaloguj się do { $provider }
+login-choose-detail = Wybierz sposób logowania do { $provider }.
 
 # album and playlist pages
 detail-album = Album
@@ -493,6 +502,7 @@ month-11 = lis
 month-12 = gru
 
 # settings
+settings-search = Szukaj w ustawieniach
 settings-tab-general = Ogólne
 settings-tab-appearance = Wygląd
 settings-tab-playback = Odtwarzanie
@@ -506,8 +516,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Otwórz konfigurację
 settings-adaptive = Motyw adaptacyjny
 settings-adaptive-detail = Zabarw paletę okładką odtwarzanego albumu
+settings-ambient = Tło nastrojowe
+settings-ambient-detail = Wypełnij tryb pełnoekranowy barwami okładki
+settings-ambient-motion = Ruch tła
+settings-ambient-motion-detail = Poruszaj barwami tła zamiast trzymać je nieruchomo
 settings-visualizer = Wizualizator
-settings-visualizer-detail = Pokaż słupki widma za okładką w trybie pełnoekranowym
+settings-visualizer-detail = Jak rysowane jest widmo za okładką w trybie pełnoekranowym
+settings-visualizer-style-none = Wyłączony
+settings-visualizer-style-bars = Słupki
+settings-visualizer-style-wave = Fala
+settings-visualizer-style-both = Słupki i fala
 settings-fullscreen-controls-autohide = Ukryj sterowanie na pełnym ekranie
 settings-fullscreen-controls-autohide-detail = Wygaszaj elementy sterowania, gdy na pełnym ekranie nic się nie dzieje
 settings-icons = Zestaw ikon
@@ -653,6 +671,7 @@ settings-group-accounts = Konta
 settings-group-library = Biblioteka
 settings-group-text = Tekst
 settings-group-motion = Animacje
+settings-group-fullscreen = Pełny ekran
 settings-group-title-bar = Pasek tytułu
 settings-group-window-style = Styl okna
 settings-equalizer = Korektor
@@ -775,12 +794,16 @@ toast-playlist-busy = Inna zmiana wciąż trwa
 toast-playlist-signed-out = Zaloguj się, aby zmieniać playlisty
 toast-queued-track = { $name } dodano do kolejki
 toast-next-track = { $name } zabrzmi następny
+toast-last-track = { $name } zabrzmi na końcu
 toast-queued-album = Album dodano do kolejki
 toast-next-album = Album zabrzmi następny
+toast-last-album = Album zabrzmi na końcu
 toast-queued-playlist = Playlistę dodano do kolejki
 toast-next-playlist = Playlista zabrzmi następna
+toast-last-playlist = Playlista zabrzmi na końcu
 toast-queued-artist = Wykonawcę dodano do kolejki
 toast-next-artist = Wykonawca zabrzmi następny
+toast-last-artist = Wykonawca zabrzmi na końcu
 toast-queue-failed = Nie udało się dodać do kolejki
 toast-keys-refused = Spotify nie udziela temu kontu kluczy odtwarzania
 toast-sign-in-to-play = { $name } udostępnia muzykę tylko po zalogowaniu

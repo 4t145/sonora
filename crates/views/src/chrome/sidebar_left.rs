@@ -58,15 +58,6 @@ const LIBRARY_TABS: [(&str, LibraryTab); 4] = [
     ("nav-playlists", LibraryTab::Playlists),
 ];
 
-const SETTINGS_TABS: [(&str, SettingsTab); 6] = [
-    ("settings-tab-general", SettingsTab::General),
-    ("settings-tab-appearance", SettingsTab::Appearance),
-    ("settings-tab-playback", SettingsTab::Playback),
-    ("settings-tab-privacy", SettingsTab::Privacy),
-    ("settings-tab-integrations", SettingsTab::Integrations),
-    ("settings-tab-about", SettingsTab::About),
-];
-
 const MIN_WIDTH: Pixels = px(160.);
 const MAX_WIDTH: Pixels = px(400.);
 const HINT_HEIGHT: Pixels = px(42.);
@@ -76,12 +67,11 @@ const PIN_MARK: f32 = 0.7;
 /// The space between two pinned entries, the same as the `gap_1` between the rows above them.
 const ROW_GAP: Pixels = px(4.);
 
-/// The three navigation entries that expand into tabs rather than navigate.
+/// The two navigation entries that expand into tabs rather than navigate.
 #[derive(Clone, Copy, PartialEq)]
 enum Group {
     Library,
     Local,
-    Settings,
 }
 
 impl Group {
@@ -89,7 +79,6 @@ impl Group {
         match destination {
             Destination::Library(_) => Some(Self::Library),
             Destination::Local(_) => Some(Self::Local),
-            Destination::Settings(_) => Some(Self::Settings),
             _ => None,
         }
     }
@@ -106,7 +95,6 @@ pub(crate) struct SidebarLeft {
     forced: Option<bool>,
     library_open: bool,
     local_open: bool,
-    settings_open: bool,
     pinned_open: bool,
     dropping: bool,
     drop_gap: Option<usize>,
@@ -146,7 +134,6 @@ impl SidebarLeft {
         let at = trail.read(cx).current();
         let library_open = matches!(at, Destination::Library(_));
         let local_open = matches!(at, Destination::Local(_));
-        let settings_open = matches!(at, Destination::Settings(_));
 
         Self {
             settings,
@@ -159,7 +146,6 @@ impl SidebarLeft {
             cramped: false,
             library_open,
             local_open,
-            settings_open,
             pinned_open,
             dropping: false,
             drop_gap: None,
@@ -177,10 +163,9 @@ impl SidebarLeft {
             return;
         }
         self.at = current.clone();
-        let (library, local, settings) = expanded(current);
+        let (library, local) = expanded(current);
         self.library_open |= library;
         self.local_open |= local;
-        self.settings_open |= settings;
     }
 
     fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
@@ -337,7 +322,6 @@ impl SidebarLeft {
         match group {
             Group::Library => self.library_open,
             Group::Local => self.local_open,
-            Group::Settings => self.settings_open,
         }
     }
 
@@ -345,7 +329,6 @@ impl SidebarLeft {
         let open = match group {
             Group::Library => &mut self.library_open,
             Group::Local => &mut self.local_open,
-            Group::Settings => &mut self.settings_open,
         };
         *open = !*open;
     }
@@ -603,11 +586,6 @@ impl SidebarLeft {
                     tab(("local-tab", slot).into(), name, Destination::Local(tab_id))
                 },
             )),
-            Group::Settings => Tabs::new().items(
-                SETTINGS_TABS
-                    .into_iter()
-                    .map(|(name, tab_id)| tab(name.into(), name, Destination::Settings(tab_id))),
-            ),
         }
         .into_any_element()
     }
@@ -782,11 +760,11 @@ fn vacancy() -> AnyElement {
         .into_any_element()
 }
 
-fn expanded(current: &Destination) -> (bool, bool, bool) {
+/// Which groups the route opens: Your Library and Local Music, in that order.
+fn expanded(current: &Destination) -> (bool, bool) {
     (
         matches!(current, Destination::Library(_)),
         matches!(current, Destination::Local(_)),
-        matches!(current, Destination::Settings(_)),
     )
 }
 
@@ -818,15 +796,15 @@ mod tests {
     fn a_section_expands_only_where_it_leads() {
         assert_eq!(
             expanded(&Destination::Library(LibraryTab::Albums)),
-            (true, false, false)
+            (true, false)
         );
         assert_eq!(
             expanded(&Destination::Local(LibraryTab::Albums)),
-            (false, true, false)
+            (false, true)
         );
         assert_eq!(
             expanded(&Destination::Settings(SettingsTab::General)),
-            (false, false, true)
+            (false, false)
         );
     }
 
@@ -842,11 +820,7 @@ mod tests {
         ];
 
         for destination in away {
-            assert_eq!(
-                expanded(&destination),
-                (false, false, false),
-                "{destination:?}"
-            );
+            assert_eq!(expanded(&destination), (false, false), "{destination:?}");
         }
     }
 }

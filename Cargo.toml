@@ -38,8 +38,8 @@ env_logger = "0.11"
 fastrand = "2.5"
 futures = "0.3"
 fluent-bundle = "0.16"
-gpui = { git = "https://github.com/sonorahq/gpui", rev = "770544dfcf70fdcf0b5c6e28edb58e2fa77a7e67" }
-gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "770544dfcf70fdcf0b5c6e28edb58e2fa77a7e67", features = [
+gpui = { git = "https://github.com/sonorahq/gpui", rev = "6b8e17fc7616201ae6f093a7db40bde5b9eebcd5" }
+gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "6b8e17fc7616201ae6f093a7db40bde5b9eebcd5", features = [
   "font-kit",
   "wayland",
   "x11",
@@ -70,7 +70,12 @@ image = { version = "0.25", default-features = false, features = [
   "png",
   "webp",
 ] }
-jiff = { version = "0.2", default-features = false, features = ["std"] }
+jiff = { version = "0.2", default-features = false, features = [
+  "std",
+  "tz-system",
+  "tzdb-bundle-platform",
+  "tzdb-zoneinfo",
+] }
 kakasi = "0.1"
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 libc = "0.2"
@@ -98,8 +103,11 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "std",
   "NSAccessibility",
   "NSApplication",
+  "NSMenu",
+  "NSMenuItem",
   "NSResponder",
   "NSRunningApplication",
+  "NSStatusItem",
   "NSWorkspace",
 ] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }

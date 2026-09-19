@@ -134,6 +134,11 @@ menu-add-tracks-to-queue = { $count ->
     [one] Add { $count } track to queue
    *[other] Add { $count } tracks to queue
 }
+menu-play-last = Play last
+menu-play-tracks-last = { $count ->
+    [one] Play { $count } track last
+   *[other] Play { $count } tracks last
+}
 menu-song-radio = Go to song radio
 menu-go-to-album = Go to album
 menu-go-to-artist = Go to artist
@@ -212,6 +217,7 @@ queue-title = Queue
 queue-history = History
 queue-now-playing = Now playing
 queue-from = From
+queue-next-in-queue = Next in queue
 queue-up-next = Up next
 queue-reset = Reset
 queue-clear = Clear
@@ -308,6 +314,8 @@ login-password-hint = Password
 login-server-submit = Connect
 login-account-title = Choose an account
 login-account-detail = This session is signed in to more than one Google account. Pick the one Sonora should use.
+login-choose-title = Sign in to { $provider }
+login-choose-detail = Choose how to sign in to { $provider }.
 
 # album and playlist pages
 detail-album = Album
@@ -468,6 +476,7 @@ month-11 = Nov
 month-12 = Dec
 
 # settings
+settings-search = Search settings
 settings-tab-general = General
 settings-tab-appearance = Appearance
 settings-tab-playback = Playback
@@ -481,8 +490,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Open config
 settings-adaptive = Adaptive theme
 settings-adaptive-detail = Tint the palette with the artwork of the playing album
+settings-ambient = Ambient background
+settings-ambient-detail = Fill the fullscreen player with colours drawn from the cover
+settings-ambient-motion = Ambient motion
+settings-ambient-motion-detail = Drift the ambient colours instead of holding them still
 settings-visualizer = Visualizer
-settings-visualizer-detail = Show spectrum bars behind fullscreen artwork
+settings-visualizer-detail = How the spectrum is drawn behind fullscreen artwork
+settings-visualizer-style-none = Off
+settings-visualizer-style-bars = Bars
+settings-visualizer-style-wave = Wave
+settings-visualizer-style-both = Bars and wave
 settings-fullscreen-controls-autohide = Hide fullscreen controls
 settings-fullscreen-controls-autohide-detail = Fade out playback controls when fullscreen is inactive
 settings-icons = Icon pack
@@ -647,6 +664,7 @@ settings-group-accounts = Accounts
 settings-group-library = Library
 settings-group-text = Text
 settings-group-motion = Motion
+settings-group-fullscreen = Fullscreen
 settings-group-title-bar = Title bar
 settings-group-window-style = Window style
 settings-group-lyrics = Lyrics
@@ -750,12 +768,16 @@ toast-playlist-busy = Another change is still running
 toast-playlist-signed-out = Sign in to change playlists
 toast-queued-track = { $name } added to the queue
 toast-next-track = { $name } plays next
+toast-last-track = { $name } plays last
 toast-queued-album = Album added to the queue
 toast-next-album = Album plays next
+toast-last-album = Album plays last
 toast-queued-playlist = Playlist added to the queue
 toast-next-playlist = Playlist plays next
+toast-last-playlist = Playlist plays last
 toast-queued-artist = Artist added to the queue
 toast-next-artist = Artist plays next
+toast-last-artist = Artist plays last
 toast-queue-failed = That could not be added to the queue
 toast-keys-refused = Spotify is not granting this account playback keys
 toast-sign-in-to-play = { $name } only streams to a signed-in listener

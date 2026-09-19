@@ -2,9 +2,9 @@
 
 # Sonora
 
-[![Build](https://img.shields.io/github/actions/workflow/status/sonorahq/sonora/release.yml)](https://github.com/sonorahq/sonora/actions/workflows/release.yml)
-[![License](https://img.shields.io/github/license/sonorahq/sonora)](./COPYING)
-![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsonora-stats.nolight.dev%2Fcount&query=%24.count&label=Installs&color=blue)
+[![Build](https://img.shields.io/github/actions/workflow/status/sonorahq/sonora/release.yml?style=flat-square&label=build)](https://github.com/sonorahq/sonora/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/sonorahq/sonora?style=flat-square&label=license)](./COPYING)
+![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsonora-stats.nolight.dev%2Fcount&query=%24.count&label=Installs&color=blue&style=flat-square)
 \
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/a8N8Tx23rV)
 [![Matrix](https://img.shields.io/badge/Matrix-000000?style=for-the-badge&logo=matrix&logoColor=white)](https://matrix.to/#/#sonora:nolight.dev)
@@ -18,15 +18,15 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
     <table>
       <tr>
         <td colspan="2">
-          <img width="1602" height="992" alt="image" src="https://github.com/user-attachments/assets/d0357517-a28d-4c90-abd1-4f3e8d8cdedc" />
+          <img width="1613" height="981" alt="image" src="https://github.com/user-attachments/assets/7952a912-7fbc-4186-b467-a08dd7e71e22" />
         </td>
       </tr>
       <tr>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/70979e4c-261f-4561-b671-04d28a9971a9" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/580bf9d6-db85-4fde-b599-82ba2a28cc51" />
         </td>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/ff3b4284-25e2-4487-bf9b-60d8f56dc44d" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/64fcd709-5917-432c-a418-2e07527343d2" />
         </td>
       </tr>
     </table>
@@ -187,19 +187,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 686/686 | 100% |
-| Deutsch (`de`) | 630/686 | 92% |
-| Español (`es`) | 608/686 | 89% |
-| Français (`fr`) | 630/686 | 92% |
-| Italiano (`it`) | 608/686 | 89% |
-| Bahasa Indonesia (`id`) | 608/686 | 89% |
-| 日本語 (`ja`) | 608/686 | 89% |
-| Русский (`ru`) | 681/686 | 99% |
-| Українська (`uk`) | 681/686 | 99% |
-| Polski (`pl`) | 681/686 | 99% |
-| Português (Brasil) (`pt-BR`) | 608/686 | 89% |
-| 简体中文 (`zh-CN`) | 608/686 | 89% |
-| Türkçe (`tr`) | 608/686 | 89% |
+| English (`en-US`) | 701/701 | 100% |
+| Deutsch (`de`) | 633/701 | 90% |
+| Español (`es`) | 611/701 | 87% |
+| Français (`fr`) | 633/701 | 90% |
+| Italiano (`it`) | 611/701 | 87% |
+| Bahasa Indonesia (`id`) | 611/701 | 87% |
+| 日本語 (`ja`) | 611/701 | 87% |
+| Русский (`ru`) | 696/701 | 99% |
+| Українська (`uk`) | 696/701 | 99% |
+| Polski (`pl`) | 696/701 | 99% |
+| Português (Brasil) (`pt-BR`) | 611/701 | 87% |
+| 简体中文 (`zh-CN`) | 611/701 | 87% |
+| Türkçe (`tr`) | 611/701 | 87% |
 
 <!-- i18n:end -->
 

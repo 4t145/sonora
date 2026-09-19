@@ -57,8 +57,12 @@ enum Intent {
 /// Where fetched tracks go in the queue.
 #[derive(Clone, Copy)]
 enum QueuePlacement {
+    /// Right after the current track.
     Next,
+    /// After the tracks queued by hand, ahead of the rest of the source.
     End,
+    /// After everything, once the source has run out.
+    Last,
     /// After this many upcoming tracks; a gap past the end appends.
     Gap(usize),
 }
@@ -69,6 +73,7 @@ impl QueuePlacement {
         match self {
             Self::Next => Some(format!("toast-next-{source}")),
             Self::End => Some(format!("toast-queued-{source}")),
+            Self::Last => Some(format!("toast-last-{source}")),
             Self::Gap(_) => None,
         }
     }
@@ -92,7 +97,7 @@ const SEEK_SNAP: Duration = Duration::from_millis(100);
 const PRELOAD_BEFORE_END: Duration = Duration::from_secs(10);
 const SKIP_DEBOUNCE: Duration = Duration::from_millis(250);
 const RESTART_WINDOW: Duration = Duration::from_secs(3);
-const KEY_COOLDOWN: Duration = Duration::from_secs(6);
+const KEY_COOLDOWN: Duration = Duration::from_secs(1);
 const RESUME_STEP: Duration = Duration::from_secs(5);
 const TAPER_DB: f32 = 50.;
 const SIMILAR_LIMIT: usize = 20;
@@ -730,6 +735,31 @@ impl Playback {
             .update(cx, |queue, cx| queue.prepend_all(tracks, cx));
     }
 
+    /// Queues a track after everything already lined up, or starts playing it when nothing is.
+    pub fn play_last(&mut self, track: Track, cx: &mut Context<Self>) {
+        if self.queue.read(cx).current().is_none() {
+            self.begin(vec![track], 0, None, cx);
+            return;
+        }
+        let name = track.name.clone();
+        let target = song_target(&track);
+        self.queue
+            .update(cx, |queue, cx| queue.append_last(track, cx));
+        Toasts::linked(Outcome::Done, "toast-last-track", name, target, cx);
+    }
+
+    pub fn play_last_all(&mut self, tracks: Vec<Track>, cx: &mut Context<Self>) {
+        if tracks.is_empty() {
+            return;
+        }
+        if self.queue.read(cx).current().is_none() {
+            self.begin(tracks, 0, None, cx);
+            return;
+        }
+        self.queue
+            .update(cx, |queue, cx| queue.append_last_all(tracks, cx));
+    }
+
     /// Opens paths handed in from the OS (a file-association launch or hand-off). A single file
     /// plays right away, since picking one is a request to hear it now; several play next,
     /// right after whatever is already playing, whichever provider it came from — or start right
@@ -843,6 +873,14 @@ impl Playback {
         });
     }
 
+    pub fn play_album_last(&mut self, album: &str, cx: &mut Context<Self>) {
+        let id = album.to_owned();
+        let album = album.to_owned();
+        self.enqueue_from("album", &id, QueuePlacement::Last, cx, move |client| {
+            Box::pin(async move { client.album_tracks(&album).await })
+        });
+    }
+
     fn play_album_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let album = origin.id.clone();
         self.gather(origin, cx, move |client| {
@@ -873,6 +911,14 @@ impl Playback {
         });
     }
 
+    pub fn play_artist_last(&mut self, artist: &str, cx: &mut Context<Self>) {
+        let id = artist.to_owned();
+        let artist = artist.to_owned();
+        self.enqueue_from("artist", &id, QueuePlacement::Last, cx, move |client| {
+            Box::pin(async move { client.artist(&artist).await.map(|found| found.top_tracks) })
+        });
+    }
+
     pub fn enqueue_playlist(&mut self, playlist: &str, cx: &mut Context<Self>) {
         let id = playlist.to_owned();
         let playlist = playlist.to_owned();
@@ -885,6 +931,14 @@ impl Playback {
         let id = playlist.to_owned();
         let playlist = playlist.to_owned();
         self.enqueue_from("playlist", &id, QueuePlacement::Next, cx, move |client| {
+            Box::pin(async move { client.playlist_tracks(&playlist).await })
+        });
+    }
+
+    pub fn play_playlist_last(&mut self, playlist: &str, cx: &mut Context<Self>) {
+        let id = playlist.to_owned();
+        let playlist = playlist.to_owned();
+        self.enqueue_from("playlist", &id, QueuePlacement::Last, cx, move |client| {
             Box::pin(async move { client.playlist_tracks(&playlist).await })
         });
     }
@@ -943,6 +997,7 @@ impl Playback {
                         match placement {
                             QueuePlacement::Next => this.play_next_all(tracks, cx),
                             QueuePlacement::End => this.enqueue_all(tracks, cx),
+                            QueuePlacement::Last => this.play_last_all(tracks, cx),
                             QueuePlacement::Gap(gap) => this.insert_all(tracks, gap, cx),
                         }
                         if queued && let Some(key) = placement.toast(source) {
@@ -1178,6 +1233,19 @@ impl Playback {
             Repeat::Off => Repeat::All,
             Repeat::All => Repeat::One,
             Repeat::One => Repeat::Off,
+        };
+        let repeat = self.repeat;
+        self.settings
+            .update(cx, |settings, cx| settings.set_repeat(repeat, cx));
+        cx.notify();
+    }
+
+    /// A binary on/off flip for surfaces (tray, dock menu) that do not fit the three-way
+    /// cycle the player bar's button drives; `One` counts as on and flips straight to `Off`.
+    pub fn toggle_repeat(&mut self, cx: &mut Context<Self>) {
+        self.repeat = match self.repeat {
+            Repeat::Off => Repeat::All,
+            Repeat::All | Repeat::One => Repeat::Off,
         };
         let repeat = self.repeat;
         self.settings
@@ -1619,6 +1687,16 @@ impl Playback {
 
     pub fn is_loading(&self) -> bool {
         matches!(self.state, PlaybackState::Loading)
+    }
+
+    /// The state a play button should show. A restored track the engine is only holding ready
+    /// reads as paused, however long that takes: nobody asked for it yet, and pressing play
+    /// resumes it from where it stopped.
+    pub fn apparent(&self) -> PlaybackState {
+        match (&self.state, self.resume_at.is_some()) {
+            (PlaybackState::Loading, true) => PlaybackState::Paused,
+            (state, _) => state.clone(),
+        }
     }
 
     /// Whether a track is loaded, whatever it is doing.
