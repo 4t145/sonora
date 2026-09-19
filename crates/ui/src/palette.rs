@@ -36,6 +36,13 @@ pub fn decode(url: impl Into<SharedString>, cx: &mut App) -> Task<Option<Arc<Ren
     cx.spawn(async move |_| load.await.ok())
 }
 
+/// The palette of a frame that is already decoded, for artwork the cache has in
+/// hand. Sampling walks at most `SAMPLES` pixels, so this costs nothing beside
+/// the decode that produced the frame.
+pub(crate) fn of_image(image: &RenderImage) -> CoverPalette {
+    image.as_bytes(0).map(sampled).unwrap_or_default()
+}
+
 /// The dominant hue of the artwork at `url`, or none for near-greyscale art.
 pub fn tint(url: impl Into<SharedString>, cx: &mut App) -> Task<Option<Hsla>> {
     let palette = palette(url, cx);
@@ -60,8 +67,7 @@ pub fn palette(url: impl Into<SharedString>, cx: &mut App) -> Task<CoverPalette>
         let Some(image) = load.await else {
             return CoverPalette::default();
         };
-        cx.background_spawn(async move { image.as_bytes(0).map(sampled).unwrap_or_default() })
-            .await
+        cx.background_spawn(async move { of_image(&image) }).await
     })
 }
 

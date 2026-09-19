@@ -1,4 +1,5 @@
 use crate::metrics::snapped;
+use crate::palette::{CoverPalette, of_image};
 use crate::skeleton::Skeleton;
 use crate::theme::ActiveTheme as _;
 use futures::AsyncReadExt as _;
@@ -38,6 +39,10 @@ const SOFT_SIGMA: f32 = 1.6;
 const SMALL_BYTES: usize = 64 * 1024;
 const BIG_BYTES: usize = 256 * 1024;
 const MAX_PENDING: usize = 8;
+/// How many cover palettes are kept. Each one is two colours, so the map costs
+/// nothing beside the frames, and holding them past an eviction is what keeps a
+/// button its colour while its cover is decoded again.
+const TINT_ITEMS: usize = 4096;
 
 type ArtworkKey = (Resource, u32);
 
@@ -225,6 +230,9 @@ struct ArtworkCache {
     items: HashMap<ArtworkKey, Cached>,
     pending: HashMap<ArtworkKey, Instant>,
     soft: HashMap<(Resource, u32), Arc<RenderImage>>,
+    /// The palette of every cover decoded this run, kept apart from the frames
+    /// so an eviction never costs a button its colour.
+    tints: HashMap<Resource, CoverPalette>,
     bytes: usize,
     _sweep: Task<()>,
 }
@@ -240,6 +248,7 @@ impl ArtworkCache {
                 items: HashMap::new(),
                 pending: HashMap::new(),
                 soft: HashMap::new(),
+                tints: HashMap::new(),
                 bytes: 0,
                 _sweep: sweeper(cx),
             });
@@ -256,6 +265,13 @@ impl ArtworkCache {
         cx: &mut App,
     ) {
         let bytes = value.as_ref().map_or(0, |image| image_bytes(image));
+        if let Ok(image) = &value
+            && !self.tints.contains_key(&resource.0)
+        {
+            let palette = of_image(image);
+            self.trim_tints();
+            self.tints.insert(resource.0.clone(), palette);
+        }
         self.bytes = self.bytes.saturating_add(bytes);
         self.items.insert(
             resource,
@@ -272,6 +288,17 @@ impl ArtworkCache {
             };
             self.evict(&resource, Some(&mut *window), cx);
         }
+    }
+
+    /// Drops the palettes of covers no longer held, once the map has grown past
+    /// its cap. Scrolling through more art than that pays one pass.
+    fn trim_tints(&mut self) {
+        if self.tints.len() < TINT_ITEMS {
+            return;
+        }
+        let live = &self.items;
+        self.tints
+            .retain(|resource, _| live.keys().any(|key| &key.0 == resource));
     }
 
     fn oldest(&self) -> Option<(ArtworkKey, Instant)> {
@@ -522,6 +549,17 @@ pub(crate) fn resource(url: impl Into<SharedString>) -> Resource {
         Some(path) => Resource::Path(Arc::from(Path::new(path))),
         None => Resource::Uri(SharedUri::from(url)),
     }
+}
+
+/// The dominant hue of a cover the artwork cache has already decoded, or none
+/// while it has not been drawn yet and for art that names no colour. Nothing is
+/// decoded here, so the hue lands on the frame the cover appears and never
+/// before it.
+pub fn cover_tint(url: &str, cx: &App) -> Option<Hsla> {
+    let installed = cx.try_global::<Installed>()?;
+    let resource = resource(url.to_owned());
+
+    installed.0.read(cx).tints.get(&resource)?.primary
 }
 
 pub fn artwork_usage(cx: &App) -> Option<(usize, usize)> {

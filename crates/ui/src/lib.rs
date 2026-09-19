@@ -46,7 +46,7 @@ mod vacancy;
 mod view;
 mod visualizer;
 
-pub use artwork::{Artwork, Avatar, artwork_usage};
+pub use artwork::{Artwork, Avatar, artwork_usage, cover_tint};
 pub use button::Button;
 pub use card::CARD_GROUP;
 pub use card::Card;

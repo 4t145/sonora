@@ -626,6 +626,22 @@ impl Theme {
         self
     }
 
+    /// The primary fill for a hue the theme is not wearing, so an element can
+    /// carry a colour of its own while the theme stays put. Saturation and
+    /// lightness are pinned the way `tinted` pins them, so every cover reads at
+    /// the same weight and `primary_foreground` still sits on it.
+    pub fn primary_of(&self, tint: Hsla) -> Hsla {
+        Hsla {
+            h: tint.h,
+            s: tint.s.clamp(MIN_ACCENT_SATURATION, MAX_ACCENT_SATURATION),
+            l: match self.background.l < 0.5 {
+                true => 0.72,
+                false => 0.42,
+            },
+            a: 1.,
+        }
+    }
+
     /// The accent this theme carries once `tint` has washed through it, which
     /// is what `tinted` stores in `selection`. Exposed so a caller can resolve
     /// a cover hue the theme's own fade has not arrived at yet.
