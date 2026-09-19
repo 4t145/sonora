@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::time::Duration;
 
 use rtrb::{PopError, RingBuffer};
@@ -8,7 +8,9 @@ use rustfft::num_complex::Complex32;
 
 const N_BANDS: usize = 32;
 const FFT_SIZE: usize = 2048;
-const RING_CAPACITY: usize = FFT_SIZE * 8;
+/// In samples of whatever the tap hears, so a stereo source gets four windows of slack: a
+/// device fills its whole buffer in one go after a stall and anything past this is dropped.
+const RING_CAPACITY: usize = FFT_SIZE * 16;
 const MIN_FREQ: f32 = 100.;
 const MAX_FREQ: f32 = 6_000.;
 const GAIN: f32 = 8.;
@@ -76,16 +78,21 @@ impl Spectrum {
         bands
     }
 
-    pub fn attach(&self, rate: u32, channels: u16) -> Tap {
+    /// Starts the analyzer thread and returns the tap that feeds it. The tap has to be told
+    /// the format of what it is fed through `Tap::format` before the first sample, and again
+    /// whenever that changes.
+    pub fn attach(&self) -> Tap {
         let (producer, consumer) = RingBuffer::<f32>::new(RING_CAPACITY);
+        let format = Arc::new(Format::default());
         let target = self.clone();
+        let heard = format.clone();
         let spawned = std::thread::Builder::new()
             .name("spectrum".to_owned())
-            .spawn(move || analyze(consumer, target, rate.max(1), channels.max(1) as usize));
+            .spawn(move || analyze(consumer, heard, target));
         if let Err(error) = spawned {
             log::error!("spectrum: cannot spawn analyzer thread: {error}");
         }
-        Tap { producer }
+        Tap { producer, format }
     }
 }
 
@@ -95,11 +102,37 @@ impl Default for Spectrum {
     }
 }
 
+/// The rate and channel count of the samples in the ring, as the tap last declared them.
+#[derive(Default)]
+struct Format {
+    rate: AtomicU32,
+    channels: AtomicU16,
+}
+
+impl Format {
+    fn read(&self) -> (u32, usize) {
+        (
+            self.rate.load(Ordering::Acquire).max(1),
+            self.channels.load(Ordering::Acquire).max(1) as usize,
+        )
+    }
+}
+
+/// Where the samples go in. It sits on the source's side of the mixer, so what it hears is the
+/// track's own rate and channel count, not the device's, and those can change with the track.
 pub struct Tap {
     producer: rtrb::Producer<f32>,
+    format: Arc<Format>,
 }
 
 impl Tap {
+    /// Declares the format of the samples that follow. Call it before the first sample and on
+    /// every change; the analyzer picks the change up at the next frame boundary.
+    pub fn format(&self, rate: u32, channels: u16) {
+        self.format.rate.store(rate, Ordering::Release);
+        self.format.channels.store(channels, Ordering::Release);
+    }
+
     pub fn push(&mut self, sample: f32) {
         self.producer.push(sample).ok();
     }
@@ -145,11 +178,12 @@ fn band_edges(rate: f32) -> Vec<usize> {
         .collect()
 }
 
-fn analyze(mut consumer: rtrb::Consumer<f32>, spectrum: Spectrum, rate: u32, channels: usize) {
+fn analyze(mut consumer: rtrb::Consumer<f32>, format: Arc<Format>, spectrum: Spectrum) {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(FFT_SIZE);
     let window = hann_window();
-    let edges = band_edges(rate as f32);
+    let (mut rate, mut channels) = format.read();
+    let mut edges = band_edges(rate as f32);
     // One accumulator per side: a source with more than two channels folds its odd lanes left
     // and its even ones right, which is close enough for a visualizer.
     let mut sides = [Side::new(spectrum.left), Side::new(spectrum.right)];
@@ -167,6 +201,19 @@ fn analyze(mut consumer: rtrb::Consumer<f32>, spectrum: Spectrum, rate: u32, cha
                 continue;
             }
         };
+
+        // A new track can bring a new format. Grouping the samples by the wrong channel
+        // count stretches a window over several frames' worth of audio, so the levels move
+        // a few times a second and every band lands on the wrong frequency.
+        if lane_index == 0 {
+            let heard = format.read();
+            if heard != (rate, channels) {
+                (rate, channels) = heard;
+                edges = band_edges(rate as f32);
+                frame = vec![0f32; channels];
+                filled = 0;
+            }
+        }
 
         frame[lane_index] = sample;
         lane_index += 1;
