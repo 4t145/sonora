@@ -355,7 +355,10 @@ impl SidebarLeft {
             .w_full()
             .min_w_0()
             .h(theme.metrics.control_small)
-            .px_2()
+            .pl_2()
+            // Narrower on the right than on the left, so the sort glyph falls on the same
+            // line as the chevrons of the rows above.
+            .pr_1()
             .mt(theme.metrics.pad)
             .mb(px(2.))
             .child(
