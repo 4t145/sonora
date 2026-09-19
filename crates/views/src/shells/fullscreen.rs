@@ -88,6 +88,7 @@ pub struct FullscreenView {
     track_menu: ItemMenu,
     context_menu: Option<(music::Track, Point<Pixels>)>,
     last_moved: Instant,
+    inside: bool,
     awake: bool,
     hidden: SpringState,
     spring_beat: Instant,
@@ -136,6 +137,7 @@ impl FullscreenView {
             track_menu: ItemMenu::new(playlist_scrollbar),
             context_menu: None,
             last_moved: Instant::now(),
+            inside: true,
             awake: true,
             hidden: SpringState {
                 position: 0.,
@@ -207,15 +209,37 @@ impl FullscreenView {
         self.stir(cx);
     }
 
+    /// Whether anything under the pointer should hold the chrome awake. A hover flag only counts
+    /// while the pointer is over the window: one set when it left stays set, and a stale flag
+    /// would keep the controls up for good.
     fn busy(&self, cx: &App) -> bool {
-        self.volume_open()
+        let parked = self.over_volume
+            || self.over_zone
+            || self.over_panel
             || self.over_pill
             || self.over_transport
             || self.over_leave
             || self.over_seek.is_some()
-            || self.scrollbar_held(cx)
+            || self.scrollbar_held(cx);
+        (self.inside && parked)
+            || self.volume_held
             || self.pending.is_some()
             || self.context_menu.is_some()
+    }
+
+    /// Follows the pointer in and out of the window, once a frame. A hover flag clears on an
+    /// event the pointer has to be present for, so the ones still set when it left the window are
+    /// dropped here instead. Crossing the window edge repaints on its own, so this is never late.
+    fn watch(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let inside = window.is_window_hovered();
+        if inside == self.inside {
+            return;
+        }
+        self.inside = inside;
+        if !inside {
+            self.over_seek = None;
+            self.stir(cx);
+        }
     }
 
     /// Whether the pointer is parked on the lyrics panel's scrollbar. Read at
@@ -979,6 +1003,7 @@ impl Render for FullscreenView {
         let viewport = window.viewport_size();
         let room = Room::of(viewport.width);
         let split = room.fits(Room::Wide) && self.panel.is_some();
+        self.watch(window, cx);
         let idle = self.hidden(window, cx);
         let hide = match self.settings.read(cx).fullscreen_controls_autohide() {
             FullscreenControlsAutohide::Automatic => idle,

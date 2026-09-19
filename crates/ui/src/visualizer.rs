@@ -28,9 +28,9 @@ const CONTRAST: f32 = 0.34;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VisualizerStyle {
     None,
-    #[default]
     Bars,
     Wave,
+    #[default]
     Both,
 }
 
@@ -53,9 +53,9 @@ impl VisualizerStyle {
     pub fn from_id(id: &str) -> Self {
         match id {
             "none" => Self::None,
+            "bars" => Self::Bars,
             "wave" => Self::Wave,
-            "both" => Self::Both,
-            _ => Self::Bars,
+            _ => Self::default(),
         }
     }
 

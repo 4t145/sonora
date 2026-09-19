@@ -326,6 +326,8 @@ login-password-hint = Пароль
 login-server-submit = Подключиться
 login-account-title = Выберите аккаунт
 login-account-detail = В этой сессии выполнен вход в несколько аккаунтов Google. Выберите тот, который должна использовать Sonora.
+login-choose-title = Вход в { $provider }
+login-choose-detail = Выберите способ входа в { $provider }.
 
 # album and playlist pages
 detail-album = Альбом
