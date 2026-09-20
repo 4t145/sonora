@@ -224,6 +224,20 @@ pub struct Artist {
     pub albums: Vec<Album>,
 }
 
+/// What an artist page fills in once its overview is already on screen. Both lists replace
+/// what `MusicApi::artist` answered with, and an empty one leaves that part alone.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ArtistCatalogue {
+    pub albums: Vec<Album>,
+    pub top_tracks: Vec<Track>,
+}
+
+impl ArtistCatalogue {
+    pub fn is_empty(&self) -> bool {
+        self.albums.is_empty() && self.top_tracks.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Lyrics {
     Plain {
