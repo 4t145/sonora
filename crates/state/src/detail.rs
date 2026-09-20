@@ -253,6 +253,17 @@ impl Detail {
         self.error.as_deref()
     }
 
+    /// Loads what the page already shows again, which is how a screen retries after a failure.
+    pub fn reload(&mut self, cx: &mut Context<Self>) {
+        let (Some(kind), Some(id)) = (self.kind, self.id.clone()) else {
+            return;
+        };
+        match kind {
+            Collection::Album => self.open_album(&id, cx),
+            Collection::Playlist => self.open_playlist(&id, cx),
+        }
+    }
+
     pub fn open_album(&mut self, id: &str, cx: &mut Context<Self>) {
         let library = self.library.read(cx);
         let known = library.album(id).cloned();
@@ -343,9 +354,9 @@ impl Detail {
             this.update(cx, |this, cx| {
                 this.loading = false;
                 this.request = None;
-                match loaded {
+                match crate::settled(loaded, cx) {
                     Ok(detail) => this.adopt(detail, cx),
-                    Err(error) => this.error = Some(format!("{error:#}")),
+                    Err(reason) => this.error = Some(reason),
                 }
                 cx.notify();
             })

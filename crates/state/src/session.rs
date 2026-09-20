@@ -14,7 +14,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Shelf;
 use crate::catalog::CatalogSource;
 use crate::settings::AppSettings;
-use crate::{Io, join};
+use crate::{Io, Network, join};
 
 const HEARTBEAT: Duration = Duration::from_secs(30);
 /// How often the sign-in window is asked whether the user is through.
@@ -36,9 +36,11 @@ pub struct Failure {
 
 impl Failure {
     fn new(error: &Error) -> Self {
+        let reason = format!("{error:#}");
         let problem = error
             .downcast_ref::<SignInFailure>()
-            .map(|failure| failure.0);
+            .map(|failure| failure.0)
+            .or_else(|| music::trouble::offline(&reason).then_some(SignInProblem::Network));
         let detail = error
             .chain()
             .skip(1)
@@ -50,6 +52,12 @@ impl Failure {
             detail: (!detail.is_empty()).then(|| detail.join(": ")),
         }
     }
+
+    /// Whether the sign-in failed because there was no network, rather than because the account
+    /// was refused. A provider that was only unreachable is still the user's.
+    pub fn offline(&self) -> bool {
+        self.problem == Some(SignInProblem::Network)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +66,10 @@ pub enum SessionState {
     Restoring,
     Authorizing(Option<SignInPrompt>),
     SignedIn(UserProfile),
+    /// The stored account could not be reached. It is still the user's, so nothing is signed
+    /// out: the app stays on whatever the library kept and on the local files, and tries the
+    /// account again by itself once the network is back.
+    Offline(Failure),
     Failed(Failure),
 }
 
@@ -306,6 +318,12 @@ impl Session {
     pub fn provider_slug(&self) -> Option<&'static str> {
         let provider = &self.providers[self.active?];
         Some(provider.slug())
+    }
+
+    /// The host to try when checking whether the network is back. It is the active provider's
+    /// own, so the check never touches a service the app is not already using.
+    pub fn reach(&self) -> Option<String> {
+        self.providers.get(self.active?)?.reach()
     }
 
     pub fn local_slug(&self) -> &'static str {
@@ -583,6 +601,21 @@ impl Session {
         }
     }
 
+    /// Whether the active provider has an account stored, which is what tells a failed restore
+    /// from a user who signed out.
+    fn stored_active(&self) -> bool {
+        self.active
+            .is_some_and(|index| self.providers[index].stored())
+    }
+
+    /// Tries the stored account again once the network is back, for a run that started without
+    /// one. Anything but a run held up by the network is left alone.
+    pub fn restore_if_offline(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.state, SessionState::Offline(_)) {
+            self.restore(cx);
+        }
+    }
+
     fn remaining(&self) -> Option<usize> {
         self.active
             .filter(|index| self.providers[*index].stored())
@@ -726,13 +759,23 @@ impl Session {
 
     fn failed(&mut self, error: &Error, cx: &mut Context<Self>) {
         let failure = Failure::new(error);
+        Network::failed(&format!("{error:#}"), cx);
         if let Some(failed) = self.awaiting.or(self.active) {
             self.error = Some((failed, failure.clone()));
         }
+        // Only a restore may end up offline. A sign-in the user is watching says what went
+        // wrong on the page they started it from.
+        let restoring = self.awaiting.is_none();
         self.awaiting = None;
         if let Some((index, profile)) = self.resume.take() {
             self.active = Some(index);
             self.state = SessionState::SignedIn(profile);
+            cx.notify();
+            return;
+        }
+        if restoring && failure.offline() && self.stored_active() {
+            log::warn!("session: the account could not be reached, carrying on offline");
+            self.state = SessionState::Offline(failure);
             cx.notify();
             return;
         }

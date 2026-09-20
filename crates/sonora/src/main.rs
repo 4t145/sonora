@@ -266,6 +266,7 @@ fn open_window(cx: &mut App) {
         library,
         history: _,
         lyrics: _,
+        network: _,
         pins: _,
         playback,
         queue,
