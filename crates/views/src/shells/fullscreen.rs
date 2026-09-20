@@ -8,7 +8,7 @@ use gpui::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent,
     SharedString, SpringState, Task,
 };
-use gpui::{Window, canvas, deferred, div, px, relative};
+use gpui::{Window, canvas, deferred, div, phi, px, relative};
 use i18n::t;
 use input::{ToggleFullscreen, WORKSPACE_CONTEXT};
 use router::{Destination, navigate};
@@ -38,8 +38,11 @@ const COVER_MIN: f32 = 96.;
 const COVER_MAX: f32 = 520.;
 const COVER_MAX_REST: f32 = 560.;
 const COVER_LAYER_PAD: f32 = 2.;
-const RESERVE: f32 = 2.9;
-const RESERVE_REST: f32 = 1.3;
+/// The page's own `gap_5`, `pb_6` and the meta block's `gap_1`, in rems, so the cover can be
+/// fitted against the room actually left over. GPUI's spacing scale is a quarter rem a step.
+const COLUMN_GAP: f32 = 1.25;
+const PAGE_PAD: f32 = 1.5;
+const META_GAP: f32 = 0.25;
 const DOCK: f32 = 1.15;
 const DOCK_FULL: f32 = 1.7;
 const SINK: f32 = 24.;
@@ -1030,15 +1033,40 @@ impl Render for FullscreenView {
                 viewport.width,
             ),
         };
-        let fit = |tall: f32, wide: f32, reserve: f32, ceiling: Pixels| {
+        // Everything the cover shares the column with, measured rather than guessed: the title
+        // bar above it, the gap down to the meta line, the meta itself, the gap under it and
+        // the page's bottom padding. Neither meta row sets a line height, so both stand at
+        // GPUI's own leading. A window too short for all of it has to shrink the cover, since
+        // the column centres what it cannot fit and the top edge is what goes.
+        let rem = window.rem_size();
+        let line = |step: Text| phi().to_pixels(theme.text(step).into(), rem).round();
+        let meta = line(Text::Title) + rem * META_GAP + line(Text::Body);
+        let stack = theme.metrics.title_bar + rem * (COLUMN_GAP * 2. + PAGE_PAD) + meta;
+        // The dock reserves the cap it clamps itself to while fading, and nothing at all once
+        // it is hidden, which is the whole difference between the awake and the resting fit.
+        let dock = theme.metrics.player_bar
+            * match split {
+                true => DOCK,
+                false => DOCK_FULL,
+            };
+        let fit = |tall: f32, wide: f32, reserve: Pixels, ceiling: Pixels| {
             (viewport.height * tall)
-                .min(viewport.height - theme.metrics.title_bar - theme.metrics.player_bar * reserve)
+                .min(viewport.height - reserve)
                 .min(viewport.width * wide)
                 .min(ceiling)
                 .max(px(COVER_MIN))
         };
-        let near = fit(tall, wide, RESERVE, ceiling);
-        let far = fit(tall_rest, wide_rest, RESERVE_REST, ceiling_rest);
+        let near = fit(tall, wide, stack + dock, ceiling);
+        // The resting cover is the raster, scaled down while the controls are up, so the layer
+        // the compositor scales is that much wider than the cover on screen and reaches well
+        // past it on every side. A layer is clipped to the window before it is scaled, so one
+        // that overhangs the top edge loses a strip off the cover itself, which is the whole
+        // reason the resting size can never reach further up than the room above the cover.
+        let slack = (viewport.height - stack - dock - near).max(Pixels::ZERO);
+        let above = theme.metrics.title_bar + slack / 2. - px(COVER_LAYER_PAD);
+        let far = fit(tall_rest, wide_rest, stack, ceiling_rest)
+            .min(near + above * 2.)
+            .max(near);
         let presented_side = near + (far - near) * hide;
         // The flex item must never change size when the idle state flips: even a one-frame
         // near/far swap makes the centred column relayout. Keep its awake footprint forever and
@@ -1097,6 +1125,29 @@ impl Render for FullscreenView {
                         .bottom_0(),
                 )
             })
+            // Straight over the visualizer and under everything else: a backdrop blurs only
+            // what is painted before it, so the bars stop reading through the transport while
+            // the title and the artist line keep their own edges. The band fades with the
+            // controls, so a hidden set takes it along.
+            .when(visualizer_on && shown && shared::effects(), |this| {
+                let band = viewport.height * VEIL;
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .h(band)
+                        .opacity(1. - hide)
+                        .child(veil(
+                            Edge::Bottom,
+                            band,
+                            VEIL_BLUR,
+                            theme.background,
+                            window,
+                        )),
+                )
+            })
             .child(
                 div()
                     .relative()
@@ -1148,28 +1199,6 @@ impl Render for FullscreenView {
                         )
                     }),
             )
-            // Under the controls, not under the artwork: the visualizer draws right up to the
-            // bottom edge and its bars read straight through the transport otherwise. The band
-            // fades with the controls, so a hidden set takes it along.
-            .when(visualizer_on && shown && shared::effects(), |this| {
-                let band = viewport.height * VEIL;
-                this.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .bottom_0()
-                        .h(band)
-                        .opacity(1. - hide)
-                        .child(veil(
-                            Edge::Bottom,
-                            band,
-                            VEIL_BLUR,
-                            theme.background,
-                            window,
-                        )),
-                )
-            })
             .when(!split && self.panel.is_some(), |this| {
                 this.child(self.strip(hide, window, cx))
             })
