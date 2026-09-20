@@ -634,11 +634,24 @@ pub fn stamp_of(stamp: &str) -> Option<Duration> {
             if parts.next().is_some() {
                 return None;
             }
-            (
-                first.parse::<u64>().ok()?,
-                second.parse::<u64>().ok()?,
-                third.parse::<f64>().ok()?,
-            )
+            if third.contains('.') {
+                (
+                    first.parse::<u64>().ok()?,
+                    second.parse::<u64>().ok()?,
+                    third.parse::<f64>().ok()?,
+                )
+            } else {
+                let minutes: u64 = first.parse().ok()?;
+                let seconds: u64 = second.parse().ok()?;
+                let fraction: u64 = third.parse().ok()?;
+                let seconds = seconds as f64
+                    + if fraction >= 100 {
+                        fraction as f64 / 1_000.
+                    } else {
+                        fraction as f64 / 100.
+                    };
+                return Duration::try_from_secs_f64(minutes as f64 * 60. + seconds).ok();
+            }
         }
         None => (0, first.parse::<u64>().ok()?, second.parse::<f64>().ok()?),
     };
