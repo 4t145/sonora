@@ -10,6 +10,9 @@ use crate::shared::cells;
 use crate::shared::pins::Pinned as _;
 
 const BULLET: SharedString = SharedString::new_static("·");
+/// How many of a release's credits a card lists. Anything past this is clipped by the card's
+/// own width before it can be read.
+const CARD_LINKS: usize = 3;
 
 pub(crate) fn album_card(
     id: impl Into<ElementId>,
@@ -36,7 +39,7 @@ pub(crate) fn album_card(
             SharedString::new_static("album-card-artist"),
             album.year,
             Some(album.release_type),
-            album.artist_refs.clone(),
+            &album.artist_refs,
             album.artists.clone(),
             cx.theme(),
         ))
@@ -244,11 +247,16 @@ pub(crate) fn release_key(kind: ReleaseType) -> &'static str {
 
 /// The line under an album: the year and the artists, or the kind of release in the year's
 /// place when the provider gave none, so a new single still says it is one.
+/// The eyebrow under a release's title: its year, or its kind when the year is unknown, and
+/// who it is credited to, up to `CARD_LINKS` of them. The line is clipped to the card's
+/// width, so a compilation's twentieth credit could never be read anyway, while every name
+/// past the first few costs the grid an interactive element and a string on every frame a
+/// scroll asks for.
 pub(crate) fn released(
     id: impl Into<SharedString>,
     year: i32,
     kind: Option<ReleaseType>,
-    artists: Vec<ArtistRef>,
+    artists: &[ArtistRef],
     fallback: impl Into<SharedString>,
     theme: &Theme,
 ) -> impl IntoElement {
@@ -258,7 +266,8 @@ pub(crate) fn released(
         0 => kind.map(|kind| i18n::lookup(release_key(kind), None)),
         year => Some(SharedString::from(year.to_string())),
     };
-    let artists = cells::artist_links(id, artists, fallback, muted)
+    let credited: Vec<ArtistRef> = artists.iter().take(CARD_LINKS).cloned().collect();
+    let artists = cells::artist_links(id, credited, fallback, muted)
         .text_size(small)
         .truncate();
 
