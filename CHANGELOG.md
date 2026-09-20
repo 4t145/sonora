@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scanning local music shows how far it has got: a percentage beside Rescan in Settings, and the
   count of files read on a Local Music page that has nothing to show yet. A rescan you asked for
   reports how long it took when it finishes.
+- The Windows installer offers a per-user install that needs no administrator privileges,
+  alongside the existing machine-wide one.
 
 ### Changed
 
