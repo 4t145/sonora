@@ -116,6 +116,8 @@ pub struct Session {
     local_playback: Option<Arc<dyn PlaybackFactory>>,
     local_capabilities: Capabilities,
     local_task: Option<Task<()>>,
+    /// Whether a local scan is under way, so the UI can show its progress.
+    scanning: bool,
     watch: Option<Task<()>>,
     reconnect: Option<Task<()>>,
     reconnecting: bool,
@@ -164,6 +166,7 @@ impl Session {
             local_playback: None,
             local_capabilities: Capabilities::NONE,
             local_task: None,
+            scanning: false,
             watch: None,
             reconnect: None,
             reconnecting: false,
@@ -745,7 +748,7 @@ impl Session {
         if self.local_folders.is_empty() {
             return;
         }
-        self.rescan_local(cx);
+        self.rescan_local(false, cx);
     }
 
     /// Adds a folder to the local library, then rescans every configured folder together so
@@ -784,13 +787,23 @@ impl Session {
     }
 
     /// Rescans every configured local folder without changing the list, e.g. after files
-    /// changed on disk or a tag was edited.
-    pub fn rescan_local(&mut self, cx: &mut Context<Self>) {
+    /// changed on disk or a tag was edited. A `thorough` rescan is the one the user asked for:
+    /// it forgets what the last scan recorded, so every folder is listed and every file stat'd
+    /// again, which is the only way an edit made behind Sonora's back is noticed.
+    pub fn rescan_local(&mut self, thorough: bool, cx: &mut Context<Self>) {
+        if thorough {
+            self.local_provider.forget_scan();
+        }
         self.set_local_folders(self.local_folders.clone(), cx);
     }
 
+    /// Points the local library at `folders` and scans them. A scan already under way is
+    /// cancelled first: its folders may be the ones just removed, and two scans would only
+    /// fight over the same disk.
     fn set_local_folders(&mut self, folders: Vec<PathBuf>, cx: &mut Context<Self>) {
+        music::progress::cancel();
         if folders.is_empty() {
+            self.scanning = false;
             self.local_provider.sign_out();
             self.local_folders = Vec::new();
             self.settings.update(cx, |settings, cx| {
@@ -809,6 +822,8 @@ impl Session {
         let provider = self.local_provider.clone();
         let chosen = folders.clone();
         let io = self.io.clone();
+        self.scanning = true;
+        cx.notify();
         self.local_task = Some(cx.spawn(async move |this, cx| {
             let prompt: PromptSink = Arc::new(|_| {});
             let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -817,15 +832,19 @@ impl Session {
             )
             .await;
 
-            this.update(cx, |this, cx| match signed_in {
-                Ok(session) => {
-                    this.local_folders = chosen.clone();
-                    this.settings
-                        .update(cx, |settings, cx| settings.set_local_folders(chosen, cx));
-                    this.local_signed_in(session, cx);
-                }
-                Err(error) => {
-                    log::warn!("session: cannot update local music folders: {error:#}");
+            this.update(cx, |this, cx| {
+                this.scanning = false;
+                match signed_in {
+                    Ok(session) => {
+                        this.local_folders = chosen.clone();
+                        this.settings
+                            .update(cx, |settings, cx| settings.set_local_folders(chosen, cx));
+                        this.local_signed_in(session, cx);
+                    }
+                    Err(error) => {
+                        log::warn!("session: cannot update local music folders: {error:#}");
+                        cx.notify();
+                    }
                 }
             })
             .ok();
@@ -841,7 +860,7 @@ impl Session {
             return;
         }
         if !self.local_folders.is_empty() {
-            return self.rescan_local(cx);
+            return self.rescan_local(false, cx);
         }
 
         let provider = self.local_provider.clone();
@@ -862,6 +881,11 @@ impl Session {
             })
             .ok();
         }));
+    }
+
+    /// Whether a local scan is under way right now.
+    pub fn scanning(&self) -> bool {
+        self.scanning
     }
 
     fn local_signed_in(&mut self, session: ProviderSession, cx: &mut Context<Self>) {

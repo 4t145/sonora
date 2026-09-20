@@ -8,6 +8,7 @@ use gpui::{
 };
 
 use crate::ExplicitBadge;
+use crate::artwork::cover_palette;
 use crate::artwork::{Artwork, Avatar, ROUNDED};
 use crate::button::Button;
 use crate::glass::GLASS_BLUR;
@@ -315,6 +316,10 @@ impl RenderOnce for Card {
         let inset = theme.metrics.pad;
         let height = snapped(theme.metrics.list_row, window);
         let listed = art.is_none() && tile.is_none();
+        // The play button wears the cover's own colours once the cache has the art,
+        // and the theme's primary until then.
+        let play_fill =
+            theme.cover_fill(cover.as_deref().and_then(|cover| cover_palette(cover, cx)));
         let art_radius = art_radius.or_else(|| tile.map(|_| theme.radius));
         let art = art.or(tile).unwrap_or(snapped(height - inset * 2., window));
         let hovered = match (hovered, fill) {
@@ -369,7 +374,8 @@ impl RenderOnce for Card {
                                     .tooltip(hint)
                                     .size(size)
                                     .rounded_full()
-                                    .bg(theme.primary.opacity(PLAY_FILL))
+                                    .fill(play_fill.background.opacity(PLAY_FILL), play_fill.hover)
+                                    .tint(play_fill.foreground)
                                     .backdrop_blur(GLASS_BLUR)
                                     .shadow_sm()
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {

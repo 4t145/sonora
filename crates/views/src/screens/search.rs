@@ -338,6 +338,7 @@ impl SearchView {
             return cards::released(
                 format!("album-artist-{place}"),
                 album.year,
+                None,
                 album.artist_refs.clone(),
                 album.artists.clone(),
                 theme,

@@ -282,6 +282,7 @@ construction, layout and scene assembly, never GPU fill.
 | App state         | `$XDG_DATA_HOME/sonora/state.sqlite` (window/layout/playback state, pins, history, local playlists, usage flags)                  |
 | Credentials cache | `$XDG_CACHE_HOME/sonora/<provider>/credentials.json`, one per provider slug (`spotify`, `youtube`), owner-only mode                |
 | Local cover cache | `$XDG_CACHE_HOME/sonora/local-covers/`                                                                                             |
+| Library snapshots | `$XDG_CACHE_HOME/sonora/cache.sqlite` (what each shelf showed last, to draw before the provider answers)                          |
 | OAuth redirect    | `http://127.0.0.1:8989/login`, override with `SONORA_REDIRECT_URI`                                                                |
 | Scrobble callback | `http://127.0.0.1:8990/scrobble` (Last.fm and Libre.fm)                                                                           |
 | Instance socket   | `sonora.sock`, `sonora-dev.sock` in debug builds, so `cargo run` starts beside an installed Sonora rather than handing over to it |
@@ -731,6 +732,26 @@ Apple's `meta.total` on the first page. `Library::expected(shelf, part)` is that
 page header shows it in place of the rows so far while a part is still arriving. A part in
 flight is still `loading`, so a vacancy is never drawn under rows that are only late.
 
+**A shelf opens on what it held last time.** `state::snapshot` keeps every row of every part in
+`storage::Cache`, a key to text store in `$XDG_CACHE_HOME/sonora/cache.sqlite`. Nothing there is
+anything but a copy of what the provider or `state.sqlite` already holds, so deleting the file
+costs one reload and never a favorite, a play or a playlist. One key is one list:
+`<provider slug>/<part>`, plus `starred-` for the favorites a `Catalog` shelf keeps beside its
+rows (`apple/songs`, `apple/starred-albums`, `local/artists`). A provider owns one shelf, so its
+slug is the whole prefix and `Cache::forget` drops it by that. The value is one json object,
+`{ shape, total, rows }`, where `rows` is the model list itself and `total` is what the header
+shows until this run's rows arrive.
+
+`Library::prime` puts those rows up at startup, before the session has even restored, and leaves
+every part awaited, so the page reads as loading. `Held::stale` names the parts still showing
+them; the first rows a provider sends for such a part replace them rather than join them, which
+is what `shed` is for. A part that fails keeps them, so a launch without a network still shows a
+library. The favorites are primed the same way and a load no longer clears them, so a Favorites
+only filter has something to filter from the first frame instead of emptying the page until the
+`saved_*` fetch lands. `Library::keep` records a list once it has arrived whole, and signing out
+of a provider drops everything filed under its slug. Snapshots are metadata only: covers still
+come from the image cache and nothing is playable that the provider has not confirmed.
+
 **Favorites and the library can be two things.** `Capabilities::library` says the provider has a
 library apart from its favorites, which a track or an album is put into and taken out of through
 `MusicApi::set_in_library`; Apple has, Spotify has not (its library is the favorites) and a
@@ -762,6 +783,41 @@ an artist folder answers to `artist` first, then `folder`, then `cover`, in jpg,
 `MusicApi::{track_tags, set_track_tags}` — both default to an error, so only the local provider
 answers. `state::Tags` owns the read and the write and rescans the folder afterwards;
 `views::shared::tag_editor` is the dialog.
+
+**A scan reads tags on several threads and says how far it has got.** `scan::read_tags` splits
+the walked files into contiguous chunks, one per core up to `MAX_READERS`, and joins the chunks
+in order, so the songs list and the album grouping see exactly the order a single thread would
+have produced. The cap is there for a spinning disk, which past a handful of readers seeks more
+than it reads. Progress goes out through `music::progress`, atomics a reader samples, since the
+workers have no channel back to the app: `music::local::scan` holds the guard, `state::Scan`
+samples it every 100ms while `Session::scanning` is true, and the sampling stops with the scan.
+The walk counts what it has found so far, the folders count towards the total beside the files,
+and the percentage only appears once the walk has settled on one, so nothing sits at full while
+a later pass runs. The guard carries a generation, and `progress::cancel` bumps it:
+`Session::set_local_folders` calls that before every scan, so removing a folder stops the scan
+reading it and two scans never fight over one disk. A scan cut short reports no time, which is
+what `progress::interrupted` is for. `Scan::asked` is set by the Rescan button alone, so only a scan the user
+asked for leaves a `Done in …` behind, and `Scan::viewing_settings`, which `Root::show` calls on
+every move, clears that note once the settings page has shown it and been left. An empty Local
+Music page shows the count in place of its vacancy through `LibraryView::scanning`, and a scan in
+flight also holds off `LibraryView::unconfigured`, since a folder only reaches the settings once
+its scan lands and the setup screen would otherwise cover the whole first import.
+
+**Only what changed is read.** `music::local::index` keeps every file's time, size and parsed
+tags, and every folder's time, in `local_files` and `local_folders` in `cache.sqlite`. A folder
+whose time matches is listed from the index rather than from the disk, and the files in it are
+never stat'd, let alone opened; anything else is read as before. `Changes::between` works out
+what to write back, so a scan that found nothing writes nothing, and deletions are limited to the
+roots the walk actually reached, which is what keeps an offline share from wiping its own rows.
+A folder's time only moves when an entry is added, removed or renamed, so an edit in place hides
+from it: `LocalClient::set_track_tags` drops the rows of the files it wrote, and the Rescan
+button goes through `MusicProvider::forget_scan` to drop every folder, which is the whole
+difference between a rescan and the one at startup. The index is read on threads too, since
+turning ten thousand rows back into tracks is the entire cost of a scan that changed nothing.
+`wire::track_from_file` hands back the tag's year beside the track for the same reason: dating
+an album used to reopen one file per album on every scan, which was most of a scan on a share.
+Measured on ten thousand files: 245ms against 104ms on a local disk, and 99s against 3.1s over
+a network mount.
 
 **Saved tracks are called Favorites.** `LibraryTab::Songs`, the `songs` settings key and
 `library-liked-songs` all keep their old names; only the wording changed. Local favorites live in

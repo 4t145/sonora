@@ -1,6 +1,6 @@
 use gpui::{App, ClickEvent, ClipboardItem, Context, Entity, SharedString, Styled as _, Window};
 use i18n::t;
-use music::{Album, MediaKind, Playlist, SavedArtist, Track};
+use music::{Album, GenreItem, MediaKind, Playlist, SavedArtist, Track};
 use router::{Destination, navigate};
 use state::{Detail, History, Library, Origin, Playback, Shelf, Sonora};
 use ui::{Menu, MenuItem, Pin, PinKind, Scrollbar, SubmenuState};
@@ -10,19 +10,41 @@ use crate::shared::pins::Pinned as _;
 use crate::shared::playlist_editor::{Edit, PlaylistEditor};
 use crate::shared::tag_editor::TagEditor;
 
+/// Something a context menu can open on, wherever it was clicked.
 #[derive(Clone)]
 pub(crate) enum Item {
     Album(Album),
     Playlist(Playlist),
     Artist(SavedArtist),
+    Track(Track),
 }
 
 impl Item {
-    pub(crate) fn menu(&self, playback: Entity<Playback>, opened_here: bool, cx: &App) -> Menu {
+    /// The item behind a shelf card; a genre has no menu.
+    pub(crate) fn of(item: &GenreItem) -> Option<Self> {
+        match item {
+            GenreItem::Album(album) => Some(Self::Album(album.clone())),
+            GenreItem::Playlist(playlist) => Some(Self::Playlist(playlist.clone())),
+            GenreItem::Artist(artist) => Some(Self::Artist(artist.clone())),
+            GenreItem::Track(track) => Some(Self::Track(track.clone())),
+            GenreItem::Genre(_) => None,
+        }
+    }
+
+    /// The item's menu. A track's carries the playlist and artist submenus, whose state
+    /// `menus` holds; the rest need only the playback.
+    pub(crate) fn menu(
+        &self,
+        menus: &ItemMenu,
+        playback: Entity<Playback>,
+        opened_here: bool,
+        cx: &App,
+    ) -> Menu {
         match self {
             Self::Album(album) => album_menu(album.clone(), playback, opened_here, cx),
             Self::Playlist(playlist) => playlist_menu(playlist.clone(), playback, opened_here, cx),
             Self::Artist(artist) => artist_menu(artist.clone(), playback, opened_here, cx),
+            Self::Track(track) => menus.for_track(track, cx),
         }
     }
 }

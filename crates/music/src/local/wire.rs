@@ -345,12 +345,15 @@ pub fn modified_at(path: &Path) -> Option<i64> {
     }
 }
 
+/// Reads one file into a track, the album artist it belongs under, and the year its tag
+/// claims. The year comes out of the same read rather than a second one: it is what an album
+/// is dated by, and opening every album's first track again costs a round trip each on a share.
 pub fn track_from_file(
     path: &Path,
     artist_hint: Option<&str>,
     album_hint: Option<&str>,
     cache_dir: &Path,
-) -> Option<(Track, String)> {
+) -> Option<(Track, String, Option<i32>)> {
     let tagged = Probe::open(path).ok().and_then(|file| file.read().ok());
     let tag = tagged
         .as_ref()
@@ -446,6 +449,12 @@ pub fn track_from_file(
     }
 
     let album_id = (!album_name.is_empty()).then(|| album_id(&album_artist, &album_name));
+    let year = tag
+        .and_then(|tag| tag.date())
+        .map(|date| date.year as i32)
+        .filter(|year| *year > 0)
+        .or_else(|| fallback.as_ref().and_then(|fb| fb.year))
+        .or_else(|| lenient.as_ref().and_then(|l| l.year));
 
     Some((
         Track {
@@ -470,23 +479,8 @@ pub fn track_from_file(
             credits: Vec::new(),
         },
         album_artist,
+        year,
     ))
-}
-
-pub fn tag_year(path: &Path) -> Option<i32> {
-    if let Some(tagged) = Probe::open(path).ok().and_then(|probe| probe.read().ok())
-        && let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag())
-        && let Some(year) = tag
-            .date()
-            .map(|date| date.year as i32)
-            .filter(|year| *year > 0)
-    {
-        return Some(year);
-    }
-    if let Some(year) = probe_symphonia(path).and_then(|fb| fb.year) {
-        return Some(year);
-    }
-    id3::read(path).and_then(|lenient| lenient.year)
 }
 
 pub fn album_from_tracks(name: &str, artist: &str, tracks: &[Track], year: i32) -> Album {
@@ -671,7 +665,7 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
-        let (track, _) = track_from_file(path, None, None, &temp).expect("track parsed");
+        let (track, ..) = track_from_file(path, None, None, &temp).expect("track parsed");
         assert!(track.playable);
         assert_eq!(track.name, "Chann Vi Gawah");
         assert_eq!(track.artists, "Madhav Mahajan");
@@ -700,7 +694,7 @@ mod tests {
         std::fs::write(&path, []).unwrap();
 
         let stamped = modified_at(&path).expect("a file just written has a modified time");
-        let (track, _) = track_from_file(&path, None, None, &dir).expect("a track");
+        let (track, ..) = track_from_file(&path, None, None, &dir).expect("a track");
 
         assert_eq!(track.added_at, Some(stamped));
         std::fs::remove_dir_all(&dir).ok();
@@ -712,7 +706,7 @@ mod tests {
         let path = dir.join("song.mp3");
         std::fs::write(&path, []).unwrap();
 
-        let (mut older, _) = track_from_file(&path, None, None, &dir).expect("a track");
+        let (mut older, ..) = track_from_file(&path, None, None, &dir).expect("a track");
         let mut newer = older.clone();
         older.added_at = Some(1_000);
         newer.added_at = Some(2_000);

@@ -51,6 +51,9 @@ library-no-catalog-albums = Альбомів не знайдено
 library-no-catalog-artists = Виконавців не знайдено
 library-no-matches = Нічого не знайдено
 library-not-loaded = Бібліотека не завантажилася
+library-scanning = Переглядаю ваші теки…
+library-scanning-found = Переглядаю ваші теки… поки { $found }
+library-scanning-progress = Читаю вашу музику… { $read } з { $found }
 library-part-not-loaded = Цей розділ бібліотеки не завантажився
 library-local-unconfigured = Налаштуйте локальну бібліотеку
 
@@ -388,8 +391,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Швидкий вибір
-home-listen-again = Послухати знову
-home-quick-picks-eyebrow = Почніть із треку
 home-quick-picks-empty = Додайте кілька треків, і вони з'являться тут
 
 # search page
@@ -734,6 +735,9 @@ settings-choose-folder = Вибрати папку…
 settings-add-folder = Додати папку
 settings-remove-folder = Видалити папку
 settings-rescan = Пересканувати
+settings-scan-walking = Сканую…
+settings-scan-progress = { $percent }%
+settings-scan-done = Готово за { $seconds } с
 settings-tab-about = Про програму
 settings-version = Версія
 settings-version-detail = Складання Sonora, яке зараз запущено

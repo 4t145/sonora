@@ -1,4 +1,18 @@
 use std::cmp::Ordering;
+use std::time::Duration;
+
+/// Below this a lapse is worth a decimal, above it the fraction says nothing.
+const FINE: u64 = 10;
+
+/// How long something took, in seconds, for a caller to put its own unit after. Under ten
+/// seconds it keeps one decimal, since that is where the difference reads; above, it rounds.
+pub(crate) fn lapsed(took: Duration) -> String {
+    let seconds = took.as_secs_f32();
+    match took.as_secs() < FINE {
+        true => format!("{seconds:.1}"),
+        false => format!("{}", seconds.round() as u64),
+    }
+}
 
 /// What one matched letter of a fuzzy query is worth.
 const LETTER: u32 = 1;

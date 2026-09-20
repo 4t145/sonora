@@ -36,6 +36,13 @@ pub fn decode(url: impl Into<SharedString>, cx: &mut App) -> Task<Option<Arc<Ren
     cx.spawn(async move |_| load.await.ok())
 }
 
+/// The palette of a frame that is already decoded, for artwork the cache has in
+/// hand. Sampling walks at most `SAMPLES` pixels, so this costs nothing beside
+/// the decode that produced the frame.
+pub(crate) fn of_image(image: &RenderImage) -> CoverPalette {
+    image.as_bytes(0).map(sampled).unwrap_or_default()
+}
+
 /// The dominant hue of the artwork at `url`, or none for near-greyscale art.
 pub fn tint(url: impl Into<SharedString>, cx: &mut App) -> Task<Option<Hsla>> {
     let palette = palette(url, cx);
@@ -50,6 +57,11 @@ pub fn tint(url: impl Into<SharedString>, cx: &mut App) -> Task<Option<Hsla>> {
 pub struct CoverPalette {
     pub primary: Option<Hsla>,
     pub secondary: Option<Hsla>,
+    /// The mean lightness of the art, over every pixel sampled rather than the
+    /// coloured ones alone. It is what names a neutral for art with no hue: a
+    /// sleeve that is nearly black and one that is nearly white both land here
+    /// with no primary, and only this tells them apart.
+    pub lightness: f32,
 }
 
 /// Both hues of the artwork at `url` in a single pass over its pixels.
@@ -60,8 +72,7 @@ pub fn palette(url: impl Into<SharedString>, cx: &mut App) -> Task<CoverPalette>
         let Some(image) = load.await else {
             return CoverPalette::default();
         };
-        cx.background_spawn(async move { image.as_bytes(0).map(sampled).unwrap_or_default() })
-            .await
+        cx.background_spawn(async move { of_image(&image) }).await
     })
 }
 
@@ -106,6 +117,7 @@ fn sampled(pixels: &[u8]) -> CoverPalette {
     let stride = (pixels.len() / 4 / SAMPLES).max(1);
     let mut bins = [Bin::default(); BINS];
     let mut sampled = 0.;
+    let mut lightness = 0.;
 
     for &[blue, green, red, alpha] in pixels.as_chunks::<4>().0.iter().step_by(stride) {
         if alpha < MIN_ALPHA {
@@ -119,6 +131,8 @@ fn sampled(pixels: &[u8]) -> CoverPalette {
             b: blue as f32 / 255.,
             a: 1.,
         });
+        lightness += colour.l;
+
         if colour.s < MIN_SATURATION || colour.l < MIN_LIGHTNESS || colour.l > MAX_LIGHTNESS {
             continue;
         }
@@ -129,10 +143,18 @@ fn sampled(pixels: &[u8]) -> CoverPalette {
         bins[index].add(colour, colour.s * (0.3 + 0.7 * colour.l));
     }
 
+    let mean = match sampled > 0. {
+        true => lightness / sampled,
+        false => 0.,
+    };
+
     let peak = (0..BINS).max_by(|&a, &b| score(&bins, a).total_cmp(&score(&bins, b)));
     let primary = peak.filter(|&peak| score(&bins, peak) >= (sampled * MIN_SHARE).max(MIN_WEIGHT));
     let Some(peak) = primary else {
-        return CoverPalette::default();
+        return CoverPalette {
+            lightness: mean,
+            ..Default::default()
+        };
     };
 
     let mut cluster = bins[peak];
@@ -163,7 +185,11 @@ fn sampled(pixels: &[u8]) -> CoverPalette {
             })
         });
 
-    CoverPalette { primary, secondary }
+    CoverPalette {
+        primary,
+        secondary,
+        lightness: mean,
+    }
 }
 
 fn score(bins: &[Bin; BINS], index: usize) -> f32 {

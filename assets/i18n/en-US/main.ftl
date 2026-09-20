@@ -51,6 +51,9 @@ library-no-catalog-albums = No albums found
 library-no-catalog-artists = No artists found
 library-no-matches = No matches
 library-not-loaded = Your library did not load
+library-scanning = Looking through your folders…
+library-scanning-found = Looking through your folders… { $found } so far
+library-scanning-progress = Reading your music… { $read } of { $found }
 library-part-not-loaded = This part of your library did not load
 library-local-unconfigured = Configure your local library
 
@@ -372,8 +375,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Quick picks
-home-listen-again = Listen again
-home-quick-picks-eyebrow = Start from a song
 home-quick-picks-empty = Like a few songs and they will show up here
 
 # search page
@@ -709,6 +710,9 @@ settings-choose-folder = Choose folder…
 settings-add-folder = Add folder
 settings-remove-folder = Remove folder
 settings-rescan = Rescan
+settings-scan-walking = Scanning…
+settings-scan-progress = { $percent }%
+settings-scan-done = Done in { $seconds }s
 settings-tab-about = About
 settings-version = Version
 settings-version-detail = The build of sonora you are running

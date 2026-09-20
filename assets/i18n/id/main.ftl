@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Pilihan cepat
-home-listen-again = Dengarkan lagi
-home-quick-picks-eyebrow = Mulai dari sebuah lagu
 home-quick-picks-empty = Sukai beberapa lagu dan rekomendasinya akan muncul di sini
 
 # search page

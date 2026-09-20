@@ -98,6 +98,7 @@ fn main() {
                     .unwrap_or_else(std::env::temp_dir)
                     .join("sonora"),
                 database.clone(),
+                storage::Cache::standard(),
             ));
         let lyrics: Vec<Arc<dyn LyricsProvider>> = vec![
             Arc::new(music::spotify::SpotifyLyrics::from_env()),
@@ -268,6 +269,7 @@ fn open_window(cx: &mut App) {
         pins: _,
         playback,
         queue,
+        scan: _,
         scrobbling: _,
         settings: _,
         updates: _,

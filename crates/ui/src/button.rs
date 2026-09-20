@@ -40,6 +40,7 @@ pub struct Button {
     hoverless: bool,
     frosted: bool,
     hovered: Option<StyleRefinement>,
+    fill: Option<(Hsla, Hsla)>,
     pressed: Option<StyleRefinement>,
     tint: Option<Hsla>,
     tooltip: Option<(SharedString, Perch)>,
@@ -62,6 +63,7 @@ impl Button {
             hoverless: false,
             frosted: false,
             hovered: None,
+            fill: None,
             pressed: None,
             tint: None,
             tooltip: None,
@@ -125,6 +127,14 @@ impl Button {
 
     pub fn tint(mut self, tint: Hsla) -> Self {
         self.tint = Some(tint);
+        self
+    }
+
+    /// Replaces the variant's fill and the colour it lifts to on hover, for a
+    /// button that carries a colour of its own rather than the theme's. The
+    /// press state follows the hover.
+    pub fn fill(mut self, background: Hsla, hover: Hsla) -> Self {
+        self.fill = Some((background, hover));
         self
     }
 
@@ -218,6 +228,7 @@ impl RenderOnce for Button {
             hoverless,
             frosted,
             hovered,
+            fill,
             pressed,
             tint,
             tooltip,
@@ -266,6 +277,11 @@ impl RenderOnce for Button {
                 solid(theme.danger, theme.danger_hover, theme.danger_foreground)
             }
         };
+        if let Some((background, hover)) = fill {
+            palette.background = Some(background);
+            palette.hover = Some(hover);
+            palette.active = Some(hover);
+        }
         if backgroundless {
             palette.background = None;
             palette.hover = None;

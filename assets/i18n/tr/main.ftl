@@ -325,8 +325,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Hızlı seçimler
-home-listen-again = Yeniden dinle
-home-quick-picks-eyebrow = Bir şarkıdan başla
 home-quick-picks-empty = Birkaç şarkı beğen, burada görünsünler
 
 # search page

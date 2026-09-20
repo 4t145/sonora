@@ -38,8 +38,8 @@ env_logger = "0.11"
 fastrand = "2.5"
 futures = "0.3"
 fluent-bundle = "0.16"
-gpui = { git = "https://github.com/sonorahq/gpui", rev = "6b8e17fc7616201ae6f093a7db40bde5b9eebcd5" }
-gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "6b8e17fc7616201ae6f093a7db40bde5b9eebcd5", features = [
+gpui = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00" }
+gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00", features = [
   "font-kit",
   "wayland",
   "x11",
@@ -169,6 +169,11 @@ librespot-oauth = { git = "https://github.com/sonorahq/librespot", rev = "e7eb95
 librespot-playback = { git = "https://github.com/sonorahq/librespot", rev = "e7eb953d5848fd97bacd00e6c0e33500765eaa63" }
 librespot-protocol = { git = "https://github.com/sonorahq/librespot", rev = "e7eb953d5848fd97bacd00e6c0e33500765eaa63" }
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e85e5ad5565c45dfdda95051158eb6b56c3" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
 
 [profile.dev]
 split-debuginfo = "unpacked"

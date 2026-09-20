@@ -1237,9 +1237,8 @@ impl MusicApi for AppleClient {
             sections = self.charts(None).await.unwrap_or_default();
         }
         Ok(HomeFeed {
-            listen_again: Vec::new(),
-            quick_picks: None,
             sections,
+            ..HomeFeed::default()
         })
     }
 

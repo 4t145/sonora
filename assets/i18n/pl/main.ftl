@@ -51,6 +51,9 @@ library-no-catalog-albums = Nie znaleziono albumów
 library-no-catalog-artists = Nie znaleziono wykonawców
 library-no-matches = Brak wyników
 library-not-loaded = Biblioteka się nie wczytała
+library-scanning = Przeglądam twoje foldery…
+library-scanning-found = Przeglądam twoje foldery… na razie { $found }
+library-scanning-progress = Czytam twoją muzykę… { $read } z { $found }
 library-part-not-loaded = Ta część biblioteki się nie wczytała
 library-local-unconfigured = Skonfiguruj lokalną bibliotekę
 
@@ -390,8 +393,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Szybki wybór
-home-listen-again = Posłuchaj ponownie
-home-quick-picks-eyebrow = Zacznij od utworu
 home-quick-picks-empty = Polub kilka utworów, a pojawią się tutaj
 
 # search page
@@ -736,6 +737,9 @@ settings-choose-folder = Wybierz folder…
 settings-add-folder = Dodaj folder
 settings-remove-folder = Usuń folder
 settings-rescan = Skanuj ponownie
+settings-scan-walking = Skanuję…
+settings-scan-progress = { $percent }%
+settings-scan-done = Gotowe w { $seconds } s
 settings-tab-about = O programie
 settings-version = Wersja
 settings-version-detail = Wydanie sonory, które jest teraz uruchomione

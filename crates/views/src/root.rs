@@ -8,7 +8,7 @@ use input::{
 use router::{Destination, NavigationEvent, SettingsTab, back, forward, navigate};
 use state::{
     ArtistDetail, Detail, GenreDetails, Genres, Home, Io, Library, Playback, Profile, Queue,
-    SYSTEM_FONT, Search, Session, SessionState, Shelf, SideTab, SongDetail, Sonora,
+    SYSTEM_FONT, Scan, Search, Session, SessionState, Shelf, SideTab, SongDetail, Sonora,
 };
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use ui::WindowFrame;
@@ -446,6 +446,13 @@ impl Root {
 
     fn show(&mut self, destination: Destination, cx: &mut Context<Self>) {
         clear_listing(cx);
+        // Leaving settings is what clears the note about the last scan, so every move tells it.
+        let settings = matches!(destination, Destination::Settings(_));
+        Scan::global(cx).update(cx, |scan, cx| scan.viewing_settings(settings, cx));
+        let home = matches!(destination, Destination::Home);
+        self.screens
+            .home
+            .update(cx, |view, cx| view.set_visible(home, cx));
         if let Destination::Fullscreen = destination {
             self.view = RootView::Fullscreen;
             self.tinting(true, cx);

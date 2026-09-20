@@ -17,9 +17,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The fullscreen visualizer can be drawn as a smooth wave instead of bars, one line per stereo
   channel, or as both at once. The Visualizer setting under Appearance now picks between them
   and holds the off switch.
+- Scanning local music shows how far it has got: a percentage beside Rescan in Settings, and the
+  count of files read on a Local Music page that has nothing to show yet. A rescan you asked for
+  reports how long it took when it finishes.
 
 ### Changed
 
+- Your Library and Local Music open on the songs, albums, artists and playlists they held last
+  time, right at startup, and swap them for the fresh ones as the provider answers.
+- Local music is scanned on several threads, and only what changed since the last scan is read
+  again, so a large library on a disk or a network share opens in a fraction of the time. Rescan
+  still reads everything.
+- Removing a music folder stops a scan that is still reading it, instead of leaving it to finish
+  for nothing.
 - The log file is now capped at 16 MiB while Sonora runs, not only at startup, so a fault that
   logs without end can no longer fill the disk.
 - Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
@@ -27,9 +37,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   queue, above what the album or playlist plays next.
 - Settings is one page. A search box at the top finds a setting in any category, and the
   categories sit in a bar at the bottom of the page instead of under Settings in the sidebar.
+- Radio builds its suggestions from the track that is playing rather than the last one in the
+  queue, and asks for the next batch while ten tracks are still left to play, so it never stops
+  to load between songs.
+- A context menu opens beside the pointer rather than under it, and holding the right button
+  down and letting go over an item picks that item.
 
 ### Fixed
 
+- An album, playlist or artist stops showing itself as playing once radio has moved past the
+  tracks it queued, instead of keeping a pause button over its cover.
 - The Play button on a library page no longer sits on Loading while the track you left off on is
   being made ready to resume.
 - Listening history shows when you played a song in your own time zone instead of UTC.
