@@ -23,6 +23,7 @@ pub mod spotify;
 mod stream;
 pub mod subsonic;
 mod trim;
+pub mod trouble;
 pub mod youtube;
 
 use std::collections::HashMap;
@@ -547,6 +548,12 @@ pub trait MusicProvider: Send + Sync {
         false
     }
     fn location(&self) -> Option<String> {
+        None
+    }
+    /// The host to open a connection to when checking whether the network is back. `None`
+    /// where the provider needs no network, which is what keeps a local library from ever
+    /// looking for one.
+    fn reach(&self) -> Option<String> {
         None
     }
     /// What a status calls this provider after "listening to". A service answers with its own

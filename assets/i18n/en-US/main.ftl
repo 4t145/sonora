@@ -849,3 +849,10 @@ nav-pins-alphabetical = Alphabetical
 nav-pins-kind = By type
 nav-show-full-library = Show full library
 nav-return-top = Back to top
+
+# trouble
+trouble-offline = No connection
+trouble-offline-detail = Check your internet connection and try again.
+trouble-not-loaded = Could not load
+trouble-retry = Try again
+toast-offline = No connection. Nothing will stream until it is back.

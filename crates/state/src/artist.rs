@@ -143,9 +143,9 @@ impl ArtistDetail {
 
                 this.loading = false;
                 this.request = None;
-                match loaded {
+                match crate::settled(loaded, cx) {
                     Ok(artist) => this.artist = Some(artist),
-                    Err(error) => this.error = Some(format!("{error:#}")),
+                    Err(reason) => this.error = Some(reason),
                 }
                 cx.notify();
             })

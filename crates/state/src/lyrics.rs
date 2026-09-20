@@ -405,6 +405,7 @@ impl Lyrics {
                 let current = this.finished(&id);
                 match found {
                     Ok(()) => {
+                        crate::Network::reached(cx);
                         let instrumental =
                             cached_instrumental || music::lyrics::instrumental(&ranking, &hits);
                         let ranked = ordered(&ranking, hits);
@@ -412,8 +413,9 @@ impl Lyrics {
                     }
                     Err(error) => {
                         log::warn!("lyrics: cannot look up {}: {error:#}", track.name);
+                        let reason = crate::blamed(&error, cx);
                         if current {
-                            this.state = LyricsState::Failed(format!("{error:#}"));
+                            this.state = LyricsState::Failed(reason);
                             cx.notify();
                         }
                     }

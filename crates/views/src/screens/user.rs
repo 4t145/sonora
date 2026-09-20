@@ -1,5 +1,7 @@
 use gpui::prelude::*;
-use gpui::{Context, Entity, Pixels, Point, Render, ScrollHandle, SharedString, Window, div, px};
+use gpui::{
+    AnyElement, Context, Entity, Pixels, Point, Render, ScrollHandle, SharedString, Window, div, px,
+};
 use i18n::t;
 use music::Playlist;
 use state::{Playback, Profile};
@@ -11,6 +13,7 @@ use crate::shared::cards;
 use crate::shared::cells;
 use crate::shared::hero::{HeroMetaStrip, PageHero};
 use crate::shared::menus::playlist_menu;
+use crate::shared::trouble;
 
 const FALLBACK: &str = "icons/user.svg";
 const PENDING: usize = 6;
@@ -141,8 +144,39 @@ impl UserView {
     }
 }
 
+impl UserView {
+    /// The page a profile that did not load shows instead of its header and playlists. Opening
+    /// the same profile again is the retry, since a failed load leaves the page empty.
+    fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let id = self.profile.read(cx).id()?.to_owned();
+        let reason = match trouble::unreachable(&id, cx) {
+            true => None,
+            false => Some(self.profile.read(cx).error()?.to_owned()),
+        };
+        let profile = self.profile.clone();
+
+        Some(
+            trouble::lost(
+                "user-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    let id = id.clone();
+                    profile.update(cx, |profile, cx| profile.open(&id, cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
+        )
+    }
+}
+
 impl Render for UserView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().flex().flex_col().size_full().child(failure);
+        }
+
         let theme = *cx.theme();
         let pad = theme.metrics.inset;
         let room = cells::content_width(window, pad * 2., cx);
@@ -150,7 +184,6 @@ impl Render for UserView {
             self.width = room;
         }
 
-        let error = self.profile.read(cx).error().map(str::to_owned);
         let context_menu = self.context_menu.clone().map(|(playlist, position)| {
             let menu = playlist_menu(playlist, self.playback.clone(), false, cx);
             Popup::new(position, menu).on_close(cx.listener(|this, _, _, cx| {
@@ -171,11 +204,6 @@ impl Render for UserView {
                         .flex_col()
                         .gap_8()
                         .child(self.header(cx))
-                        .children(error.map(|error| {
-                            div()
-                                .text_color(theme.danger)
-                                .child(SharedString::from(error))
-                        }))
                         .child(self.playlists(cx)),
                 ),
             )

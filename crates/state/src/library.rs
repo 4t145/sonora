@@ -8,7 +8,7 @@ use gpui::{App, Context, Entity, SharedString, Task};
 use music::{Album, MediaKind, MusicApi, Page, Pages, Playlist, SavedArtist, Shape, Track};
 
 use crate::snapshot::{Kind, Remembered, Snapshots};
-use crate::{Io, Outcome, Session, SessionEvent, Target, Toasts, join, mosaic};
+use crate::{Io, Network, Outcome, Session, SessionEvent, Target, Toasts, join, mosaic};
 
 const FATAL: [LibraryPart; 3] = [
     LibraryPart::Tracks,
@@ -224,6 +224,17 @@ impl Landed {
             Self::Albums(_) => LibraryPart::Albums,
             Self::Artists(_) => LibraryPart::Artists,
         }
+    }
+
+    /// Why the part failed, flattened, when it did.
+    fn reason(&self) -> Option<String> {
+        let error = match self {
+            Self::Tracks(result) => result.as_ref().err()?,
+            Self::Playlists(result) => result.as_ref().err()?,
+            Self::Albums(result) => result.as_ref().err()?,
+            Self::Artists(result) => result.as_ref().err()?,
+        };
+        Some(format!("{error:#}"))
     }
 }
 
@@ -1002,7 +1013,8 @@ impl Library {
                         }
                         Ok(_) => {}
                         Err(error) => {
-                            log::warn!("library: cannot synchronize sidebar library: {error:#}")
+                            log::warn!("library: cannot synchronize sidebar library: {error:#}");
+                            crate::noted(&error, cx);
                         }
                     })
                     .is_err()
@@ -1048,9 +1060,17 @@ impl Library {
     }
 
     pub fn part_failed(&self, shelf: Shelf, part: LibraryPart) -> bool {
+        self.part_problem(shelf, part).is_some()
+    }
+
+    /// Why a part of a shelf is empty, when it failed rather than arrived empty.
+    pub fn part_problem(&self, shelf: Shelf, part: LibraryPart) -> Option<&str> {
         self.held(shelf)
-            .ready()
-            .is_some_and(|ready| ready.problems.iter().any(|problem| problem.part == part))
+            .ready()?
+            .problems
+            .iter()
+            .find(|problem| problem.part == part)
+            .map(|problem| problem.reason.as_str())
     }
 
     pub fn add_local_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -2069,6 +2089,12 @@ impl Library {
     }
 
     fn land(&mut self, shelf: Shelf, landed: Landed, cx: &mut Context<Self>) {
+        if !shelf.local() {
+            match landed.reason() {
+                Some(reason) => Network::failed(&reason, cx),
+                None => Network::reached(cx),
+            }
+        }
         let part = landed.part();
         let arrived = landed.arrived();
         let held = self.held_mut(shelf);

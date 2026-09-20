@@ -17,6 +17,7 @@ use crate::shared::cells;
 use crate::shared::hero::{HeroMetaStrip, HeroPlayButton, PageHero, release_date_label};
 use crate::shared::menus::ItemMenu;
 use crate::shared::pins::Pinned as _;
+use crate::shared::trouble;
 
 const PANEL: Pixels = px(300.);
 const TITLE_SKELETON: Pixels = px(240.);
@@ -481,16 +482,44 @@ impl SongView {
     }
 }
 
+impl SongView {
+    /// The page a song shows instead of its hero when it cannot be read: the No connection
+    /// state as soon as the network is gone, and the failure of its own load otherwise.
+    /// Opening the same song again is the retry.
+    fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let id = self.detail.read(cx).id()?.to_owned();
+        let reason = match trouble::unreachable(&id, cx) {
+            true => None,
+            false => Some(self.detail.read(cx).error()?.to_owned()),
+        };
+        let detail = self.detail.clone();
+
+        Some(
+            trouble::lost(
+                "song-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    let id = id.clone();
+                    detail.update(cx, |detail, cx| detail.open(&id, cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
+        )
+    }
+}
+
 impl Render for SongView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().relative().size_full().child(failure);
+        }
+
         let theme = *cx.theme();
-        let (track, error, loading) = {
+        let (track, loading) = {
             let detail = self.detail.read(cx);
-            (
-                detail.track().cloned(),
-                detail.error().map(str::to_owned),
-                detail.is_loading(),
-            )
+            (detail.track().cloned(), detail.is_loading())
         };
 
         div()
@@ -502,9 +531,6 @@ impl Render for SongView {
                     .py(theme.metrics.inset)
                     .when(loading && track.is_none(), |this| {
                         this.child(self.loading(cx))
-                    })
-                    .when_some(error, |this, error| {
-                        this.child(div().pb_4().text_color(theme.danger).child(error))
                     })
                     .when_some(track, |this, track| {
                         this.child(self.hero(&track, cx))

@@ -29,6 +29,21 @@ impl LibrespotClient {
     pub fn session(&self) -> &Session {
         &self.session
     }
+
+    /// The account's own display name, or `None` when the lookup fails. Signing in calls this,
+    /// so a profile Spotify will not hand over must not take the session down with it.
+    async fn display_name(&self, username: &str) -> Option<String> {
+        let body = self
+            .session
+            .spclient()
+            .get_user_profile(&profiles::escaped(username), None, None)
+            .await
+            .inspect_err(|error| log::debug!("profiles: cannot read {username}: {error}"))
+            .ok()?;
+
+        let profile: wire::Named = serde_json::from_slice(&body).ok()?;
+        profile.label().map(str::to_owned)
+    }
 }
 
 #[async_trait]
@@ -49,15 +64,12 @@ impl MusicApi for LibrespotClient {
 
     async fn profile(&self) -> Result<UserProfile> {
         let username = self.session.username();
-        let body = self
-            .session
-            .spclient()
-            .get_user_profile(&username, None, None)
-            .await?;
-
-        let profile: wire::Named = serde_json::from_slice(&body).unwrap_or_default();
+        let display_name = self
+            .display_name(&username)
+            .await
+            .unwrap_or_else(|| username.clone());
         Ok(UserProfile {
-            display_name: profile.label().unwrap_or(&username).to_owned(),
+            display_name,
             id: username,
         })
     }

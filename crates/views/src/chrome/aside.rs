@@ -4,16 +4,16 @@ use gpui::prelude::*;
 
 use gpui::{
     Animation, AnimationExt as _, App, Bounds, Context, Div, DragMoveEvent, Entity, FontWeight,
-    MouseDownEvent, Pixels, Point, Render, ScrollHandle, ScrollStrategy, ScrollWheelEvent,
-    SharedString, SpringConfig, SpringState, Task, UniformListScrollHandle, Window, div,
-    ease_in_out, px, relative, svg, uniform_list,
+    MouseDownEvent, Pixels, Point, Render, ScrollHandle, ScrollStrategy, SharedString,
+    SpringConfig, SpringState, Task, UniformListScrollHandle, Window, div, ease_in_out, px,
+    relative, svg, uniform_list,
 };
 use i18n::t;
 use music::{Shape, Track, Voice};
 use router::{Destination, LibraryTab, Link as _};
 use state::{
-    AppSettings, Lyrics, LyricsState, Playback, PlaybackState, Queue, RomanizationScripts, Shelf,
-    SideTab, Sonora, Whence,
+    AppSettings, Lyrics, LyricsState, Network, Playback, PlaybackState, Queue, RomanizationScripts,
+    Shelf, SideTab, Sonora, Whence,
 };
 use ui::{
     ActiveTheme as _, Button, Card, DraggedPin, Edge, Motion, Motioned as _, Pin, Pinnable as _,
@@ -1445,7 +1445,12 @@ impl Aside {
             (None, LyricsState::Missing) => {
                 vec![wordless("lyrics-missing", "icons/mic-off.svg")]
             }
-            (None, LyricsState::Failed(_)) => vec![empty("lyrics-failed", cx)],
+            (None, LyricsState::Failed(reason)) => {
+                match Network::lost(cx) || music::trouble::offline(reason) {
+                    true => vec![wordless("trouble-offline", "icons/wifi-off.svg")],
+                    false => vec![empty("lyrics-failed", cx)],
+                }
+            }
         };
 
         if state == LyricsState::Ready
@@ -1821,37 +1826,16 @@ impl Render for Aside {
                         this.child(vacant(t!("queue-empty"), cx).flex_1())
                     })
                     .when(self.tab == SideTab::Queue && !empty, |this| {
-                        let gliding = self.scrollbar.clone();
-
                         this.child(
-                            div()
-                                .relative()
-                                .flex_1()
-                                .min_h_0()
+                            Scroller::listing("queue-rows", &self.scrollbar)
+                                .when(effects(), |this| this.fade_edges(px(FADE * 0.5), px(FADE)))
                                 .child(
-                                    div()
-                                        .size_full()
-                                        .when(effects(), |this| {
-                                            this.fade_edges(px(FADE * 0.5), px(FADE))
-                                        })
-                                        .child(
-                                            self.rows(sections, cx)
-                                                .px_2()
-                                                .pt(px(FADE * 0.5))
-                                                .track_scroll(&self.scroll)
-                                                .size_full()
-                                                .on_scroll_wheel(
-                                                    move |event: &ScrollWheelEvent, window, cx| {
-                                                        if event.delta.precise() {
-                                                            return;
-                                                        }
-                                                        gliding
-                                                            .update(cx, |bar, _| bar.nudge(window));
-                                                    },
-                                                ),
-                                        ),
-                                )
-                                .child(self.scrollbar.clone()),
+                                    self.rows(sections, cx)
+                                        .px_2()
+                                        .pt(px(FADE * 0.5))
+                                        .track_scroll(&self.scroll)
+                                        .size_full(),
+                                ),
                         )
                     })
                     .children(self.follow(cx))

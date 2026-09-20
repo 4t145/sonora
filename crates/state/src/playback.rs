@@ -82,7 +82,7 @@ impl QueuePlacement {
 use crate::queue::Queue;
 use serde::{Deserialize, Serialize};
 
-use crate::{AppSettings, Io, Outcome, Session, SessionEvent, Target, Toasts, join};
+use crate::{AppSettings, Io, Network, Outcome, Session, SessionEvent, Target, Toasts, join};
 
 const POSITION_INTERVAL: Duration = Duration::from_millis(500);
 const CLOCK_SETTLE: Duration = Duration::from_secs(1);
@@ -553,6 +553,9 @@ impl Playback {
         if !track.playable {
             return self.failed(format!("{} is not available to stream", track.name), cx);
         }
+        if !music::is_local_id(&id) && Network::lost(cx) {
+            return self.unreachable(start, cx);
+        }
         if self.engine_for(&id).is_none() {
             return;
         }
@@ -584,7 +587,8 @@ impl Playback {
                     return;
                 };
                 if let Err(error) = engine.load(&id, at, start == Start::Segue) {
-                    this.failed(format!("{error:#}"), cx);
+                    let reason = crate::blamed(&error, cx);
+                    this.failed(reason, cx);
                 }
             })
             .ok();
@@ -675,7 +679,10 @@ impl Playback {
                         .update(cx, |queue, cx| queue.extend_context(tracks, cx));
                 }
                 Ok(_) => {}
-                Err(error) => log::error!("playback: cannot load radio queue: {error:#}"),
+                Err(error) => {
+                    log::error!("playback: cannot load radio queue: {error:#}");
+                    crate::noted(&error, cx);
+                }
             })
             .ok();
         }));
@@ -1087,7 +1094,10 @@ impl Playback {
                 Err(error) if this.has_active_playback() => {
                     log::error!("playback: cannot load context: {error:#}");
                 }
-                Err(error) => this.failed(format!("{error:#}"), cx),
+                Err(error) => {
+                    let reason = crate::blamed(&error, cx);
+                    this.failed(reason, cx);
+                }
             })
             .ok();
         }));
@@ -1247,6 +1257,7 @@ impl Playback {
                 Err(error) => {
                     this.seeded = None;
                     log::warn!("playback: cannot load similar tracks: {error:#}");
+                    crate::noted(&error, cx);
                 }
             })
             .ok();
@@ -2160,6 +2171,16 @@ impl Playback {
     }
 
     /// Records that the provider wants a signed-in listener and stops until sign-in.
+    /// Turns down a track that has to be streamed while the network is gone. Whatever plays
+    /// keeps playing, since a local file needs nothing, and only a track the user picked says
+    /// so out loud: the queue moving on by itself would otherwise toast once a track.
+    fn unreachable(&mut self, start: Start, cx: &mut Context<Self>) {
+        log::warn!("playback: nothing streams while the network is gone");
+        if start == Start::Pick {
+            Toasts::show(Outcome::Failed, "toast-offline", cx);
+        }
+    }
+
     fn gate(&mut self, cx: &mut Context<Self>) {
         let first = self.refused.is_none();
         self.refused = Some(Refusal::SignIn);

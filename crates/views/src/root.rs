@@ -7,8 +7,9 @@ use input::{
 };
 use router::{Destination, NavigationEvent, SettingsTab, back, forward, navigate};
 use state::{
-    ArtistDetail, Detail, GenreDetails, Genres, Home, Io, Library, Playback, Profile, Queue,
-    SYSTEM_FONT, Scan, Search, Session, SessionState, Shelf, SideTab, SongDetail, Sonora,
+    ArtistDetail, Detail, GenreDetails, Genres, Home, Io, Library, Network, Playback, Profile,
+    Queue, Reconnected, SYSTEM_FONT, Scan, Search, Session, SessionState, Shelf, SideTab,
+    SongDetail, Sonora,
 };
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use ui::WindowFrame;
@@ -118,6 +119,11 @@ impl Root {
         cx.subscribe(&navigation, |this, _, event, cx| {
             let NavigationEvent::Moved(destination) = event;
             this.transition_to(destination.clone(), cx);
+        })
+        .detach();
+
+        cx.subscribe(&Network::global(cx), |this, _, _: &Reconnected, cx| {
+            this.reload(cx)
         })
         .detach();
 
@@ -444,6 +450,15 @@ impl Root {
         }));
     }
 
+    /// Loads the screen on show again, which is what a page that gave up while the network was
+    /// gone needs once it is back. Focus stays where the user left it, since nothing moved.
+    fn reload(&mut self, cx: &mut Context<Self>) {
+        let destination = router::trail(cx).read(cx).current();
+        let pending = self.pending.take();
+        self.show(destination, cx);
+        self.pending = pending;
+    }
+
     fn show(&mut self, destination: Destination, cx: &mut Context<Self>) {
         clear_listing(cx);
         // Leaving settings is what clears the note about the last scan, so every move tells it.
@@ -599,9 +614,12 @@ fn scripts(custom: bool) -> &'static FontFallbacks {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // An account that could not be reached is still an account, so nothing about a lost
+        // network puts the sign-in page up: the workspace stays, on what the library kept and
+        // on the local files.
         let show_sign_in = match self.session.read(cx).state() {
             SessionState::SignedOut | SessionState::Failed(_) => true,
-            SessionState::Restoring | SessionState::SignedIn(_) => false,
+            SessionState::Restoring | SessionState::SignedIn(_) | SessionState::Offline(_) => false,
             SessionState::Authorizing(_) => self.signing_in,
         };
         self.signing_in = show_sign_in;

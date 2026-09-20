@@ -11,6 +11,7 @@ mod library;
 mod logging;
 mod lyrics;
 mod mosaic;
+mod network;
 mod pins;
 mod playback;
 mod profile;
@@ -40,6 +41,7 @@ pub use home::Home;
 pub use library::{Library, LibraryEvent, LibraryPart, LibraryState, Problem, Ready, Shelf};
 pub use logging::log_file;
 pub use lyrics::{Lyrics, LyricsState};
+pub use network::{Network, Reconnected};
 pub use pins::{PinSort, Pins};
 pub use playback::{Origin, Playback, PlaybackState, Repeat, Sleep, Whence};
 pub use profile::Profile;
@@ -123,6 +125,32 @@ pub(crate) async fn join<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
     handle.await?
 }
 
+/// Flattens a failed call's reason and tells `Network` about it, so one screen's failure puts
+/// the whole app offline rather than only its own page.
+pub(crate) fn blamed(error: &anyhow::Error, cx: &mut gpui::App) -> String {
+    let reason = format!("{error:#}");
+    Network::failed(&reason, cx);
+    reason
+}
+
+/// Tells `Network` about a failure a caller only logs. An outage is then noticed at the first
+/// call that runs into it, rather than the first one that happens to put its reason on a page.
+pub(crate) fn noted(error: &anyhow::Error, cx: &mut gpui::App) {
+    Network::failed(&format!("{error:#}"), cx);
+}
+
+/// Reports a network call's outcome to `Network` and turns its failure into the reason a screen
+/// stores. A success is what puts the app back online the moment one load gets through.
+pub(crate) fn settled<T>(result: Result<T>, cx: &mut gpui::App) -> std::result::Result<T, String> {
+    match result {
+        Ok(value) => {
+            Network::reached(cx);
+            Ok(value)
+        }
+        Err(error) => Err(blamed(&error, cx)),
+    }
+}
+
 pub struct Sonora {
     pub session: Entity<Session>,
     pub cover: Entity<Cover>,
@@ -130,6 +158,7 @@ pub struct Sonora {
     pub library: Entity<Library>,
     pub history: Entity<History>,
     pub lyrics: Entity<Lyrics>,
+    pub network: Entity<Network>,
     pub pins: Entity<Pins>,
     pub playback: Entity<Playback>,
     pub queue: Entity<Queue>,
@@ -163,6 +192,15 @@ pub fn init(
     let settings = cx.new(|_| AppSettings::load(database.clone()));
     let session =
         cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
+    let network = cx.new(|_| Network::new(session.clone(), io.clone()));
+    // A run that started without a network never signed out, so the account it kept is tried
+    // again the moment there is one.
+    session.update(cx, |_, cx| {
+        cx.subscribe(&network, |this, _, _: &Reconnected, cx| {
+            this.restore_if_offline(cx)
+        })
+        .detach();
+    });
     let cache = storage::Cache::standard();
     let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cache, cx));
     let queue = cx.new(|cx| Queue::new(session.clone(), settings.clone(), cx));
@@ -211,6 +249,7 @@ pub fn init(
         library,
         history,
         lyrics,
+        network,
         pins,
         playback,
         queue,
