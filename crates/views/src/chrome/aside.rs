@@ -12,8 +12,8 @@ use i18n::t;
 use music::{Shape, Track, Voice};
 use router::{Destination, LibraryTab, Link as _};
 use state::{
-    AppSettings, Lyrics, LyricsState, Playback, PlaybackState, Queue, RomanizationScripts, Shelf,
-    SideTab, Sonora, Whence,
+    AppSettings, Lyrics, LyricsState, Network, Playback, PlaybackState, Queue, RomanizationScripts,
+    Shelf, SideTab, Sonora, Whence,
 };
 use ui::{
     ActiveTheme as _, Button, Card, DraggedPin, Edge, Motion, Motioned as _, Pin, Pinnable as _,
@@ -1445,7 +1445,12 @@ impl Aside {
             (None, LyricsState::Missing) => {
                 vec![wordless("lyrics-missing", "icons/mic-off.svg")]
             }
-            (None, LyricsState::Failed(_)) => vec![empty("lyrics-failed", cx)],
+            (None, LyricsState::Failed(reason)) => {
+                match Network::lost(cx) || music::trouble::offline(reason) {
+                    true => vec![wordless("trouble-offline", "icons/wifi-off.svg")],
+                    false => vec![empty("lyrics-failed", cx)],
+                }
+            }
         };
 
         if state == LyricsState::Ready

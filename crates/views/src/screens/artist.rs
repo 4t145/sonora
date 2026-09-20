@@ -29,6 +29,7 @@ use crate::shared::menus::{ItemMenu, album_menu, artist_menu};
 use crate::shared::page;
 use crate::shared::picks::{Picks, Shape};
 use crate::shared::tracks::{PlaybackStatus, TrackSource, Tracks, drop_picked, playback_status};
+use crate::shared::trouble;
 
 const SECTION: &str = "artist";
 const RELEASE_ROWS: usize = 2;
@@ -790,14 +791,29 @@ impl ArtistView {
         )
     }
 
+    /// The page an artist shows instead of its hero and its tables when it cannot be read: the
+    /// No connection state as soon as the network is gone, whatever this page happens to hold,
+    /// and the failure of its own load otherwise. Opening the same artist again is the retry.
     fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
-        let error = self.detail.read(cx).error()?.to_owned();
+        let id = self.detail.read(cx).id()?.to_owned();
+        let reason = match trouble::unreachable(&id, cx) {
+            true => None,
+            false => Some(self.detail.read(cx).error()?.to_owned()),
+        };
+        let detail = self.detail.clone();
+
         Some(
-            div()
-                .pb_4()
-                .text_color(cx.theme().danger)
-                .child(error)
-                .into_any_element(),
+            trouble::lost(
+                "artist-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    let id = id.clone();
+                    detail.update(cx, |detail, cx| detail.open(&id, cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
         )
     }
 }
@@ -818,6 +834,10 @@ impl Tooled for ArtistView {
 
 impl Render for ArtistView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().relative().size_full().child(failure);
+        }
+
         let theme = *cx.theme();
         let inset = theme.metrics.inset;
         let previous = self.width;
@@ -870,20 +890,15 @@ impl Render for ArtistView {
             .pt(inset)
             .pb(inset)
             .on_scroll_wheel(cx.listener(Self::release_scroll))
-            .child(
-                div()
-                    .child(self.header(cx))
-                    .children(self.failure(cx))
-                    .when(listed, |this| {
-                        this.child(
-                            div()
-                                .pb_3()
-                                .text_size(theme.text(Text::Title))
-                                .font_weight(FontWeight::BOLD)
-                                .child(t!("artist-popular")),
-                        )
-                    }),
-            )
+            .child(div().child(self.header(cx)).when(listed, |this| {
+                this.child(
+                    div()
+                        .pb_3()
+                        .text_size(theme.text(Text::Title))
+                        .font_weight(FontWeight::BOLD)
+                        .child(t!("artist-popular")),
+                )
+            }))
             .child(match self.mode {
                 Mode::Grid => self.popular(cx),
                 Mode::List => self.listed(cx),
