@@ -110,6 +110,11 @@ const SIMILAR_LIMIT: usize = 20;
 /// Asking this early keeps the wait for the station off the gap between two tracks.
 const RADIO_LOOKAHEAD: usize = 10;
 
+/// How many continuations in a row may bring nothing the queue has not heard before the station
+/// is dropped. An empty stretch lands with the queue still short, which asks for the next one
+/// straight away, so a provider serving the same tracks over would otherwise never be let go of.
+const STATION_DRY_LIMIT: u8 = 3;
+
 /// The position shown between the engine's reports. It runs on wall time from `reset` and is
 /// nudged toward each report by `correct`, spread over a moment so the progress bar and the
 /// lyrics glide instead of stepping. Parked, it holds `base`.
@@ -341,6 +346,8 @@ pub struct Playback {
     station: Option<String>,
     /// The fetch of the station's next stretch; done once it lands, so one runs at a time.
     topping: Option<Task<()>>,
+    /// Continuations in a row that brought no track the queue had not already heard.
+    dry: u8,
     /// The streaming engine's event pump; dropping it stops listening.
     task: Option<Task<()>>,
     local_task: Option<Task<()>>,
@@ -458,6 +465,7 @@ impl Playback {
             seeded: None,
             station: None,
             topping: None,
+            dry: 0,
             task: None,
             local_task: None,
             load: None,
@@ -1069,6 +1077,7 @@ impl Playback {
     fn leave_station(&mut self) {
         self.station = None;
         self.topping = None;
+        self.dry = 0;
     }
 
     /// Forgets the collection the queue came from. Radio calls this as it takes over, so a page
@@ -1248,8 +1257,8 @@ impl Playback {
     /// Fetches the station's next stretch once fewer than `RADIO_LOOKAHEAD` tracks are left to
     /// play, so the queue never reaches its end while the provider has more. What the queue
     /// has already heard is left out. The station is the queue itself, so it goes on whether
-    /// or not radio suggestions are on; a fetch that fails drops the continuation and leaves
-    /// the end of the queue to `advance`.
+    /// or not radio suggestions are on; a fetch that fails drops the continuation and hands the
+    /// end of the queue back to `advance` through `stranded`.
     fn continue_station(&mut self, cx: &mut Context<Self>) {
         if self.topping.is_some() || self.queue.read(cx).upcoming().len() >= RADIO_LOOKAHEAD {
             return;
@@ -1282,7 +1291,11 @@ impl Playback {
                 }
                 match loaded {
                     Ok((tracks, next)) => {
-                        this.station = next;
+                        this.dry = match tracks.is_empty() {
+                            true => this.dry.saturating_add(1),
+                            false => 0,
+                        };
+                        this.station = next.filter(|_| this.dry < STATION_DRY_LIMIT);
                         let idle = this.track.is_none() && !this.queue.read(cx).has_next();
                         this.queue
                             .update(cx, |queue, cx| queue.extend_context(tracks, cx));
@@ -1295,9 +1308,23 @@ impl Playback {
                         log::warn!("playback: cannot continue the station: {error:#}");
                     }
                 }
+                if this.station.is_none() {
+                    this.stranded(cx);
+                }
             })
             .ok();
         }));
+    }
+
+    /// Picks playback back up when the station that was covering the end of the queue stops
+    /// answering, by putting the track that ended through `advance` again, which is where radio
+    /// takes over. Does nothing while anything is still playing or waiting to.
+    fn stranded(&mut self, cx: &mut Context<Self>) {
+        if self.track.is_some() || self.queue.read(cx).has_next() {
+            return;
+        }
+        let ended = self.seed(cx);
+        self.advance(ended, cx);
     }
 
     /// Fills the suggestions from the current track's radio when radio is on and there are
