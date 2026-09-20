@@ -9,6 +9,7 @@ const CONSOLE: &str = "warn,symphonia=error,lofty=error,discord_rich_presence=er
 const DISK: &str = "warn,symphonia=error,lofty=error,discord_rich_presence=error,sonora=debug,ui=debug,music=debug,ytmusic=debug";
 const FILTER: &str = "SONORA_LOG";
 const PREVIOUS: &str = "sonora.log.1";
+const LIMIT: u64 = 16 * 1024 * 1024;
 
 pub fn init() {
     let console = env_logger::Builder::from_env(Env::default().default_filter_or(CONSOLE))
@@ -37,10 +38,9 @@ pub fn init() {
     log::debug!("logging: sonora {} started", env!("CARGO_PKG_VERSION"));
 }
 
-/// The log file under the size limit: a write that would carry it past `state::log_limit()`
-/// rotates it first and lands in a fresh file, so a flood of lines churns through the two
-/// files instead of filling the disk. The limit is read on every write, since Settings can
-/// change it while running.
+/// The log file under the size limit: a write that would carry it past `LIMIT` rotates it
+/// first and lands in a fresh file, so a flood of lines churns through the two files instead
+/// of filling the disk.
 struct Capped {
     path: PathBuf,
     file: File,
@@ -49,7 +49,7 @@ struct Capped {
 
 impl Write for Capped {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let overflowing = self.written + buf.len() as u64 > state::log_limit();
+        let overflowing = self.written + buf.len() as u64 > LIMIT;
         if overflowing && self.written > 0 {
             rotate(&self.path);
             if let Some(file) = append(&self.path) {
@@ -92,7 +92,7 @@ fn open() -> Option<Capped> {
     let path = state::log_file()?;
     fs::create_dir_all(path.parent()?).ok()?;
 
-    let outgrown = fs::metadata(&path).is_ok_and(|file| file.len() > state::log_limit());
+    let outgrown = fs::metadata(&path).is_ok_and(|file| file.len() > LIMIT);
     if outgrown {
         rotate(&path);
     }
