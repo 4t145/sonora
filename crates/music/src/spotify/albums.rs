@@ -86,39 +86,62 @@ fn track_ids(album: &AlbumMessage) -> Vec<String> {
         .collect()
 }
 
-pub(crate) async fn metadata(session: &Session, uris: &[String]) -> Result<HashMap<String, Album>> {
-    let entities = collection::extended(session, uris, ExtensionKind::ALBUM_V4)
-        .await
-        .context("cannot read album metadata")?;
+/// An album entity carries its discs, so a batch of them is worth tens of megabytes. They are
+/// asked for a batch at a time and turned into models as each batch lands, which is what
+/// keeps an artist with a thousand releases from holding the lot at once.
+const ALBUM_BATCH: usize = 200;
 
-    let mut albums = HashMap::new();
-    for entity in entities {
-        let Ok(message) = AlbumMessage::parse_from_bytes(&entity.extension_data.value) else {
-            continue;
-        };
-        let album = album_from(&entity.entity_uri, &message);
-        albums.insert(entity.entity_uri, album);
-    }
+pub(crate) async fn metadata(session: &Session, uris: &[String]) -> Result<HashMap<String, Album>> {
+    let mut albums = HashMap::with_capacity(uris.len());
+    collection::batched(
+        session,
+        uris,
+        ExtensionKind::ALBUM_V4,
+        ALBUM_BATCH,
+        |entities| {
+            for entity in entities {
+                let Ok(message) = AlbumMessage::parse_from_bytes(&entity.extension_data.value)
+                else {
+                    continue;
+                };
+                let album = album_from(&entity.entity_uri, &message);
+                albums.insert(entity.entity_uri, album);
+            }
+            Ok(())
+        },
+    )
+    .await
+    .context("cannot read album metadata")?;
+
     Ok(albums)
 }
 
 pub(crate) async fn track_uris(session: &Session, uris: &[String]) -> Result<Vec<String>> {
-    let entities = collection::extended(session, uris, ExtensionKind::ALBUM_V4)
-        .await
-        .context("cannot read album metadata")?;
-
     let mut seen = HashSet::new();
     let mut tracks = Vec::new();
-    for entity in entities {
-        let Ok(message) = AlbumMessage::parse_from_bytes(&entity.extension_data.value) else {
-            continue;
-        };
-        for id in track_ids(&message) {
-            if seen.insert(id.clone()) {
-                tracks.push(format!("{TRACK_PREFIX}{id}"));
+    collection::batched(
+        session,
+        uris,
+        ExtensionKind::ALBUM_V4,
+        ALBUM_BATCH,
+        |entities| {
+            for entity in entities {
+                let Ok(message) = AlbumMessage::parse_from_bytes(&entity.extension_data.value)
+                else {
+                    continue;
+                };
+                for id in track_ids(&message) {
+                    if seen.insert(id.clone()) {
+                        tracks.push(format!("{TRACK_PREFIX}{id}"));
+                    }
+                }
             }
-        }
-    }
+            Ok(())
+        },
+    )
+    .await
+    .context("cannot read album metadata")?;
+
     Ok(tracks)
 }
 

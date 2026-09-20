@@ -4,7 +4,10 @@ use std::sync::{Arc, Weak};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use moka::{future::Cache, sync::Cache as SyncCache};
-use music::{AlbumDetail, Artist, ArtistProfile, GenreDetail, MusicApi, PlaylistDetail, Track};
+use music::{
+    AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, GenreDetail, MusicApi, PlaylistDetail,
+    Track,
+};
 
 const ARTISTS: usize = 32;
 const ARTIST_PROFILES: usize = 64;
@@ -16,6 +19,11 @@ const GENRES: usize = 24;
 #[async_trait]
 trait CatalogBackend: Send + Sync {
     async fn artist(&self, id: &str) -> Result<Artist>;
+
+    async fn artist_catalogue(&self, _id: &str, _known: &[Track]) -> Result<ArtistCatalogue> {
+        Ok(ArtistCatalogue::default())
+    }
+
     async fn artist_profile(&self, id: &str) -> Result<ArtistProfile>;
     async fn artist_images(&self, ids: Vec<String>) -> Result<HashMap<String, String>>;
     async fn track(&self, id: &str) -> Result<Track>;
@@ -35,6 +43,9 @@ struct ApiBackend(Arc<dyn MusicApi>);
 impl CatalogBackend for ApiBackend {
     async fn artist(&self, id: &str) -> Result<Artist> {
         self.0.artist(id).await
+    }
+    async fn artist_catalogue(&self, id: &str, known: &[Track]) -> Result<ArtistCatalogue> {
+        self.0.artist_catalogue(id, known).await
     }
     async fn artist_profile(&self, id: &str) -> Result<ArtistProfile> {
         self.0.artist_profile(id).await
@@ -118,6 +129,7 @@ pub(crate) struct SongPage {
 pub(crate) struct CatalogSource {
     backend: Arc<dyn CatalogBackend>,
     artists: CatalogCache<Artist>,
+    catalogues: CatalogCache<ArtistCatalogue>,
     artist_profiles: CatalogCache<ArtistProfile>,
     albums: CatalogCache<AlbumDetail>,
     playlists: CatalogCache<PlaylistDetail>,
@@ -134,6 +146,7 @@ impl CatalogSource {
         Self {
             backend,
             artists: CatalogCache::new(ARTISTS),
+            catalogues: CatalogCache::new(ARTISTS),
             artist_profiles: CatalogCache::new(ARTIST_PROFILES),
             albums: CatalogCache::new(ALBUMS),
             playlists: CatalogCache::new(PLAYLISTS),
@@ -153,6 +166,23 @@ impl CatalogSource {
 
     pub(crate) async fn artist(&self, id: &str) -> Result<Arc<Artist>> {
         self.artists.load(id, self.backend.artist(id)).await
+    }
+
+    pub(crate) fn peek_artist_catalogue(&self, id: &str) -> Option<Arc<ArtistCatalogue>> {
+        self.catalogues.peek(id)
+    }
+
+    /// The rest of the artist page, which the provider fetches once the overview is up. It is
+    /// cached beside the artist, so opening the same page again fills it without asking the
+    /// provider twice.
+    pub(crate) async fn artist_catalogue(
+        &self,
+        id: &str,
+        known: &[Track],
+    ) -> Result<Arc<ArtistCatalogue>> {
+        self.catalogues
+            .load(id, self.backend.artist_catalogue(id, known))
+            .await
     }
 
     pub(crate) async fn artist_profile(&self, id: &str) -> Result<Arc<ArtistProfile>> {
