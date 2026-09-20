@@ -459,6 +459,9 @@ fn dated(name: &str) -> (String, Option<i32>) {
     if let Some(dated) = trailing_year(name) {
         return dated;
     }
+    if let Some(dated) = trailing_plain_year(name) {
+        return dated;
+    }
 
     (name.to_owned(), None)
 }
@@ -493,6 +496,17 @@ fn trailing_year(name: &str) -> Option<(String, Option<i32>)> {
     let (rest, digits) = rest.split_at_checked(cut)?;
     let year = digits.parse::<i32>().ok().filter(|year| plausible(*year))?;
     let rest = rest.strip_suffix(['[', '('])?.trim();
+    match rest.is_empty() {
+        true => None,
+        false => Some((rest.to_owned(), Some(year))),
+    }
+}
+
+fn trailing_plain_year(name: &str) -> Option<(String, Option<i32>)> {
+    let cut = name.len().checked_sub(4)?;
+    let (rest, digits) = name.split_at_checked(cut)?;
+    let year = digits.parse::<i32>().ok().filter(|year| plausible(*year))?;
+    let rest = rest.trim_end_matches(SEPARATORS).trim();
     match rest.is_empty() {
         true => None,
         false => Some((rest.to_owned(), Some(year))),
