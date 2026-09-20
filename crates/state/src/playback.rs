@@ -1330,7 +1330,7 @@ impl Playback {
     /// Fills the suggestions from the current track's radio when radio is on and there are
     /// none, and tops them up once fewer than `RADIO_LOOKAHEAD` tracks are left to play, so the
     /// next batch has arrived long before the queue reaches it. What is already queued is left
-    /// out.
+    /// out, and the provider's best `SIMILAR_LIMIT` of the rest are kept.
     fn suggest_similar(&mut self, cx: &mut Context<Self>) {
         if !self.radio {
             return;
@@ -1359,7 +1359,6 @@ impl Playback {
             let loaded = join(io.spawn(async move {
                 let (mut tracks, _) = client.track_radio(&id, None).await?;
                 unheard(&mut tracks, &queued);
-                fastrand::shuffle(&mut tracks);
                 tracks.truncate(SIMILAR_LIMIT);
                 anyhow::Ok(tracks)
             }))
