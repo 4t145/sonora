@@ -47,6 +47,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Signing in to Spotify works on accounts whose username holds a letter outside ASCII, such as
+  an ö, instead of failing straight after authentication.
 - The fullscreen button works right after picking a language or a typeface in Settings, instead
   of doing nothing until you clicked elsewhere first.
 - An album, playlist or artist stops showing itself as playing once radio has moved past the
