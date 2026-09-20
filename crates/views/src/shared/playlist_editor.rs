@@ -154,7 +154,7 @@ impl Render for PlaylistEditor {
                         Button::new("apply-playlist-edit")
                             .when_else(
                                 deleting,
-                                |button| button.danger(),
+                                |button| button.destructive(),
                                 |button| button.primary(),
                             )
                             .label(match &edit {

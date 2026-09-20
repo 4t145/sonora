@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Escolhas rápidas
-home-listen-again = Ouvir novamente
-home-quick-picks-eyebrow = Comece por uma música
 home-quick-picks-empty = Curta algumas músicas e elas aparecerão aqui
 
 # search page
@@ -443,6 +441,7 @@ month-11 = Nov
 month-12 = Dez
 
 # settings
+settings-search = Pesquisar nas configurações
 settings-tab-general = Geral
 settings-tab-appearance = Aparência
 settings-tab-playback = Reprodução

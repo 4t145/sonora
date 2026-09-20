@@ -639,7 +639,12 @@ impl MusicApi for SubsonicClient {
         }
 
         Ok(HomeFeed {
-            listen_again: random.iter().take(10).cloned().collect(),
+            listen_again: random
+                .iter()
+                .take(10)
+                .cloned()
+                .map(GenreItem::Track)
+                .collect(),
             quick_picks: Some(random.into_iter().take(15).collect()),
             sections,
         })

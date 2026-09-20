@@ -19,7 +19,7 @@ pub struct UserDetail {
     pub playlists: Vec<Playlist>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Contributor {
     pub id: String,
     pub name: String,
@@ -43,14 +43,14 @@ pub struct ArtistRef {
     pub id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Credit {
     pub name: String,
     pub role: String,
     pub id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Track {
     pub id: Option<String>,
     pub name: String,
@@ -73,7 +73,7 @@ pub struct Track {
     pub credits: Vec<Credit>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Playlist {
     pub id: String,
     pub name: String,
@@ -88,7 +88,7 @@ pub struct Playlist {
     pub modified_at: Option<i64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReleaseType {
     Album,
     Single,
@@ -111,7 +111,7 @@ impl ReleaseType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Album {
     pub id: String,
     pub name: String,
@@ -141,11 +141,15 @@ pub struct Genre {
     pub cover: Option<String>,
 }
 
+/// One card of a browse shelf. A provider's home and genre pages mix whatever the shelf holds,
+/// so a track or an artist sits beside albums and playlists in the same row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GenreItem {
     Playlist(Playlist),
     Album(Album),
     Genre(Genre),
+    Track(Track),
+    Artist(SavedArtist),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,7 +160,9 @@ pub struct GenreSection {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HomeFeed {
-    pub listen_again: Vec<Track>,
+    /// What the user has been playing lately, in every shape the provider lists it: songs and
+    /// videos, but also the albums, playlists and artists they came from.
+    pub listen_again: Vec<GenreItem>,
     pub quick_picks: Option<Vec<Track>>,
     pub sections: Vec<GenreSection>,
 }
@@ -200,7 +206,7 @@ pub struct ArtistProfile {
     pub biography: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedArtist {
     pub id: String,
     pub name: String,

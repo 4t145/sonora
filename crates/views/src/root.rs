@@ -8,7 +8,7 @@ use input::{
 use router::{Destination, NavigationEvent, SettingsTab, back, forward, navigate};
 use state::{
     ArtistDetail, Detail, GenreDetails, Genres, Home, Io, Library, Playback, Profile, Queue,
-    SYSTEM_FONT, Search, Session, SessionState, Shelf, SideTab, SongDetail, Sonora,
+    SYSTEM_FONT, Scan, Search, Session, SessionState, Shelf, SideTab, SongDetail, Sonora,
 };
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use ui::WindowFrame;
@@ -16,6 +16,8 @@ use ui::{ActiveTheme as _, Dismiss, Look, Stillness, Theme, ThemeKind, clear_lis
 
 use crate::chrome::{TitleBar, TitleBarEvent, TitleBarOptions, Toolbar, Tooled};
 use crate::screens::search::SearchView;
+use crate::screens::settings::SettingsHeader;
+use crate::shared::ambient::{self, Ambient};
 use crate::shared::tracks::{LIBRARY_COLUMNS, album_columns};
 use crate::shells::Shell;
 use crate::shells::workspace::Workspace;
@@ -44,6 +46,7 @@ struct Screens {
     genre: Option<Entity<GenreView>>,
     genre_detail: Option<Entity<GenreDetails>>,
     settings: Entity<SettingsView>,
+    settings_header: Entity<SettingsHeader>,
 }
 
 struct Shells {
@@ -68,6 +71,7 @@ pub struct Root {
     io: Io,
     login: Entity<LoginView>,
     title_bar: Entity<TitleBar>,
+    ambient: Entity<Ambient>,
     shells: Shells,
     view: RootView,
     signing_in: bool,
@@ -75,7 +79,7 @@ pub struct Root {
     pending: Option<Focus>,
     navigation_transition: Option<Task<()>>,
     screens: Screens,
-    _adaptive: Entity<Adaptive>,
+    adaptive: Entity<Adaptive>,
     background: Option<gpui::WindowBackgroundAppearance>,
     #[cfg(target_os = "windows")]
     rounded: Option<ui::Rounding>,
@@ -143,6 +147,7 @@ impl Root {
         let search = cx.new(|cx| SearchView::new(queries, genres.clone(), playback.clone(), cx));
 
         let settings = cx.new(|cx| SettingsView::new(session.clone(), playback.clone(), cx));
+        let settings_header = cx.new(|cx| SettingsHeader::new(settings.clone(), cx));
 
         let song_detail = cx.new(|cx| SongDetail::new(session.clone(), io.clone(), cx));
         let song = cx.new(|cx| SongView::new(song_detail.clone(), playback.clone(), cx));
@@ -160,6 +165,7 @@ impl Root {
             )
         });
         let fullscreen = cx.new(|cx| FullscreenView::new(playback.clone(), queue.clone(), cx));
+        let ambient = cx.new(Ambient::new);
 
         let title_bar = cx.new(TitleBar::new);
         cx.subscribe(&title_bar, |this, _, event, cx| match event {
@@ -252,8 +258,10 @@ impl Root {
                 genre: None,
                 genre_detail: None,
                 settings,
+                settings_header,
             },
-            _adaptive: adaptive,
+            adaptive,
+            ambient,
             background: None,
             #[cfg(target_os = "windows")]
             rounded: None,
@@ -370,6 +378,14 @@ impl Root {
             .update(cx, |workspace, cx| workspace.show_side(tab, cx));
     }
 
+    /// Tells the adaptive theme whether fullscreen is up. The ambient background is painted
+    /// out of the cover's hues, so fullscreen samples the cover even with the adaptive theme
+    /// off, and leaving drops the tint again.
+    fn tinting(&self, fullscreen: bool, cx: &mut Context<Self>) {
+        self.adaptive
+            .update(cx, |adaptive, cx| adaptive.set_fullscreen(fullscreen, cx));
+    }
+
     fn toggle_fullscreen(&mut self, cx: &mut Context<Self>) {
         match self.view {
             RootView::Workspace => navigate(Destination::Fullscreen, cx),
@@ -430,19 +446,29 @@ impl Root {
 
     fn show(&mut self, destination: Destination, cx: &mut Context<Self>) {
         clear_listing(cx);
+        // Leaving settings is what clears the note about the last scan, so every move tells it.
+        let settings = matches!(destination, Destination::Settings(_));
+        Scan::global(cx).update(cx, |scan, cx| scan.viewing_settings(settings, cx));
+        let home = matches!(destination, Destination::Home);
+        self.screens
+            .home
+            .update(cx, |view, cx| view.set_visible(home, cx));
         if let Destination::Fullscreen = destination {
             self.view = RootView::Fullscreen;
+            self.tinting(true, cx);
             self.pending = Some(Focus::Fullscreen);
             cx.notify();
             return;
         }
         self.view = RootView::Workspace;
+        self.tinting(false, cx);
         self.pending = Some(match destination {
             Destination::Search => Focus::Search,
             _ => Focus::Workspace,
         });
 
         let mut toolbar = None;
+        let mut header = None;
 
         let content: AnyView = match destination {
             Destination::Fullscreen => return,
@@ -508,15 +534,16 @@ impl Root {
                 self.screens
                     .settings
                     .update(cx, |settings, cx| settings.select(tab, cx));
+                header = Some(self.screens.settings_header.clone().into());
                 self.screens.settings.clone().into()
             }
         };
 
         self.toolbar = toolbar;
 
-        self.shells
-            .workspace
-            .update(cx, |workspace, cx| workspace.set_content(content, cx));
+        self.shells.workspace.update(cx, |workspace, cx| {
+            workspace.set_content(content, header, cx)
+        });
         cx.notify();
     }
 }
@@ -697,6 +724,11 @@ impl Render for Root {
             )
             .on_action(
                 cx.listener(|this, _: &ToggleLyrics, _, cx| this.show_side(SideTab::Lyrics, cx)),
+            )
+            // The ambient background sits behind everything, title bar included.
+            .when(
+                matches!(self.view, RootView::Fullscreen) && ambient::shown(cx),
+                |this| this.child(self.ambient.clone()),
             )
             .child(self.title_bar.clone())
             .when_else(

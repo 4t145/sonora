@@ -15,6 +15,7 @@ pub mod lyrics;
 mod models;
 pub mod musixmatch;
 pub mod netease;
+pub mod progress;
 pub mod scrobble;
 mod sink;
 mod spectrum;
@@ -220,6 +221,13 @@ pub trait MusicApi: Send + Sync {
         Ok(HomeFeed::default())
     }
 
+    /// The home feed as it fills, so a page draws its first shelves before its last have
+    /// arrived. Defaults to `home` delivered at once, so a provider that has the feed in one go
+    /// writes nothing.
+    async fn home_paged(&self) -> Result<Feed> {
+        Ok(at_once(self.home().await?))
+    }
+
     async fn name_home_playlists(&self, sections: Vec<GenreSection>) -> Vec<GenreSection> {
         sections
     }
@@ -345,7 +353,7 @@ pub trait PlaybackFactory: Send + Sync {
 
 /// What a provider's library is made of. It decides which `MusicApi` methods fill the library
 /// pages and whether a favorites filter is offered on them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Shape {
     /// The library is what the user starred, read through the `saved_*` methods.
     Saved,
@@ -482,6 +490,20 @@ pub struct Page<T> {
 /// provider fetching.
 pub type Pages<T> = tokio::sync::mpsc::Receiver<Result<Page<T>>>;
 
+/// The home feed arriving a lot at a time: every message is the whole feed so far, arranged
+/// the way the provider wants it drawn, so each one can replace the last on the page. The
+/// channel closes after the last lot, or carries the error one broke on, after which nothing
+/// more comes. Dropping it stops the provider fetching.
+pub type Feed = tokio::sync::mpsc::Receiver<Result<HomeFeed>>;
+
+/// A home feed that arrived whole, as its one and only message.
+pub fn at_once(feed: HomeFeed) -> Feed {
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    // Room for one message was made above, so this never waits and never fails.
+    sender.try_send(Ok(feed)).ok();
+    receiver
+}
+
 /// A listing that arrived whole, as its one and only page. What a provider that lists in one
 /// go answers the paged calls with.
 pub fn whole<T: Send + 'static>(items: Vec<T>) -> Pages<T> {
@@ -512,8 +534,18 @@ pub struct WebSignIn {
 pub trait MusicProvider: Send + Sync {
     fn name(&self) -> &'static str;
     fn slug(&self) -> &'static str;
+
+    /// Forgets whatever the provider remembers about its last scan, so the next one reads
+    /// everything again. Only a provider that scans files has anything to forget, and only a
+    /// rescan the user asked for should ask it to.
+    fn forget_scan(&self) {}
     fn sign_in_options(&self) -> Vec<SignIn>;
     fn stored(&self) -> bool;
+    /// Whether what is stored is an anonymous session rather than an account, so a caller
+    /// can tell the two apart. A provider without an anonymous sign-in never says yes.
+    fn stored_guest(&self) -> bool {
+        false
+    }
     fn location(&self) -> Option<String> {
         None
     }

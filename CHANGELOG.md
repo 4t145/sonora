@@ -9,26 +9,84 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Fullscreen fills its background with colours drawn from the cover, and wears a dark palette
+  while it does, whatever theme the rest of the app is on. Settings > Appearance > Fullscreen
+  switches it off, and Ambient motion holds the colours still.
 - A Play last item on track, album, artist and playlist menus queues them for after everything
   else.
+- The fullscreen visualizer can be drawn as a smooth wave instead of bars, one line per stereo
+  channel, or as both at once. The Visualizer setting under Appearance now picks between them
+  and holds the off switch.
+- Scanning local music shows how far it has got: a percentage beside Rescan in Settings, and the
+  count of files read on a Local Music page that has nothing to show yet. A rescan you asked for
+  reports how long it took when it finishes.
 - The Windows installer offers a per-user install that needs no administrator privileges,
   alongside the existing machine-wide one.
 
 ### Changed
 
+- Your Library and Local Music open on the songs, albums, artists and playlists they held last
+  time, right at startup, and swap them for the fresh ones as the provider answers.
+- Local music is scanned on several threads, and only what changed since the last scan is read
+  again, so a large library on a disk or a network share opens in a fraction of the time. Rescan
+  still reads everything.
+- Removing a music folder stops a scan that is still reading it, instead of leaving it to finish
+  for nothing.
+- The log file is now capped at 16 MiB while Sonora runs, not only at startup, so a fault that
+  logs without end can no longer fill the disk.
 - Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
   the album or playlist, in the order you added them. The queue panel lists them under Next in
   queue, above what the album or playlist plays next.
+- Settings is one page. A search box at the top finds a setting in any category, and the
+  categories sit in a bar at the bottom of the page instead of under Settings in the sidebar.
+- Radio builds its suggestions from the track that is playing rather than the last one in the
+  queue, and asks for the next batch while ten tracks are still left to play, so it never stops
+  to load between songs.
+- A context menu opens beside the pointer rather than under it, and holding the right button
+  down and letting go over an item picks that item.
 
 ### Fixed
 
+- An album, playlist or artist stops showing itself as playing once radio has moved past the
+  tracks it queued, instead of keeping a pause button over its cover.
+- Lyrics timed with hours, such as `[01:02:03.00]`, show at the right moment instead of being
+  skipped.
+- Deezer playlists and favorites show the day they were added or last changed, instead of leaving
+  the date column blank.
+- A Deezer song whose explicit flag arrives as a number still shows the explicit mark.
+- An untagged song whose filename splits title and artist with a fullwidth hyphen keeps both
+  names, instead of treating the whole filename as the title.
+- Opening a `file:///C:/…` link on Windows plays the file, instead of looking for a path that
+  starts with a slash.
+- The Play button on a library page no longer sits on Loading while the track you left off on is
+  being made ready to resume.
+- Listening history shows when you played a song in your own time zone instead of UTC.
+- Table filters such as the album year span or Favorites only are kept across restarts, the way
+  sorts and views already were.
 - Apple Music similar tracks link to their artist and album again.
+- Seeking back in a local MP3 with a PNG cover lands where you asked, instead of the song
+  starting over while the progress bar runs on.
 - An Apple Music library song whose catalog copy Apple has pulled is left out of Favorites,
   and the song count leaves it out too, instead of failing when played.
 - Pinning an Apple Music album, artist or playlist to the sidebar works again. The pin is kept
   by Sonora, since Apple Music has no pins of its own.
+- Deezer playlists found by search show who made them.
 - A Spotify pin past Spotify's own limit is kept by Sonora instead of being refused, so the
   sidebar can hold as many pins as you like.
+- A YouTube Music track whose download stalls is tried again and then skipped, instead of
+  leaving the player silent until a restart.
+- A local album with a damaged tag no longer takes the day and month of its date, like `312`,
+  as its year.
+- The Modified column of local playlists shows the date they last changed instead of staying
+  blank.
+- An untagged song sitting directly in your music folder no longer takes the name of the folder
+  above it as its artist.
+- Saving the tag editor no longer erases a release date it could not read, like `99` or
+  `平成11年`, when the year was left alone.
+- Lyrics from Apple Music, Musixmatch, LrcLib and NetEase no longer go missing when the provider
+  sends a timestamp or song length out of range.
+- The local library no longer fails to load when a file's date tag is written like `平成11年` or
+  `２００４`.
 
 ## [0.37.0] - 2026-09-17
 

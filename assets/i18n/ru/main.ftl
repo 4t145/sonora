@@ -51,6 +51,9 @@ library-no-catalog-albums = Альбомы не найдены
 library-no-catalog-artists = Исполнители не найдены
 library-no-matches = Ничего не найдено
 library-not-loaded = Библиотека не загрузилась
+library-scanning = Просматриваю ваши папки…
+library-scanning-found = Просматриваю ваши папки… пока { $found }
+library-scanning-progress = Читаю вашу музыку… { $read } из { $found }
 library-part-not-loaded = Этот раздел библиотеки не загрузился
 library-local-unconfigured = Настройте локальную библиотеку
 
@@ -326,6 +329,8 @@ login-password-hint = Пароль
 login-server-submit = Подключиться
 login-account-title = Выберите аккаунт
 login-account-detail = В этой сессии выполнен вход в несколько аккаунтов Google. Выберите тот, который должна использовать Sonora.
+login-choose-title = Вход в { $provider }
+login-choose-detail = Выберите способ входа в { $provider }.
 
 # album and playlist pages
 detail-album = Альбом
@@ -386,8 +391,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Быстрый выбор
-home-listen-again = Послушать снова
-home-quick-picks-eyebrow = Начните с трека
 home-quick-picks-empty = Добавьте несколько треков, и они появятся здесь
 
 # search page
@@ -498,6 +501,7 @@ month-11 = ноя.
 month-12 = дек.
 
 # settings
+settings-search = Поиск по настройкам
 settings-tab-general = Общие
 settings-tab-appearance = Внешний вид
 settings-tab-playback = Воспроизведение
@@ -511,8 +515,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Открыть конфиг
 settings-adaptive = Адаптивная тема
 settings-adaptive-detail = Подкрашивать палитру обложкой играющего альбома
+settings-ambient = Атмосферный фон
+settings-ambient-detail = Заливать полноэкранный режим цветами обложки
+settings-ambient-motion = Движение фона
+settings-ambient-motion-detail = Плавно двигать цвета фона, а не держать их неподвижными
 settings-visualizer = Визуализатор
-settings-visualizer-detail = Показывать столбики спектра позади обложки в полноэкранном режиме
+settings-visualizer-detail = Как рисуется спектр позади обложки в полноэкранном режиме
+settings-visualizer-style-none = Выключен
+settings-visualizer-style-bars = Столбики
+settings-visualizer-style-wave = Волна
+settings-visualizer-style-both = Столбики и волна
 settings-fullscreen-controls-autohide = Скрывать элементы управления
 settings-fullscreen-controls-autohide-detail = Плавно убирать элементы управления, когда в полноэкранном режиме нет действий
 settings-icons = Набор значков
@@ -658,6 +670,7 @@ settings-group-accounts = Аккаунты
 settings-group-library = Медиатека
 settings-group-text = Текст
 settings-group-motion = Анимация
+settings-group-fullscreen = Полноэкранный режим
 settings-group-title-bar = Заголовок окна
 settings-group-window-style = Стиль окна
 settings-equalizer = Эквалайзер
@@ -722,6 +735,9 @@ settings-choose-folder = Выбрать папку…
 settings-add-folder = Добавить папку
 settings-remove-folder = Удалить папку
 settings-rescan = Пересканировать
+settings-scan-walking = Сканирую…
+settings-scan-progress = { $percent }%
+settings-scan-done = Готово за { $seconds } с
 settings-tab-about = О программе
 settings-version = Версия
 settings-version-detail = Сборка Sonora, которая сейчас запущена

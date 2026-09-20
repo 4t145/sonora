@@ -325,8 +325,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Hızlı seçimler
-home-listen-again = Yeniden dinle
-home-quick-picks-eyebrow = Bir şarkıdan başla
 home-quick-picks-empty = Birkaç şarkı beğen, burada görünsünler
 
 # search page
@@ -426,6 +424,7 @@ month-11 = Kas
 month-12 = Ara
 
 # settings
+settings-search = Ayarlarda ara
 settings-tab-general = Genel
 settings-tab-appearance = Görünüm
 settings-tab-playback = Çalma

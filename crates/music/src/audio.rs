@@ -96,7 +96,7 @@ impl Output {
         stream.log_on_drop(false);
 
         let applied = volume.get();
-        let tap = spectrum.attach(default.sample_rate(), default.channels());
+        let tap = spectrum.attach();
         let (sink, source) = rodio::Player::new();
         let equalized = Equalized::new(source, equalizer);
         stream
@@ -182,6 +182,9 @@ impl<I: Source> SmoothGain<I> {
 
         self.channels = channels;
         self.rate = rate;
+        if let Some(tap) = &self.tap {
+            tap.format(rate, channels);
+        }
         self.ramp_frames = (self.ramp.as_secs_f64() * rate as f64).round().max(1.0) as u32;
         self.frames_left = self.frames_left.min(self.ramp_frames);
     }

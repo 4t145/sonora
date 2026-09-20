@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Pilihan cepat
-home-listen-again = Dengarkan lagi
-home-quick-picks-eyebrow = Mulai dari sebuah lagu
 home-quick-picks-empty = Sukai beberapa lagu dan rekomendasinya akan muncul di sini
 
 # search page
@@ -443,6 +441,7 @@ month-11 = Nov
 month-12 = Des
 
 # settings
+settings-search = Cari pengaturan
 settings-tab-general = Umum
 settings-tab-appearance = Tampilan
 settings-tab-playback = Pemutaran

@@ -51,6 +51,9 @@ library-no-catalog-albums = No albums found
 library-no-catalog-artists = No artists found
 library-no-matches = No matches
 library-not-loaded = Your library did not load
+library-scanning = Looking through your folders…
+library-scanning-found = Looking through your folders… { $found } so far
+library-scanning-progress = Reading your music… { $read } of { $found }
 library-part-not-loaded = This part of your library did not load
 library-local-unconfigured = Configure your local library
 
@@ -314,6 +317,8 @@ login-password-hint = Password
 login-server-submit = Connect
 login-account-title = Choose an account
 login-account-detail = This session is signed in to more than one Google account. Pick the one Sonora should use.
+login-choose-title = Sign in to { $provider }
+login-choose-detail = Choose how to sign in to { $provider }.
 
 # album and playlist pages
 detail-album = Album
@@ -370,8 +375,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Quick picks
-home-listen-again = Listen again
-home-quick-picks-eyebrow = Start from a song
 home-quick-picks-empty = Like a few songs and they will show up here
 
 # search page
@@ -474,6 +477,7 @@ month-11 = Nov
 month-12 = Dec
 
 # settings
+settings-search = Search settings
 settings-tab-general = General
 settings-tab-appearance = Appearance
 settings-tab-playback = Playback
@@ -487,8 +491,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Open config
 settings-adaptive = Adaptive theme
 settings-adaptive-detail = Tint the palette with the artwork of the playing album
+settings-ambient = Ambient background
+settings-ambient-detail = Fill the fullscreen player with colours drawn from the cover
+settings-ambient-motion = Ambient motion
+settings-ambient-motion-detail = Drift the ambient colours instead of holding them still
 settings-visualizer = Visualizer
-settings-visualizer-detail = Show spectrum bars behind fullscreen artwork
+settings-visualizer-detail = How the spectrum is drawn behind fullscreen artwork
+settings-visualizer-style-none = Off
+settings-visualizer-style-bars = Bars
+settings-visualizer-style-wave = Wave
+settings-visualizer-style-both = Bars and wave
 settings-fullscreen-controls-autohide = Hide fullscreen controls
 settings-fullscreen-controls-autohide-detail = Fade out playback controls when fullscreen is inactive
 settings-icons = Icon pack
@@ -653,6 +665,7 @@ settings-group-accounts = Accounts
 settings-group-library = Library
 settings-group-text = Text
 settings-group-motion = Motion
+settings-group-fullscreen = Fullscreen
 settings-group-title-bar = Title bar
 settings-group-window-style = Window style
 settings-group-lyrics = Lyrics
@@ -697,6 +710,9 @@ settings-choose-folder = Choose folder…
 settings-add-folder = Add folder
 settings-remove-folder = Remove folder
 settings-rescan = Rescan
+settings-scan-walking = Scanning…
+settings-scan-progress = { $percent }%
+settings-scan-done = Done in { $seconds }s
 settings-tab-about = About
 settings-version = Version
 settings-version-detail = The build of sonora you are running
