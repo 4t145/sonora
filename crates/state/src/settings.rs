@@ -19,6 +19,7 @@ use gpui::{
 };
 use music::WritingSystem;
 use music::equalizer::{self, Gains};
+use music::lyrics::LOCAL;
 use music::scrobble::Account;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -282,6 +283,9 @@ struct Values {
     discord_provider_button: bool,
     lyrics_for_local_files: bool,
     prefer_local_lyrics: bool,
+    /// Set once Local has been added to a list saved before it existed, so a user who turns it
+    /// off afterwards is not given it back.
+    local_lyrics_offered: bool,
     lyrics_providers: Vec<String>,
     karaoke_lyrics: bool,
     blur_lyrics: bool,
@@ -360,8 +364,9 @@ impl Default for Values {
             discord_provider_button: true,
             lyrics_for_local_files: true,
             prefer_local_lyrics: false,
+            local_lyrics_offered: false,
             lyrics_providers: [
-                "Local",
+                LOCAL,
                 "Spotify",
                 "YouTube Music",
                 "Apple Music",
@@ -576,6 +581,13 @@ impl AppSettings {
                 if !values.lyrics_providers.iter().any(|held| held == name) {
                     values.lyrics_providers.push(name.to_owned());
                 }
+            }
+        }
+        // A saved provider list replaces the default one, so Local reaches an existing user once.
+        if !values.local_lyrics_offered {
+            values.local_lyrics_offered = true;
+            if !values.lyrics_providers.iter().any(|name| name == LOCAL) {
+                values.lyrics_providers.push(LOCAL.to_owned());
             }
         }
         // A single `local_folder` predates multiple local libraries; fold it into
