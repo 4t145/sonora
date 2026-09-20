@@ -1027,6 +1027,17 @@ impl Playback {
         (self.origin.as_ref() == Some(origin)).then(|| self.state.clone())
     }
 
+    /// Forgets the collection the queue came from. Radio calls this as it takes over, so a page
+    /// or a card only shows itself as playing while one of its own tracks is.
+    fn leave_origin(&mut self, cx: &mut Context<Self>) {
+        if self.origin.take().is_none() {
+            return;
+        }
+        self.settings
+            .update(cx, |settings, cx| settings.set_resume_origin(None, cx));
+        cx.notify();
+    }
+
     /// Hands a fetched collection to the queue, remembers where it came from for resuming, and
     /// plays the chosen track.
     fn begin(
@@ -1165,6 +1176,7 @@ impl Playback {
         else {
             return;
         };
+        self.leave_origin(cx);
         self.load_after(&track, Start::Pick, cx);
     }
 
@@ -1329,6 +1341,7 @@ impl Playback {
                             queue.append(track, cx);
                         }
                     });
+                    this.leave_origin(cx);
                     this.follow_queue(Start::Segue, cx);
                 }
                 Ok(_) => log::warn!("playback: radio returned no tracks"),
@@ -1345,10 +1358,15 @@ impl Playback {
         self.load_after(&track, start, cx);
     }
 
-    /// The next playable track the queue has, dropping the ones that are not.
+    /// The next playable track the queue has, dropping the ones that are not. Reaching the
+    /// suggestions means radio has taken over from whatever the queue was started from.
     fn playable_next(&mut self, cx: &mut Context<Self>) -> Option<Track> {
         loop {
+            let suggested = self.queue.read(cx).next_is_suggested();
             let track = self.queue.update(cx, |queue, cx| queue.next(cx))?;
+            if suggested {
+                self.leave_origin(cx);
+            }
             if track.playable {
                 return Some(track);
             }

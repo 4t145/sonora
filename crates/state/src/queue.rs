@@ -526,6 +526,12 @@ impl Queue {
         !self.upcoming.is_empty()
     }
 
+    /// Whether the track `next` would hand back is a radio suggestion rather than one the queue
+    /// was started with.
+    pub fn next_is_suggested(&self) -> bool {
+        self.queued() == 0 && self.similar > 0
+    }
+
     pub fn has_previous(&self) -> bool {
         !self.past.is_empty()
     }
