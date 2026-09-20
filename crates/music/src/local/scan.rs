@@ -517,6 +517,16 @@ fn is_audio_file(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// The scan generation is process-wide: whichever test starts a scan last cancels every other
+    /// one in flight, so the tests that start one take this in turn.
+    static SCANNING: Mutex<()> = Mutex::new(());
+
+    /// The lock without the poisoning, so one failing test does not take the rest with it.
+    fn alone() -> MutexGuard<'static, ()> {
+        SCANNING.lock().unwrap_or_else(|held| held.into_inner())
+    }
 
     fn touch(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -534,6 +544,7 @@ mod tests {
 
     #[test]
     fn ignores_non_audio_files() {
+        let _scanning = alone();
         let (dir, index) = scratch("sonora-scan-test-ignore");
         touch(&dir.join("notes.txt"));
         let scanned = scan(std::slice::from_ref(&dir), &dir, &index);
@@ -543,6 +554,7 @@ mod tests {
 
     #[test]
     fn empty_root_yields_nothing() {
+        let _scanning = alone();
         let (dir, index) = scratch("sonora-scan-test-missing");
         let scanned = scan(std::slice::from_ref(&dir), &dir, &index);
         assert!(scanned.tracks.is_empty());
@@ -563,6 +575,7 @@ mod tests {
 
     #[test]
     fn walks_nested_folders_for_stray_audio_files() {
+        let _scanning = alone();
         let (dir, _) = scratch("sonora-scan-test-stragglers");
         touch(&dir.join("top.mp3"));
         touch(&dir.join("a/b/c/deep.flac"));
