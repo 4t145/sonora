@@ -43,6 +43,50 @@ pub fn number(value: &Value, keys: &[&str]) -> Option<u64> {
     None
 }
 
+/// A unix timestamp, or a gateway `YYYY-MM-DD HH:MM:SS` / `YYYY-MM-DD` string as seconds.
+fn when(value: &Value, keys: &[&str]) -> Option<i64> {
+    if let Some(at) = number(value, keys) {
+        return Some(at as i64);
+    }
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str).and_then(datetime))
+}
+
+fn datetime(stamp: &str) -> Option<i64> {
+    let stamp = stamp.trim();
+    let (date, time) = stamp
+        .split_once('T')
+        .or_else(|| stamp.split_once(' '))
+        .unwrap_or((stamp, ""));
+    let mut parts = date.split('-');
+    let year: i64 = parts.next()?.parse().ok()?;
+    let month: i64 = parts.next()?.parse().ok()?;
+    let day: i64 = parts.next()?.parse().ok()?;
+    let mut clock = time.trim_end_matches('Z').split(':');
+    let hour: i64 = clock
+        .next()
+        .filter(|part| !part.is_empty())
+        .and_then(|hour| hour.parse().ok())
+        .unwrap_or(0);
+    let minute: i64 = clock.next().unwrap_or("0").parse().unwrap_or(0);
+    let second: i64 = clock
+        .next()
+        .and_then(|second| second.split('.').next())
+        .unwrap_or("0")
+        .parse()
+        .unwrap_or(0);
+    Some(days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+fn days(year: i64, month: i64, day: i64) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
 /// The `https://cdn-images.dzcdn.net/images/<kind>/<md5>/<size>x<size>-000000-80-0-0.jpg`
 /// cover url Deezer builds from a picture hash. None when the field holds something other
 /// than a hash, which is the caller's cue to fall back to a url field.
@@ -188,7 +232,7 @@ pub fn track(value: &Value) -> Option<Track> {
             .or_else(|| value.get("ALB_ID").and_then(id)),
         cover: cover(&album, 300).or_else(|| cover(value, 300)),
         duration: Duration::from_secs(number(value, &["DURATION", "duration"]).unwrap_or(0)),
-        added_at: number(value, &["ADDED_AT", "time_add"]).map(|at| at as i64),
+        added_at: when(value, &["ADDED_AT", "time_add", "DATE_ADD"]),
         added_by: None,
         playcount: None,
         popularity: number(value, &["RANK", "rank"])
@@ -255,7 +299,7 @@ pub fn album(value: &Value) -> Option<Album> {
             .unwrap_or_default()
             .to_owned(),
         copyrights: Vec::new(),
-        added_at: number(value, &["ADDED_AT", "time_add"]).map(|at| at as i64),
+        added_at: when(value, &["ADDED_AT", "time_add", "DATE_ADD"]),
     })
 }
 
@@ -298,7 +342,7 @@ pub fn playlist(value: &Value, user_id: &str) -> Option<Playlist> {
         cover: image(kind, md5, 300)
             .or_else(|| text(value, &["picture_medium"]).map(str::to_owned)),
         track_count: number(value, &["NB_SONG", "nb_tracks"]).unwrap_or(0) as u32,
-        modified_at: number(value, &["DATE_MOD"]).map(|at| at as i64),
+        modified_at: when(value, &["DATE_MOD"]),
     })
 }
 
@@ -314,6 +358,6 @@ pub fn saved_artist(value: &Value) -> Option<SavedArtist> {
             .unwrap_or_default()
             .to_owned(),
         cover: artist_picture(value, 300),
-        added_at: number(value, &["ADDED_AT", "time_add"]).map(|at| at as i64),
+        added_at: when(value, &["ADDED_AT", "time_add", "DATE_ADD"]),
     })
 }
