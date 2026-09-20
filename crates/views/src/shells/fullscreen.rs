@@ -986,6 +986,16 @@ fn open_album(album: &str, cx: &mut App) {
     navigate(Destination::Album(album.into()), cx);
 }
 
+impl FullscreenView {
+    /// Whether the shell stands without a title bar: once the window itself is fullscreen
+    /// there is nothing to drag and nothing to close, so `Root` draws none. The shell keeps
+    /// the bar's height as top padding, so the cover fit, which measures the bar above the
+    /// column, stays true either way.
+    pub(crate) fn bare(window: &Window) -> bool {
+        window.is_fullscreen()
+    }
+}
+
 impl Shell for FullscreenView {
     fn title_bar(&self, _content: Option<AnyView>, cx: &App) -> TitleBarOptions {
         TitleBarOptions {
@@ -1104,6 +1114,7 @@ impl Render for FullscreenView {
             .gap_5()
             .px_8()
             .pb_6()
+            .when(Self::bare(window), |this| this.pt(theme.metrics.title_bar))
             .on_mouse_move(cx.listener(Self::hover))
             // Capture phase: every click stirs the idle timer, even one a
             // control underneath swallows for itself.

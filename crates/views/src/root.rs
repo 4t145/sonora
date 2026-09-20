@@ -75,6 +75,9 @@ pub struct Root {
     ambient: Entity<Ambient>,
     shells: Shells,
     view: RootView,
+    /// Whether the now-playing screen put the window into fullscreen itself. Leaving takes
+    /// only that back, so a window the user made fullscreen beforehand stays that way.
+    fullscreened: bool,
     signing_in: bool,
     toolbar: Option<Entity<Toolbar>>,
     pending: Option<Focus>,
@@ -240,6 +243,7 @@ impl Root {
                 fullscreen,
             },
             view: RootView::Workspace,
+            fullscreened: false,
             signing_in: false,
             toolbar: None,
             pending: None,
@@ -399,6 +403,33 @@ impl Root {
         }
     }
 
+    /// Moves the window in or out of the platform's fullscreen as the now-playing screen
+    /// comes and goes, the way F11 does. The move is deferred: a navigation lands inside a
+    /// window update, and a window cannot be updated twice at once.
+    fn fullscreen_window(&mut self, enter: bool, cx: &mut Context<Self>) {
+        let this = cx.weak_entity();
+        let id = cx.entity_id();
+        cx.defer(move |cx| {
+            cx.with_window(id, |window, cx| {
+                this.update(cx, |this, _| match enter {
+                    true => {
+                        if !window.is_fullscreen() {
+                            window.toggle_fullscreen();
+                            this.fullscreened = true;
+                        }
+                    }
+                    false => {
+                        if this.fullscreened && window.is_fullscreen() {
+                            window.toggle_fullscreen();
+                        }
+                        this.fullscreened = false;
+                    }
+                })
+                .ok();
+            });
+        });
+    }
+
     fn dismiss(&mut self, cx: &mut Context<Self>) {
         if matches!(self.view, RootView::Fullscreen) {
             back(cx);
@@ -471,9 +502,13 @@ impl Root {
         if let Destination::Fullscreen = destination {
             self.view = RootView::Fullscreen;
             self.tinting(true, cx);
+            self.fullscreen_window(true, cx);
             self.pending = Some(Focus::Fullscreen);
             cx.notify();
             return;
+        }
+        if matches!(self.view, RootView::Fullscreen) {
+            self.fullscreen_window(false, cx);
         }
         self.view = RootView::Workspace;
         self.tinting(false, cx);
@@ -623,6 +658,7 @@ impl Render for Root {
             SessionState::Authorizing(_) => self.signing_in,
         };
         self.signing_in = show_sign_in;
+        let fullscreen = matches!(self.view, RootView::Fullscreen);
 
         match self.pending.take() {
             Some(Focus::Search) => self
@@ -744,11 +780,13 @@ impl Render for Root {
                 cx.listener(|this, _: &ToggleLyrics, _, cx| this.show_side(SideTab::Lyrics, cx)),
             )
             // The ambient background sits behind everything, title bar included.
-            .when(
-                matches!(self.view, RootView::Fullscreen) && ambient::shown(cx),
-                |this| this.child(self.ambient.clone()),
-            )
-            .child(self.title_bar.clone())
+            .when(fullscreen && ambient::shown(cx), |this| {
+                this.child(self.ambient.clone())
+            })
+            // A fullscreen window has no title bar to draw over the now-playing screen.
+            .when(!(fullscreen && FullscreenView::bare(window)), |this| {
+                this.child(self.title_bar.clone())
+            })
             .when_else(
                 show_sign_in,
                 |this| this.child(div().flex().flex_1().min_h_0().child(self.login.clone())),
