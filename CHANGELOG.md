@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still reads everything.
 - Removing a music folder stops a scan that is still reading it, instead of leaving it to finish
   for nothing.
+- The log file is now capped at 16 MiB while Sonora runs, not only at startup, so a fault that
+  logs without end can no longer fill the disk.
 - Add to queue and Play next now line tracks up right after the current one, ahead of the rest of
   the album or playlist, in the order you added them. The queue panel lists them under Next in
   queue, above what the album or playlist plays next.
