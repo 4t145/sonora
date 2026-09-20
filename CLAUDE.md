@@ -290,15 +290,12 @@ construction, layout and scene assembly, never GPU fill.
 | Console logging   | `RUST_LOG`; default filter `warn,symphonia=error,lofty=error`                                                                     |
 | File logging      | `SONORA_LOG`; default adds `sonora=debug,ui=debug`                                                                                |
 
-Startup runs one migration pass before constructing app state. It imports `history.sqlite3`,
-`flags.sqlite3` and `local-playlists.sqlite3` into `state.sqlite`. `settings.json` is read as
-version 2 only; an older file keeps its preferences, and its runtime values fall back to the
-defaults. `music::credentials::migrate` runs in the same pass: it rewrites the Spotify
-`credentials.json` from the cache root into `spotify/` and folds the YouTube `cookies.txt`,
-`authuser.txt` and `guest` files into `youtube/credentials.json`, each owner-only, so the providers
-only ever read the new paths. A legacy file is removed only after its replacement has been written
-successfully.
-This compatibility code is intentionally temporary and can be removed after the next release.
+Nothing is migrated at startup. Every store is read in the shape it has now, so a file an older
+layout left behind is ignored rather than adopted: `history.sqlite3`, `flags.sqlite3` and
+`local-playlists.sqlite3` stay where they lie, and a provider reads only
+`<slug>/credentials.json`. `settings.json` keeps the keys it still names and takes the defaults
+for the rest, and a name in `lyrics_providers` that matches no provider is skipped wherever the
+list is read.
 
 ## Before you build a component
 

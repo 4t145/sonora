@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-20
+
 ### Added
 
 - Fullscreen fills its background with colours drawn from the cover, and wears a dark palette
@@ -1724,7 +1726,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.37.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/sonorahq/sonora/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/sonorahq/sonora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sonorahq/sonora/compare/v0.34.4...v0.35.0

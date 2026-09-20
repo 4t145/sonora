@@ -11,7 +11,7 @@
 
 ### A native music streaming client, built with Rust and GPUI
 
-Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **native** app
+Stream from your favorite services and play local files — all in one **native** app.
 </div>
 
 <div align="center">
@@ -48,7 +48,7 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
 
 ## Features
 
-* **Spotify, YouTube Music, Subsonic/OpenSubsonic,** and local playback
+* **Apple Music, Spotify, YouTube Music, Deezer, Subsonic/Navidrome** and local playback
 * Gapless playback, audio normalization, shuffle, sleep timer
 * Synced/karaoke lyrics, background vocals, and romanization
 * Scrobbling with LastFM, ListenBrainz, LibreFM, and Maloja

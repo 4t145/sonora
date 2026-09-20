@@ -246,9 +246,6 @@ const DEFAULT_SIDEBAR_RIGHT_WIDTH: f32 = 254.;
 const DEFAULT_FONT_SIZE: f32 = 14.;
 const DEFAULT_LYRICS_SCALE: f32 = 1.;
 const DEFAULT_STARTUP: &str = "home";
-/// The shape of `settings.json`. For example, v2 moved runtime state out into `state.sqlite`.
-const SETTINGS_VERSION: u32 = 2;
-
 /// "Whatever the platform uses".
 pub const SYSTEM_FONT: &str = "auto";
 
@@ -266,7 +263,6 @@ struct Held {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct Values {
-    version: u32,
     normalisation: bool,
     gapless: bool,
     equalizer: bool,
@@ -300,8 +296,6 @@ struct Values {
     #[serde(default = "system_font")]
     font: String,
     startup: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    local_folder: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     local_folders: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -349,7 +343,6 @@ struct Appearance {
 impl Default for Values {
     fn default() -> Self {
         Self {
-            version: SETTINGS_VERSION,
             normalisation: false,
             gapless: true,
             equalizer: false,
@@ -387,7 +380,6 @@ impl Default for Values {
             language: i18n::AUTO.to_owned(),
             font: system_font(),
             startup: DEFAULT_STARTUP.to_owned(),
-            local_folder: None,
             local_folders: Vec::new(),
             hidden_nav: Vec::new(),
             scrobbling: BTreeMap::new(),
@@ -567,7 +559,7 @@ impl AppSettings {
                 (None, false)
             }
         };
-        let (mut values, writable) = match bytes.as_deref().map(serde_json::from_slice::<Values>) {
+        let (values, writable) = match bytes.as_deref().map(serde_json::from_slice::<Values>) {
             Some(Ok(values)) => (values, writable),
             Some(Err(error)) => {
                 log::warn!("settings: cannot parse {}: {error}", path.display());
@@ -575,29 +567,7 @@ impl AppSettings {
             }
             None => (Values::default(), writable),
         };
-        if values.lyrics_providers.iter().any(|name| name == "native") {
-            values.lyrics_providers.retain(|name| name != "native");
-            for name in ["Spotify", "YouTube Music"] {
-                if !values.lyrics_providers.iter().any(|held| held == name) {
-                    values.lyrics_providers.push(name.to_owned());
-                }
-            }
-        }
-        // A saved provider list replaces the default one, so Local reaches an existing user once.
-        if !values.local_lyrics_offered {
-            values.local_lyrics_offered = true;
-            if !values.lyrics_providers.iter().any(|name| name == LOCAL) {
-                values.lyrics_providers.push(LOCAL.to_owned());
-            }
-        }
-        // A single `local_folder` predates multiple local libraries; fold it into
-        // `local_folders` once and never write the singular field back out.
-        if let Some(folder) = values.local_folder.take()
-            && !values.local_folders.contains(&folder)
-        {
-            values.local_folders.push(folder);
-        }
-
+      
         let state = match store.load() {
             Ok(Some(saved)) => saved,
             Ok(None) => StateValues::default(),
@@ -606,7 +576,6 @@ impl AppSettings {
                 StateValues::default()
             }
         };
-        values.version = SETTINGS_VERSION;
 
         Self {
             values,

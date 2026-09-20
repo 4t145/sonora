@@ -198,39 +198,6 @@ impl YouTubeProvider {
     }
 }
 
-/// Folds the `cookies.txt`, `authuser.txt` and `guest` files releases before 0.31 kept
-/// into the single credential file, then removes them. Part of the startup migration pass.
-pub(crate) fn migrate() {
-    let cache = credentials::dir("youtube");
-    let file = cache.join(credentials::FILE);
-    let cookies = cache.join("cookies.txt");
-    let authuser = cache.join("authuser.txt");
-    let guest = cache.join("guest");
-    if !file.exists() {
-        let legacy = match std::fs::read_to_string(&cookies) {
-            Ok(text) if !text.trim().is_empty() => Some(Saved::Cookies {
-                cookies: text.trim().to_owned(),
-                authuser: std::fs::read_to_string(&authuser)
-                    .ok()
-                    .and_then(|stored| stored.trim().parse().ok())
-                    .unwrap_or(0),
-                page_id: None,
-            }),
-            _ if guest.exists() => Some(Saved::Guest),
-            _ => None,
-        };
-        if let Some(saved) = legacy
-            && let Err(error) = save(&file, &saved)
-        {
-            log::warn!("youtube: cannot adopt the old credential files: {error:#}");
-            return;
-        }
-    }
-    for path in [&cookies, &authuser, &guest] {
-        credentials::remove(path);
-    }
-}
-
 fn save(file: &std::path::Path, saved: &Saved) -> Result<()> {
     let body = serde_json::to_vec_pretty(saved).context("cannot encode youtube credentials")?;
     credentials::write(file, &body)
