@@ -615,7 +615,7 @@ settings-lyrics-size-value = { $size }%
 settings-lyrics-for-local-files = Lyrics for local files
 settings-lyrics-for-local-files-detail = Use metadata from local files to fetch lyrics from the internet
 settings-prefer-local-lyrics = Prefer local lyrics
-settings-prefer-local-lyrics-detail = Use the lyrics stored in a local file's tags instead of searching the other providers
+settings-prefer-local-lyrics-detail = Use the lyrics stored in a local file's tags or its .lrc file instead of searching the other providers
 settings-karaoke-lyrics = Karaoke lyrics
 settings-karaoke-lyrics-detail = Highlight lyrics word by word when timing is available
 settings-blur-lyrics = Blur inactive lyrics
@@ -777,7 +777,7 @@ lyrics-instrumental = This song is instrumental
 lyrics-failed = Could not reach the lyrics service
 lyrics-follow = Follow the song again
 lyrics-source = Lyrics from { $source }
-lyrics-source-local = Lyrics from the file
+lyrics-source-local = Lyrics from the local file
 lyrics-writers = Written by { $writers }
 
 update-available = Sonora { $version } is out
