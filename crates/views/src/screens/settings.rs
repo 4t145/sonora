@@ -165,6 +165,7 @@ enum Slot {
     EqualizerPreset,
     EqualizerBands,
     LyricsProviders,
+    PreferLocalLyrics,
     Karaoke,
     Romanized,
     LyricsForLocal,
@@ -581,12 +582,15 @@ impl SettingsView {
                     slots.push(Slot::EqualizerPreset);
                     slots.push(Slot::EqualizerBands);
                 }
-                slots.extend([
-                    Slot::Title("settings-group-lyrics"),
-                    Slot::LyricsProviders,
-                    Slot::Karaoke,
-                    Slot::Romanized,
-                ]);
+                slots.extend([Slot::Title("settings-group-lyrics"), Slot::LyricsProviders]);
+                if self
+                    .settings
+                    .read(cx)
+                    .lyrics_provider_enabled(music::lyrics::LOCAL)
+                {
+                    slots.push(Slot::PreferLocalLyrics);
+                }
+                slots.extend([Slot::Karaoke, Slot::Romanized]);
                 slots
             }
             SettingsTab::Privacy => {
@@ -719,6 +723,10 @@ impl SettingsView {
             Slot::LyricsProviders => (
                 t!("settings-lyrics-providers"),
                 t!("settings-lyrics-providers-detail"),
+            ),
+            Slot::PreferLocalLyrics => (
+                t!("settings-prefer-local-lyrics"),
+                t!("settings-prefer-local-lyrics-detail"),
             ),
             Slot::Karaoke => (
                 t!("settings-karaoke-lyrics"),
@@ -891,6 +899,7 @@ impl SettingsView {
             Slot::EqualizerPreset => self.equalizer_preset_row(cx).element,
             Slot::EqualizerBands => self.equalizer_bands_row(cx).element,
             Slot::LyricsProviders => self.lyrics_providers_row(cx).element,
+            Slot::PreferLocalLyrics => self.prefer_local_lyrics_row(cx).element,
             Slot::Karaoke => self.karaoke_lyrics_row(cx).element,
             Slot::Romanized => self.romanized_lyrics_row(cx).element,
             Slot::LyricsForLocal => self.lyrics_for_local_files_row(cx).element,
@@ -2550,6 +2559,7 @@ impl SettingsView {
         let theme = *cx.theme();
         let settings = self.settings.read(cx);
         let providers = [
+            (music::lyrics::LOCAL, "settings-lyrics-provider-local"),
             ("Spotify", "settings-lyrics-provider-spotify"),
             ("YouTube Music", "settings-lyrics-provider-youtube"),
             ("Apple Music", "settings-lyrics-provider-apple-music"),
@@ -2584,6 +2594,26 @@ impl SettingsView {
             theme.muted_foreground,
             theme.text(Text::Small),
             picker.into_any_element(),
+        )
+    }
+
+    fn prefer_local_lyrics_row(&self, cx: &mut Context<Self>) -> Setting {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let on = self.settings.read(cx).prefer_local_lyrics();
+
+        self.row(
+            t!("settings-prefer-local-lyrics"),
+            t!("settings-prefer-local-lyrics-detail"),
+            muted,
+            small,
+            Switch::new("prefer-local-lyrics", on)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings
+                        .update(cx, |settings, cx| settings.set_prefer_local_lyrics(!on, cx));
+                }))
+                .into_any_element(),
         )
     }
 

@@ -19,6 +19,7 @@ use gpui::{
 };
 use music::WritingSystem;
 use music::equalizer::{self, Gains};
+use music::lyrics::LOCAL;
 use music::scrobble::Account;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -277,6 +278,10 @@ struct Values {
     discord_sonora_button: bool,
     discord_provider_button: bool,
     lyrics_for_local_files: bool,
+    prefer_local_lyrics: bool,
+    /// Set once Local has been added to a list saved before it existed, so a user who turns it
+    /// off afterwards is not given it back.
+    local_lyrics_offered: bool,
     lyrics_providers: Vec<String>,
     karaoke_lyrics: bool,
     blur_lyrics: bool,
@@ -351,7 +356,10 @@ impl Default for Values {
             discord_sonora_button: true,
             discord_provider_button: true,
             lyrics_for_local_files: true,
+            prefer_local_lyrics: false,
+            local_lyrics_offered: false,
             lyrics_providers: [
+                LOCAL,
                 "Spotify",
                 "YouTube Music",
                 "Apple Music",
@@ -559,6 +567,7 @@ impl AppSettings {
             }
             None => (Values::default(), writable),
         };
+      
         let state = match store.load() {
             Ok(Some(saved)) => saved,
             Ok(None) => StateValues::default(),
@@ -645,6 +654,10 @@ impl AppSettings {
 
     pub fn lyrics_for_local_files(&self) -> bool {
         self.values.lyrics_for_local_files
+    }
+
+    pub fn prefer_local_lyrics(&self) -> bool {
+        self.values.prefer_local_lyrics
     }
 
     pub fn lyrics_providers(&self) -> &[String] {
@@ -989,6 +1002,11 @@ impl AppSettings {
 
     pub fn set_lyrics_for_local_files(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.values.lyrics_for_local_files = enabled;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_prefer_local_lyrics(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.values.prefer_local_lyrics = enabled;
         self.schedule_save(cx);
     }
 
