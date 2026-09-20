@@ -51,6 +51,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   skipped.
 - Deezer playlists and favorites show the day they were added or last changed, instead of leaving
   the date column blank.
+- A Deezer song whose explicit flag arrives as a number still shows the explicit mark.
 - The Play button on a library page no longer sits on Loading while the track you left off on is
   being made ready to resume.
 - Listening history shows when you played a song in your own time zone instead of UTC.
