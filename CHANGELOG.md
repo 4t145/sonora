@@ -10,8 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Opening the fullscreen player takes the window fullscreen too, the way F11 does, with the
-  title bar out of the way, and leaving it gives the window back. F11 now toggles window
-  fullscreen on its own on every platform.
+  title bar out of the way, and leaving it gives the window back.
 
 ## [0.38.0] - 2026-09-20
 
