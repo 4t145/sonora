@@ -9,9 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- A track played on its own now runs its station the way YouTube Music does: in YouTube's own
-  order rather than shuffled, going on past the first batch instead of starting over from the
-  last track, and never replaying what the queue has already heard.
+- A track played on its own now follows its station past the first batch on YouTube Music,
+  rather than starting over from the last track, and never replays what the queue has heard.
+- Radio now plays in the order the provider ranks it rather than shuffled.
 
 ## [0.38.0] - 2026-09-20
 
