@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
+use rodio::Source as _;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use ytmusic::YtMusic;
 
@@ -152,6 +153,9 @@ struct Slot {
     length: Option<Duration>,
     envelope: Volume,
     gain: f32,
+    /// Where this slot's decoder was opened. The sink counts from the first sample it was
+    /// handed, so a track placed part way through reports a position short by this much.
+    base: Duration,
 }
 
 impl Slot {
@@ -161,6 +165,11 @@ impl Slot {
 
     fn unmute(&self) {
         self.envelope.set(self.gain);
+    }
+
+    /// Where the sound is: what the sink has played of this slot, from where it opened.
+    fn heard(&self, sink: &rodio::Player) -> Duration {
+        self.base + sink.get_pos()
     }
 }
 
@@ -256,9 +265,12 @@ async fn engine_loop(
                                 }
                             }
                             sink.play();
+                            let at = current
+                                .as_ref()
+                                .map_or(Duration::ZERO, |slot| slot.heard(&sink));
                             events.send(PlaybackEvent::Playing {
                                 id: Some(id),
-                                at: sink.get_pos(),
+                                at,
                             }).ok();
                             continue;
                         }
@@ -324,7 +336,7 @@ async fn engine_loop(
                         }
                         if let Some((_, loaded)) = ahead.as_ref().filter(|(cached, _)| *cached == id) {
                             if segue && current.is_some() && queued.is_none() {
-                                match append(&sink, &id, loaded, &config, false) {
+                                match append(&sink, &id, loaded, &config, false, None) {
                                     Ok(slot) => {
                                         log::debug!("playback: {id} is queued for a gapless segue");
                                         queued = Some(slot);
@@ -358,15 +370,15 @@ async fn engine_loop(
                             playing = true;
                             events.send(PlaybackEvent::Playing {
                                 id: Some(slot.id.clone()),
-                                at: sink.get_pos(),
+                                at: slot.heard(&sink),
                             }).ok();
                         }
                     }
                     Command::Pause => {
                         autostart = false;
                         playing = false;
-                        let position = sink.get_pos();
                         if let Some(slot) = &current {
+                            let position = slot.heard(&sink);
                             slot.mute();
                             await_drain(&sink).await;
                             sink.pause();
@@ -376,21 +388,24 @@ async fn engine_loop(
                             }).ok();
                         }
                     }
-                    Command::Seek(position) => match &current {
+                    Command::Seek(position) => match &mut current {
                         // Still loading: start there once the track arrives.
                         None => hold = Some(position),
                         Some(slot) => {
                             slot.mute();
                             await_drain(&sink).await;
-                            if let Err(error) = sink.try_seek(position) {
-                                log::warn!("playback: cannot seek: {error}");
+                            match sink.try_seek(position) {
+                                // The sink counts from the target now, so the offset the
+                                // decoder opened at is spent.
+                                Ok(()) => slot.base = Duration::ZERO,
+                                Err(error) => log::warn!("playback: cannot seek: {error}"),
                             }
                             if playing {
                                 slot.unmute();
                             }
                             events.send(PlaybackEvent::Seeked {
                                 id: Some(slot.id.clone()),
-                                at: sink.get_pos(),
+                                at: slot.heard(&sink),
                             }).ok();
                         }
                     },
@@ -440,7 +455,7 @@ async fn engine_loop(
                         continue;
                     };
                     if segue && current.is_some() && queued.is_none() {
-                        match append(&sink, &id, &loaded, &config, false) {
+                        match append(&sink, &id, &loaded, &config, false, None) {
                             Ok(slot) => {
                                 log::debug!("playback: {id} is queued for a gapless segue");
                                 queued = Some(slot);
@@ -483,7 +498,7 @@ async fn engine_loop(
                             }
                             events.send(PlaybackEvent::Position {
                                 id: Some(slot.id.clone()),
-                                at: sink.get_pos(),
+                                at: slot.heard(&sink),
                             }).ok();
                         }
                         None => log::debug!("playback: track ended with nothing queued ahead"),
@@ -493,7 +508,7 @@ async fn engine_loop(
                     if let Some(slot) = &current {
                         events.send(PlaybackEvent::Position {
                             id: Some(slot.id.clone()),
-                            at: sink.get_pos(),
+                            at: slot.heard(&sink),
                         }).ok();
                     }
                 }
@@ -542,6 +557,12 @@ async fn await_drain(sink: &rodio::Player) {
     tokio::time::sleep(RAMP).await;
 }
 
+/// Puts a track on the sink on its own, opened at `at`, and starts it if asked.
+///
+/// The position goes to the decoder rather than to the sink. Clearing only marks the track
+/// being replaced for skipping, and the callback that skips it is the one that carries out
+/// whatever seek the sink was asked for next, so a seek here would move the old track and leave
+/// the one just appended to play from the beginning.
 fn begin(
     sink: &rodio::Player,
     id: &str,
@@ -553,12 +574,7 @@ fn begin(
     if sink.len() > 0 {
         sink.clear();
     }
-    let slot = append(sink, id, loaded, config, true)?;
-    if let Some(at) = at
-        && let Err(error) = sink.try_seek(at)
-    {
-        log::warn!("playback: cannot start {id} at {}s: {error}", at.as_secs());
-    }
+    let slot = append(sink, id, loaded, config, true, at)?;
     match start {
         true => sink.play(),
         false => sink.pause(),
@@ -566,12 +582,15 @@ fn begin(
     Ok(slot)
 }
 
+/// Puts a track on the end of the sink's queue with its decoder opened at `at`, fading it in
+/// when it replaces a track rather than following one to its end.
 fn append(
     sink: &rodio::Player,
     id: &str,
     loaded: &Loaded,
     config: &PlaybackConfig,
     fade: bool,
+    at: Option<Duration>,
 ) -> Result<Slot> {
     let gain = normalisation(config.normalisation, loaded.loudness_db);
     let envelope = Volume::new(gain);
@@ -589,17 +608,28 @@ fn append(
         ),
         None => log::debug!("playback: {id} carries no edit list"),
     }
-    let source = Trimmed::new(
+    let mut source = Trimmed::new(
         source,
         edit.map(|edit| edit.skip).unwrap_or_default(),
         edit.and_then(|edit| edit.take),
     );
+    let base = match at.filter(|at| !at.is_zero()) {
+        Some(at) => match source.try_seek(at) {
+            Ok(()) => at,
+            Err(error) => {
+                log::warn!("playback: cannot start {id} at {}s: {error}", at.as_secs());
+                Duration::ZERO
+            }
+        },
+        None => Duration::ZERO,
+    };
     sink.append(SmoothGain::new(source, envelope.clone(), initial, RAMP));
     Ok(Slot {
         id: id.to_string(),
         length: loaded.duration,
         envelope,
         gain,
+        base,
     })
 }
 

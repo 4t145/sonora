@@ -50,3 +50,27 @@ that count for gapless trimming: a declared `0` trims every packet in the track 
 the file loads with no error and then plays silence end to end even though the MPEG frames that
 follow decode fine. `playback::load` checks for this specific lie and turns gapless off only for a
 file that has it, so a well-formed file keeps its LAME encoder delay/padding trim.
+
+## Local lyrics (`lyrics.rs`)
+
+`LocalLyrics` is a `LyricsProvider` like the online services, listed as Local under Settings →
+Playback → Lyrics providers. With it enabled it answers only for local tracks, from the first of
+these that has lyrics:
+
+1. A `Song.lrc` (or `Song.LRC`) beside `Song.flac`, read as UTF-8 with or without a BOM. It wins
+   over the tags, since someone put it there for this track. A file that cannot be read or holds no
+   timed line is logged and skipped, so the tags still get their turn.
+2. An ID3v2 `SYLT` frame (MP3 only), with millisecond stamps. A frame typed as chords, events or
+   trivia is skipped. A newline at either end of an entry breaks the line, so a frame timed by
+   syllable keeps its words for karaoke.
+3. The lyrics tag (`USLT`, Vorbis `LYRICS`, …): timed when it parses as LRC, plain text when it
+   doesn't.
+
+- It competes in the ranking with the other providers. Its trust wins most ties against a sheet of
+  the same kind, never against a better kind (timed over plain, word by word over timed).
+- Prefer local lyrics, shown only while Local is enabled, reads the file first and asks no service
+  when it has lyrics.
+- Never cached: `lyrics.json` holds only the services' sheets, so an edit to the tags or the `.lrc` shows on the next play.
+  A local track whose services already answered rereads just the file.
+- Lyrics for local files holds back only the online services. Local still answers, since the file
+  never leaves the computer.

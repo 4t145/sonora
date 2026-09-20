@@ -9,9 +9,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- An artist page opens as soon as their profile and popular tracks arrive, and fills its
+  releases in behind that, so an artist with a thousand of them no longer leaves the page
+  blank for half a minute.
+- Scrolling an artist's releases stays smooth however long the discography is, and resizing
+  the window keeps the same releases in view.
 - A track played on its own now follows its station past the first batch on YouTube Music,
   rather than starting over from the last track, and never replays what the queue has heard.
 - Radio now plays in the order the provider ranks it rather than shuffled.
+
+### Fixed
+
+- Covers no longer swap places with each other while a grid is scrolled quickly.
 
 ## [0.38.0] - 2026-09-20
 
@@ -129,6 +138,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Playback needs Google's Widevine module. Sonora uses the copy a browser on your computer has,
   or offers to download it from Google and shows Google's terms first. Settings can remove a
   downloaded module again.
+- Local files are a lyrics provider for the synced or plain lyrics embedded in them or kept in a
+  same-name `.lrc` file beside them, and can be preferred over the others.
 
 ### Fixed
 

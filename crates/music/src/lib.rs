@@ -36,11 +36,11 @@ use async_trait::async_trait;
 
 pub use equalizer::Equalizer;
 pub use models::{
-    Album, AlbumDetail, Artist, ArtistProfile, ArtistRef, Contributor, Credit, Genre, GenreDetail,
-    GenreItem, GenreSection, HomeFeed, LibraryItem, LibraryItemKind, LibraryOrder,
-    LibraryPinResult, Lyrics, LyricsHit, LyricsLane, LyricsLine, LyricsQuery, LyricsWord, Playlist,
-    PlaylistDetail, ReleaseType, RomanizedText, SavedArtist, Track, TrackKey, TrackTags,
-    UserDetail, UserProfile, Voice, WritingSystem,
+    Album, AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, ArtistRef, Contributor, Credit,
+    Genre, GenreDetail, GenreItem, GenreSection, HomeFeed, LibraryItem, LibraryItemKind,
+    LibraryOrder, LibraryPinResult, Lyrics, LyricsHit, LyricsLane, LyricsLine, LyricsQuery,
+    LyricsWord, Playlist, PlaylistDetail, ReleaseType, RomanizedText, SavedArtist, Track, TrackKey,
+    TrackTags, UserDetail, UserProfile, Voice, WritingSystem,
 };
 pub use spectrum::Spectrum;
 
@@ -92,6 +92,20 @@ pub trait MusicApi: Send + Sync {
     }
 
     async fn artist(&self, artist_id: &str) -> Result<Artist>;
+
+    /// The rest of an artist page, fetched once `artist` has put the overview up: the whole
+    /// discography and the popular tracks that only the discography can rank. `known` is the
+    /// top tracks already on the page, so the provider can rank around them. A provider whose
+    /// `artist` already answers with everything leaves the default, which is nothing more to
+    /// fetch.
+    async fn artist_catalogue(
+        &self,
+        _artist_id: &str,
+        _known: &[Track],
+    ) -> Result<ArtistCatalogue> {
+        Ok(ArtistCatalogue::default())
+    }
+
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile>;
     async fn artist_images(&self, ids: Vec<String>) -> Result<HashMap<String, String>>;
 

@@ -11,8 +11,8 @@ use crate::spotify::{
     albums, artists, collection, collection2, pathfinder, playlists, profiles, radio, search, wire,
 };
 use crate::{
-    Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, HomeFeed, Playlist,
-    PlaylistDetail, SavedArtist, Track, UserDetail, UserProfile,
+    Album, AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, Genre, GenreDetail, HomeFeed,
+    Playlist, PlaylistDetail, SavedArtist, Track, UserDetail, UserProfile,
 };
 
 const MADE_FOR_YOU: &str = "0JQ5DAt0tbjZptfcdMSKl3";
@@ -80,6 +80,10 @@ impl MusicApi for LibrespotClient {
 
     async fn artist(&self, artist_id: &str) -> Result<Artist> {
         artists::artist(&self.session, artist_id).await
+    }
+
+    async fn artist_catalogue(&self, artist_id: &str, known: &[Track]) -> Result<ArtistCatalogue> {
+        artists::catalogue(&self.session, artist_id, known.to_vec()).await
     }
 
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile> {

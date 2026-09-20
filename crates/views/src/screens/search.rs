@@ -342,7 +342,7 @@ impl SearchView {
                 format!("album-artist-{place}"),
                 album.year,
                 None,
-                album.artist_refs.clone(),
+                &album.artist_refs,
                 album.artists.clone(),
                 theme,
             )

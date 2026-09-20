@@ -11,10 +11,11 @@
 //! the catalog id, and the library id is looked up again on the rare write that needs it.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result, anyhow, bail};
 use async_trait::async_trait;
 use futures::future::try_join_all;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
@@ -91,6 +92,23 @@ const STATION: usize = 10;
 /// How many of those requests make a queue worth having behind a track.
 const STATION_PULLS: usize = 3;
 
+/// How many times one read is sent before its failure belongs to the caller.
+///
+/// Apple's gateway sheds load while a library is being pulled: it answers 503, or takes the
+/// request and then cuts the body short of the length it announced. Neither says anything about
+/// the account or the request, and asking again a moment later lands. Only reads are repeated,
+/// since a write that broke on the way back may still have been applied.
+const TRIES: u32 = 3;
+
+/// How long to wait before sending a read again. Doubled after every attempt, and spread over
+/// that much again on top, so the pages of a listing that failed together do not all come back
+/// at the same instant.
+const RETRY_WAIT: Duration = Duration::from_millis(400);
+
+/// The longest a `Retry-After` is honoured for. Past this the wait costs more than the failure,
+/// and a shelf that fails keeps showing its last snapshot anyway.
+const RETRY_CAP: Duration = Duration::from_secs(5);
+
 /// An Apple Music account.
 #[derive(Clone)]
 pub struct AppleClient {
@@ -119,6 +137,21 @@ struct Listing {
     at: Instant,
     rows: Arc<tokio::sync::OnceCell<Arc<Vec<Value>>>>,
 }
+
+/// A failure the gateway is answering for rather than the request: a connection that broke
+/// before the body was whole, or a status Apple gives while it is shedding load. It carries the
+/// wait Apple asked for, when it named one. Any other failure is the account's or the request's
+/// own, and sending it again would only collect the same refusal twice.
+#[derive(Debug)]
+struct Busy(Option<Duration>);
+
+impl fmt::Display for Busy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the apple music gateway is busy")
+    }
+}
+
+impl std::error::Error for Busy {}
 
 impl AppleClient {
     /// Reads the web player's bearer token and the account's storefront, which is also what
@@ -166,14 +199,53 @@ impl AppleClient {
         format!("/catalog/{}{path}", self.storefront)
     }
 
-    /// One request against the API. The account token rides on every one of them, and neither
-    /// token is ever logged.
+    /// One request against the API, sent again with a growing wait while the gateway is what
+    /// failed rather than the request.
+    ///
+    /// A read gets [`TRIES`] attempts. A write gets one: its answer may have been lost on the
+    /// way back after Apple had already applied it, and adding a playlist twice is worse than
+    /// reporting a failure once.
     async fn send(
         &self,
         method: reqwest::Method,
         path: &str,
         query: &[(&str, &str)],
         body: Option<Value>,
+    ) -> Result<Value> {
+        let tries = match method == reqwest::Method::GET {
+            true => TRIES,
+            false => 1,
+        };
+        let mut tried = 0;
+        loop {
+            let error = match self.send_once(&method, path, query, body.as_ref()).await {
+                Ok(answered) => return Ok(answered),
+                Err(error) => error,
+            };
+            let Some(Busy(after)) = error.downcast_ref::<Busy>() else {
+                return Err(error);
+            };
+            tried += 1;
+            if tried >= tries {
+                return Err(error);
+            }
+            let wait = after.unwrap_or_else(|| backoff(tried - 1));
+            log::debug!(
+                "apple: {method} {path} failed, asking again in {}ms: {error:#}",
+                wait.as_millis()
+            );
+            tokio::time::sleep(wait).await;
+        }
+    }
+
+    /// One round trip, with nothing repeated. The account token rides on every request, and
+    /// neither token is ever logged.
+    async fn send_once(
+        &self,
+        method: &reqwest::Method,
+        path: &str,
+        query: &[(&str, &str)],
+        body: Option<&Value>,
     ) -> Result<Value> {
         let mut request = self
             .http
@@ -187,26 +259,33 @@ impl AppleClient {
             .header(reqwest::header::REFERER, "https://music.apple.com/")
             .query(query);
         request = match body {
-            Some(body) => request.json(&body),
+            Some(body) => request.json(body),
             // Apple's gateway refuses a write with no length at all.
             None => request.header(reqwest::header::CONTENT_LENGTH, "0"),
         };
         let started = Instant::now();
-        let response = request
-            .send()
-            .await
-            .with_context(|| format!("cannot reach apple music at {path}"))?;
+        // Nothing was answered, so nothing was applied either: this one is always worth asking
+        // again, whatever the method.
+        let response = request.send().await.map_err(|error| {
+            anyhow::Error::new(error)
+                .context(format!("cannot reach apple music at {path}"))
+                .context(Busy(None))
+        })?;
 
         let status = response.status();
+        let after = retry_after(response.headers());
         // Every wait on a library load is a sum of these, so this is where a slow one shows.
         log::debug!(
             "apple: {method} {path} answered {status} in {} ms",
             started.elapsed().as_millis()
         );
-        let text = response
-            .text()
-            .await
-            .with_context(|| format!("cannot read the apple music answer for {path}"))?;
+        // A body cut short of the length it announced is the gateway giving up mid answer, not
+        // an answer with anything wrong in it.
+        let text = response.text().await.map_err(|error| {
+            anyhow::Error::new(error)
+                .context(format!("cannot read the apple music answer for {path}"))
+                .context(Busy(after))
+        })?;
         let answered: Value = match text.trim().is_empty() {
             true => Value::Null,
             false => serde_json::from_str(&text).unwrap_or(Value::Null),
@@ -222,7 +301,11 @@ impl AppleClient {
                 .or_else(|| answered.pointer("/errors/0/title"))
                 .and_then(Value::as_str)
                 .unwrap_or("no reason given");
-            bail!("apple music answered {status} for {method} {path}: {detail}");
+            let refused = anyhow!("apple music answered {status} for {method} {path}: {detail}");
+            return match busy(status) {
+                true => Err(refused.context(Busy(after))),
+                false => Err(refused),
+            };
         }
         Ok(answered)
     }
@@ -1314,6 +1397,32 @@ impl MusicApi for AppleClient {
         log::debug!("apple: station {station} gave {} tracks", tracks.len());
         Ok((tracks, None))
     }
+}
+
+/// Whether a status is Apple holding the request off rather than refusing it. A 5xx from the
+/// gateway and a 429 both clear on their own; every 4xx below that is about the request.
+fn busy(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
+/// The wait Apple asked for, when it named one in seconds and it is short enough to sit through.
+/// The HTTP-date form of the header is not read: Apple sends seconds, and a date is only ever a
+/// longer wait than [`RETRY_CAP`] would allow anyway.
+fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let asked = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    let seconds = asked.trim().parse::<u64>().ok()?;
+    Some(Duration::from_secs(seconds).min(RETRY_CAP))
+}
+
+/// How long to wait after `tried` attempts: the base doubled once per attempt, and up to that
+/// much again on top. The spread comes off the wall clock's nanoseconds, which is enough to keep
+/// the pages of one listing from failing and returning in lockstep.
+fn backoff(tried: u32) -> Duration {
+    let base = RETRY_WAIT * 2u32.pow(tried);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.subsec_nanos());
+    base + base.mul_f32(nanos as f32 / 1e9)
 }
 
 /// The id of a library row, which is the library's own rather than the catalog's.
