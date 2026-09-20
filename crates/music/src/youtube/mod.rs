@@ -4,6 +4,7 @@ mod client;
 mod genres;
 mod lyrics;
 mod playback;
+mod radio;
 mod subscriptions;
 mod wire;
 

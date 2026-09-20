@@ -14,6 +14,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   blank for half a minute.
 - Scrolling an artist's releases stays smooth however long the discography is, and resizing
   the window keeps the same releases in view.
+- A track played on its own now follows its station past the first batch on YouTube Music,
+  rather than starting over from the last track, and never replays what the queue has heard.
+- Radio now plays in the order the provider ranks it rather than shuffled.
 
 ### Fixed
 

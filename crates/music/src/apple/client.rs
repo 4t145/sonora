@@ -1363,7 +1363,11 @@ impl MusicApi for AppleClient {
     /// rather than starting another, so a queue that keeps being extended stays one station.
     /// Apple hands out ten tracks a time, and repeats are dropped because a station is free to
     /// come back to a song this queue already holds.
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
         let mut tracks = Vec::new();
         let station = match self.playing_station(track_id) {
             Some(station) => station,
@@ -1391,7 +1395,7 @@ impl MusicApi for AppleClient {
             None => false,
         });
         log::debug!("apple: station {station} gave {} tracks", tracks.len());
-        Ok(tracks)
+        Ok((tracks, None))
     }
 }
 

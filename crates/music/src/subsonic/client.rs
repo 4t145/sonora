@@ -553,7 +553,11 @@ impl MusicApi for SubsonicClient {
         Ok(distinct_covers(&tracks, wanted))
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
         let similar = self
             .client
             .get_similar_songs2(track_id, Some(RADIO_COUNT))
@@ -561,7 +565,7 @@ impl MusicApi for SubsonicClient {
         if let Ok(songs) = similar {
             let songs: Vec<Track> = songs.into_iter().map(|song| self.song(song)).collect();
             if !songs.is_empty() {
-                return Ok(songs);
+                return Ok((songs, None));
             }
         }
         let random = self
@@ -569,11 +573,14 @@ impl MusicApi for SubsonicClient {
             .get_random_songs(Some(20), None, None, None, None)
             .await
             .context("cannot load a radio fallback")?;
-        Ok(random
-            .into_iter()
-            .map(|song| self.song(song))
-            .filter(|track| track.id.as_deref() != Some(track_id))
-            .collect())
+        Ok((
+            random
+                .into_iter()
+                .map(|song| self.song(song))
+                .filter(|track| track.id.as_deref() != Some(track_id))
+                .collect(),
+            None,
+        ))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {

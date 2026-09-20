@@ -738,7 +738,11 @@ impl MusicApi for DeezerClient {
         Ok(distinct_covers(&tracks, wanted))
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
         let results = self
             .gw(
                 "song.getSearchTrackMix",
@@ -746,10 +750,10 @@ impl MusicApi for DeezerClient {
             )
             .await;
         match results {
-            Ok(results) => Ok(wire::track_list(&results)),
+            Ok(results) => Ok((wire::track_list(&results), None)),
             Err(error) => {
                 log::warn!("deezer: no track radio for {track_id}: {error:#}");
-                Ok(Vec::new())
+                Ok((Vec::new(), None))
             }
         }
     }

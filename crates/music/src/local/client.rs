@@ -422,8 +422,12 @@ impl MusicApi for LocalClient {
         Ok(distinct_covers(&tracks, wanted.max(COVERS)))
     }
 
-    async fn track_radio(&self, _track_id: &str) -> Result<Vec<Track>> {
-        Ok(Vec::new())
+    async fn track_radio(
+        &self,
+        _track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
+        Ok((Vec::new(), None))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {

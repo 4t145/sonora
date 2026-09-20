@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::task::JoinSet;
 use ytmusic::YtMusic;
 
-use crate::youtube::{genres, subscriptions, wire};
+use crate::youtube::{genres, radio, subscriptions, wire};
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Feed, Genre, GenreDetail, HomeFeed, MediaKind,
     MusicApi, Playlist, PlaylistDetail, SavedArtist, Track, UserProfile,
@@ -304,15 +304,12 @@ impl MusicApi for YouTubeClient {
         Ok(crate::distinct_covers(&tracks, wanted))
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
-        Ok(self
-            .api
-            .track_radio(track_id)
-            .await?
-            .into_iter()
-            .enumerate()
-            .map(|(index, track)| wire::track(track, index as u32))
-            .collect())
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
+        radio::station(&self.api, track_id, from).await
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {

@@ -221,7 +221,16 @@ pub trait MusicApi: Send + Sync {
 
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>>;
     async fn playlist_covers(&self, playlist_id: &str, wanted: usize) -> Result<Vec<String>>;
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>>;
+    /// The station seeded by `track_id`, from its start or from `from`, a continuation an
+    /// earlier call answered with. The continuation that comes back fetches the next stretch,
+    /// and `None` means the provider has no more. A provider that serves a station in one go
+    /// ignores `from` and answers `None`, which it is then never handed.
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)>;
+
     async fn search(&self, query: &str) -> Result<Vec<Track>>;
 
     async fn search_albums(&self, _query: &str) -> Result<Vec<Album>> {
