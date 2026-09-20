@@ -64,7 +64,9 @@ pub struct Found {
 
 /// A place to look, in the one form each browser family answers to.
 enum Place {
-    /// A module at exactly this path, if it is there at all.
+    /// A module at exactly this path, if it is there at all. Windows never builds one, since
+    /// only the pointer file knows a browser's versioned folder there.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     Exact(PathBuf),
     /// A Chromium-family browser's own `WidevineCdm` folder, whose pointer file names the
     /// folder the module is in.
@@ -162,6 +164,7 @@ pub fn installed() -> Option<PathBuf> {
 /// The module one place holds, or nothing when it holds none.
 fn look(place: Place) -> Option<PathBuf> {
     match place {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         Place::Exact(path) => path.is_file().then_some(path),
         Place::Pointed(folder) => pointed(&folder),
         Place::Profiles(root) => profiles(&root)
@@ -383,7 +386,8 @@ fn places() -> Vec<Place> {
 }
 
 /// The module a Chromium-family browser bundles beside itself, which carries no version folder.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+/// Only the Linux search builds these, since a macOS bundle spells its path in full.
+#[cfg(target_os = "linux")]
 fn bundled(base: impl Into<PathBuf>, vendor: &str) -> Place {
     Place::Exact(
         base.into()

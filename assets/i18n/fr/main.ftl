@@ -340,8 +340,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Sélection rapide
-home-listen-again = Réécouter
-home-quick-picks-eyebrow = Commencer par un titre
 home-quick-picks-empty = Likez quelques titres et ils apparaîtront ici
 
 # search page
@@ -444,6 +442,7 @@ month-11 = nov.
 month-12 = déc.
 
 # settings
+settings-search = Rechercher dans les paramètres
 settings-tab-general = Général
 settings-tab-appearance = Apparence
 settings-tab-playback = Lecture
@@ -722,6 +721,9 @@ update-working = Téléchargement de la mise à jour…
 update-failed = La mise à jour n'a pas pu être installée. Réessayez depuis la page des versions.
 settings-check-updates = Rechercher des mises à jour
 settings-check-updates-detail = Demander une fois à GitHub au démarrage si une version plus récente existe. Sonora installe la mise à jour elle-même uniquement sous Windows ; ailleurs, elle vous montre ce qui a changé
+settings-log = Fichier journal
+settings-log-detail = Ce que Sonora a écrit pendant son exécution. Joignez-le à un rapport de bogue
+settings-log-open = Ouvrir le journal
 tags-edit-title = Modifier les tags
 tags-sheet-song = Titre
 tags-sheet-album = Album
@@ -743,7 +745,6 @@ tags-comment = Commentaire
 toast-tags-saved = Tags de { $name } enregistrés
 toast-tags-failed = Les tags n’ont pas pu être enregistrés
 nav-pin = Épingler
-toast-library-pin-limit = La limite d'épingles de Spotify est atteinte. Détachez d'abord un autre élément.
 toast-library-pin-failed = Impossible de mettre à jour l'épingle dans Spotify.
 nav-nothing-pinned = Rien ici
 nav-pins-alphabetical = Alphabétique

@@ -19,7 +19,8 @@ use i18n::t;
 use music::{Shape, Track};
 use router::{Destination, LibraryTab, navigate};
 use state::{
-    AppSettings, Library, LibraryPart, LibraryState, Origin, Playback, PlaybackState, Shelf, Sonora,
+    AppSettings, Library, LibraryPart, LibraryState, Origin, Playback, PlaybackState, Scan, Shelf,
+    Sonora,
 };
 use ui::{
     ActiveTheme as _, Button, Card, Deck, FilterChange, LEADING, Mode, Pinnable, Popovers, Popup,
@@ -252,10 +253,8 @@ impl LibraryView {
             .with_liked(library.clone())
             .starrable(shelf)
             .table(cx.weak_entity());
-            let mut delegate = TableDelegate::new(source, width, cx);
-            if shelf == Shelf::Streaming {
-                delegate = delegate.with_sort(TrackField::AddedAt, Sort::Descending, cx);
-            }
+            let mut delegate =
+                TableDelegate::new(source, width, cx).with_sort(TrackField::AddedAt, RECENT, cx);
             let (layout, sorting) = stored(Section::Songs, cx);
             delegate.set_layout(layout, cx);
             if let Some(sorting) = sorting {
@@ -302,12 +301,15 @@ impl LibraryView {
 
         cx.observe(&library, |this, _, cx| {
             this.rebuild(cx);
+            this.restore(cx);
             cx.notify();
         })
         .detach();
 
         let chrome = Chrome::entity(cx);
         cx.observe(&chrome, |_, _, cx| cx.notify()).detach();
+        cx.observe(&Scan::global(cx), |_, _, cx| cx.notify())
+            .detach();
 
         let current_playback = playback_status(&playback, cx);
         cx.observe(&playback, |this, playback, cx| {
@@ -380,7 +382,7 @@ impl LibraryView {
 
         let card_scrollbar = cx.new(|_| Scrollbar::new(ScrollHandle::new()).watching(id));
 
-        Self {
+        let mut view = Self {
             shelf,
             library,
             settings,
@@ -405,7 +407,9 @@ impl LibraryView {
             popovers: Popovers::default(),
             sliders: Section::ALL.map(|_| Sliders::default()),
             me: me.downgrade(),
-        }
+        };
+        view.restore(cx);
+        view
     }
 
     fn create_playlist(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -471,11 +475,48 @@ impl LibraryView {
         page::store(&self.settings.clone(), self.table(section), key, key, cx);
     }
 
+    /// Fills filter axes the storage names but the tables have not narrowed yet. This runs at
+    /// construction and whenever the library reloads, so a range saved before its rows arrived
+    /// still lands once the bounds are known.
+    fn restore(&mut self, cx: &mut Context<Self>) {
+        for section in Section::ALL {
+            let key = section.key(self.shelf);
+            page::restore(&self.settings.clone(), self.table(section), key, cx);
+        }
+    }
+
+    /// Whether the shelf has no folder to list. A scan in flight is not that: a folder is only
+    /// recorded once its scan lands, so the setup screen would otherwise cover the whole of the
+    /// first import, which is the longest one there is.
     fn unconfigured(&self, cx: &App) -> bool {
-        self.shelf.local() && Sonora::global(cx).session.read(cx).local_paths().is_empty()
+        self.shelf.local()
+            && Sonora::global(cx).session.read(cx).local_paths().is_empty()
+            && Scan::global(cx).read(cx).progress().is_none()
+    }
+
+    /// What an empty local page says while a scan is filling it. The page is not empty, it is
+    /// early, so it counts the files read instead of offering the vacancy's caption.
+    fn scanning(&self, cx: &App) -> Option<Vacancy> {
+        if !self.shelf.local() || self.table(self.section).row_count(cx) > 0 {
+            return None;
+        }
+        let progress = Scan::global(cx).read(cx).progress()?;
+        let caption = match progress.found {
+            0 => t!("library-scanning"),
+            found => t!(
+                "library-scanning-progress",
+                read = progress.read,
+                found = found
+            ),
+        };
+        let shape = self.library.read(cx).shape(self.shelf);
+        Some(Vacancy::new(caption).icon(self.section.glyph(shape)))
     }
 
     fn note(&self, cx: &App) -> Option<Vacancy> {
+        if let Some(scanning) = self.scanning(cx) {
+            return Some(scanning);
+        }
         if loading(&self.library, self.shelf, self.section, cx) {
             return None;
         }
@@ -1054,7 +1095,10 @@ impl Render for LibraryView {
 
         let context_menu = self.context_menu.clone().map(|(target, position)| {
             let menu = match target {
-                LibraryMenu::Item(item) => item.menu(self.playback.clone(), false, cx),
+                LibraryMenu::Item(item) => {
+                    let menus = self.tracks().read(cx).delegate().source().menu();
+                    item.menu(menus, self.playback.clone(), false, cx)
+                }
                 LibraryMenu::Track(track) => self
                     .tracks()
                     .read(cx)
@@ -1235,7 +1279,9 @@ impl Tooled for LibraryView {
 impl LibraryView {
     fn filter(&mut self, change: FilterChange, cx: &mut Context<Self>) {
         self.cards_dirty = true;
-        self.table(self.section).filter(change, cx);
+        let section = self.section;
+        self.table(section).filter(change, cx);
+        self.persist(section, cx);
         cx.notify();
     }
 }

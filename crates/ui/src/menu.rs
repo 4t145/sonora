@@ -5,14 +5,15 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Anchor, AnyElement, AnyWindowHandle, App, Bounds, ClickEvent, Div, ElementId, Entity, Global,
-    Interactivity, MouseButton, Pixels, Point, ScrollWheelEvent, SharedString, Size, Stateful,
-    StyleRefinement, Window, anchored, deferred, div, point, px, svg,
+    Interactivity, MouseButton, MouseClickEvent, MouseDownEvent, Pixels, Point, ScrollWheelEvent,
+    SharedString, Size, Stateful, StyleRefinement, Window, anchored, deferred, div, point, px, svg,
 };
 
 use crate::Artwork;
 use crate::metrics::snapped;
 use crate::motion::Rising as _;
 use crate::scrollbar::Scrollbar;
+use crate::scroller::middle_scroll;
 use crate::separator::Separator;
 use crate::shield::Shield;
 use crate::theme::ActiveTheme as _;
@@ -27,6 +28,11 @@ const SUBMENU_TOP: Pixels = px(-14.);
 const WINDOW_MARGIN: Pixels = px(8.);
 pub(crate) const TRIGGER_GAP: Pixels = px(4.);
 const PANEL_SLACK: Pixels = px(6.);
+/// How far the pointer has to travel from where a context menu was opened before letting go of
+/// the button picks the item under it. A plain click never moves this far, so it only opens the
+/// menu, while a press held and dragged onto an item behaves the way a context menu is expected
+/// to.
+const HOLD_REACH: f64 = 8.;
 const SAFE_X: Pixels = px(6.);
 const SAFE_Y: Pixels = px(12.);
 const NEAR: usize = Near::Bar as usize + 1;
@@ -318,6 +324,7 @@ pub struct Menu {
     header: Option<AnyElement>,
     hover_guard: Option<SubmenuState>,
     trigger: Option<Trigger>,
+    pressed: Option<Point<Pixels>>,
 }
 
 impl Menu {
@@ -334,6 +341,7 @@ impl Menu {
             header: None,
             hover_guard: None,
             trigger: None,
+            pressed: None,
         }
     }
 
@@ -349,6 +357,13 @@ impl Menu {
 
     pub(crate) fn trigger(mut self, trigger: Trigger) -> Self {
         self.trigger = Some(trigger);
+        self
+    }
+
+    /// Where the button that opened the menu went down. A menu that knows this lets go of the
+    /// button over an item to pick it, as long as the pointer moved `HOLD_REACH` away first.
+    pub(crate) fn pressed_at(mut self, at: Point<Pixels>) -> Self {
+        self.pressed = Some(at);
         self
     }
 
@@ -413,6 +428,7 @@ impl RenderOnce for Menu {
             header,
             hover_guard,
             trigger,
+            pressed,
         } = self;
 
         if let (Some(scrollbar), Some(guard)) = (scrollbar.as_ref(), hover_guard.clone()) {
@@ -548,17 +564,43 @@ impl RenderOnce for Menu {
                     })
                 })
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .when_some(press, |this, press| {
+                .when_some(press.map(Action::from), |this, press| {
+                    let released = press.clone();
+                    let release_action = press_action.clone();
                     this.on_click(move |event, window, cx| {
                         press(event, window, cx);
                         if let Some(action) = press_action.as_ref() {
                             action(event, window, cx);
                         }
                     })
+                    .when_some(pressed.filter(|_| !disabled), |this, from| {
+                        this.on_mouse_up(MouseButton::Right, move |event, window, cx| {
+                            if (event.position - from).magnitude() <= HOLD_REACH {
+                                return;
+                            }
+                            let click = ClickEvent::Mouse(MouseClickEvent {
+                                down: MouseDownEvent {
+                                    button: MouseButton::Right,
+                                    position: from,
+                                    modifiers: event.modifiers,
+                                    click_count: 1,
+                                    first_mouse: false,
+                                },
+                                up: event.clone(),
+                            });
+                            released(&click, window, cx);
+                            if let Some(action) = release_action.as_ref() {
+                                action(&click, window, cx);
+                            }
+                        })
+                    })
                 })
                 .when_some(submenu, |this, mut submenu| {
                     if submenu.menu.action.is_none() {
                         submenu.menu.action = action.clone();
+                    }
+                    if submenu.menu.pressed.is_none() {
+                        submenu.menu.pressed = pressed;
                     }
                     let gap_state = submenu.state.clone();
                     let reach_state = submenu.state.clone();
@@ -617,7 +659,7 @@ impl RenderOnce for Menu {
                 scrollbar.read(cx).sync();
                 let gliding = scrollbar.clone();
 
-                div()
+                middle_scroll(div(), scrollbar)
                     .id("menu-scroll-content")
                     .flex()
                     .flex_1()

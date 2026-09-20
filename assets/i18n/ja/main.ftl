@@ -300,8 +300,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = クイックピック
-home-listen-again = もう一度聴く
-home-quick-picks-eyebrow = 好きな1曲から始める
 home-quick-picks-empty = 何曲かお気に入りに追加するとここに表示されます
 
 # search page
@@ -401,6 +399,7 @@ month-11 = 11月
 month-12 = 12月
 
 # settings
+settings-search = 設定を検索
 settings-tab-general = 一般
 settings-tab-appearance = 外観
 settings-tab-playback = 再生
@@ -657,6 +656,9 @@ update-working = 更新をダウンロードしています…
 update-failed = 更新をインストールできませんでした。リリースページからもう一度お試しください。
 settings-check-updates = 更新を確認
 settings-check-updates-detail = 起動時に一度、新しいバージョンがあるか GitHub に確認する。Sonora が自動で更新するのは Windows のみで、他の環境では変更点を案内する
+settings-log = ログファイル
+settings-log-detail = Sonora が実行中に書き出した内容。バグ報告に添付してください
+settings-log-open = ログを開く
 
 # tags
 tags-edit-title = タグを編集
@@ -680,7 +682,6 @@ tags-comment = コメント
 toast-tags-saved = { $name } のタグを保存しました
 toast-tags-failed = タグを保存できませんでした
 nav-pin = ピン留め
-toast-library-pin-limit = Spotify のピン留めの上限に達しました。先にほかの項目のピン留めを解除してください。
 toast-library-pin-failed = Spotify のピン留めを更新できませんでした。
 nav-nothing-pinned = ここには何もありません
 nav-pins-alphabetical = 名前順

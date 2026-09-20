@@ -68,7 +68,8 @@ pub fn moment(attributes: &Value, key: &str) -> Option<i64> {
     let year: i64 = parts.next()?.parse().ok()?;
     let month: i64 = parts.next().unwrap_or("1").parse().unwrap_or(1);
     let day: i64 = parts.next().unwrap_or("1").parse().unwrap_or(1);
-    let mut clock = time.trim_end_matches('Z').split(':');
+    let (time, zone) = zone_of(time.trim_end_matches('Z'));
+    let mut clock = time.split(':');
     let hour: i64 = clock.next().unwrap_or("0").parse().unwrap_or(0);
     let minute: i64 = clock.next().unwrap_or("0").parse().unwrap_or(0);
     let second: i64 = clock
@@ -77,7 +78,20 @@ pub fn moment(attributes: &Value, key: &str) -> Option<i64> {
         .unwrap_or("0")
         .parse()
         .unwrap_or(0);
-    Some(days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+    Some(days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second - zone)
+}
+
+fn zone_of(time: &str) -> (&str, i64) {
+    let Some(at) = time.rfind(['+', '-']).filter(|&at| at > 0) else {
+        return (time, 0);
+    };
+    let (clock, zone) = time.split_at(at);
+    let sign = if zone.starts_with('-') { -1i64 } else { 1 };
+    let zone = zone.trim_start_matches(['+', '-']);
+    let mut parts = zone.split(':');
+    let hours: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+    let minutes: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+    (clock, sign * (hours * 3_600 + minutes * 60))
 }
 
 /// Days from the epoch to a civil date, by Howard Hinnant's algorithm.
@@ -174,7 +188,9 @@ pub fn playlist_track(row: &Value) -> Option<Track> {
 }
 
 /// One library song, which plays through the catalog id its play parameters name. A library row
-/// without one is an upload, and this path has no way to play it.
+/// without one is an upload, and this path has no way to play it. A row whose catalog
+/// relationship was asked for and came back empty names a song Apple has since pulled: the
+/// play parameters still carry its id, but web playback refuses it, so it is listed unplayable.
 pub fn library_song(value: &Value) -> Option<Track> {
     let id = value
         .pointer("/attributes/playParams/catalogId")
@@ -186,16 +202,26 @@ pub fn library_song(value: &Value) -> Option<Track> {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })?;
-    // The catalog copy is richer when it came along, and the library copy is what carries the
-    // date it was added.
+    // The catalog copy is richer when it came along. Apple puts no date on a library song row,
+    // so the date is the library album's when that was included: the day the first song of
+    // that album joined the library, which is also the order Apple itself sorts songs by.
     let mut track = match catalog(value) {
         Some(found) => song(found)?,
-        None => song(value)?,
+        None => {
+            let mut track = song(value)?;
+            track.playable = value.pointer("/relationships/catalog/data").is_none();
+            track
+        }
     };
     track.id = Some(id);
     track.added_at = value
         .pointer("/attributes")
         .and_then(|attributes| moment(attributes, "dateAdded"))
+        .or_else(|| {
+            value
+                .pointer("/relationships/albums/data/0/attributes")
+                .and_then(|attributes| moment(attributes, "dateAdded"))
+        })
         .or(track.added_at);
     Some(track)
 }

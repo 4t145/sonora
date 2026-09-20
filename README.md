@@ -2,9 +2,9 @@
 
 # Sonora
 
-[![Build](https://img.shields.io/github/actions/workflow/status/sonorahq/sonora/release.yml)](https://github.com/sonorahq/sonora/actions/workflows/release.yml)
-[![License](https://img.shields.io/github/license/sonorahq/sonora)](./COPYING)
-![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsonora-stats.nolight.dev%2Fcount&query=%24.count&label=Installs&color=blue)
+[![Build](https://img.shields.io/github/actions/workflow/status/sonorahq/sonora/release.yml?style=flat-square&label=build)](https://github.com/sonorahq/sonora/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/sonorahq/sonora?style=flat-square&label=license)](./COPYING)
+![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsonora-stats.nolight.dev%2Fcount&query=%24.count&label=Installs&color=blue&style=flat-square)
 \
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/a8N8Tx23rV)
 [![Matrix](https://img.shields.io/badge/Matrix-000000?style=for-the-badge&logo=matrix&logoColor=white)](https://matrix.to/#/#sonora:nolight.dev)
@@ -18,15 +18,15 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
     <table>
       <tr>
         <td colspan="2">
-          <img width="1602" height="992" alt="image" src="https://github.com/user-attachments/assets/d0357517-a28d-4c90-abd1-4f3e8d8cdedc" />
+          <img width="1613" height="981" alt="image" src="https://github.com/user-attachments/assets/7952a912-7fbc-4186-b467-a08dd7e71e22" />
         </td>
       </tr>
       <tr>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/70979e4c-261f-4561-b671-04d28a9971a9" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/580bf9d6-db85-4fde-b599-82ba2a28cc51" />
         </td>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/ff3b4284-25e2-4487-bf9b-60d8f56dc44d" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/64fcd709-5917-432c-a418-2e07527343d2" />
         </td>
       </tr>
     </table>
@@ -37,11 +37,21 @@ Stream Spotify, YouTube Music, Subsonic/Navidrome and local files all in one **n
     </sub>
 </div>
 
+> [!IMPORTANT]
+> **Sonora is not a piracy tool.**
+>
+> Sonora is not a platform for obtaining or sharing copyrighted material. We will not implement any functions that can be used to export decrypted streams, DRM licenses, content keys, or to convert protected streams into media files.
+>
+> Sonora is not designed to circumvent subscriptions or other restrictions put in place by music streaming platforms. If the service demands that you have a valid subscription in order to play back their tracks, so will Sonora.
+>
+> Features aimed at ripping, downloading, distributing, or gaining access to protected streaming content are out of scope for the project.
+
 ## Features
 
 * **Spotify, YouTube Music, Subsonic/OpenSubsonic,** and local playback
 * Gapless playback, audio normalization, shuffle, sleep timer
 * Synced/karaoke lyrics, background vocals, and romanization
+* Scrobbling with LastFM, ListenBrainz, LibreFM, and Maloja
 * Themes, fonts, icons, transparency, blur, and window styling
 * Discord Rich Presence, native file opening
 * macOS, Windows, Linux, and (probably) FreeBSD support
@@ -177,19 +187,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 690/690 | 100% |
-| Deutsch (`de`) | 630/690 | 91% |
-| Español (`es`) | 690/690 | 100% |
-| Français (`fr`) | 630/690 | 91% |
-| Italiano (`it`) | 608/690 | 88% |
-| Bahasa Indonesia (`id`) | 608/690 | 88% |
-| 日本語 (`ja`) | 608/690 | 88% |
-| Русский (`ru`) | 681/690 | 99% |
-| Українська (`uk`) | 681/690 | 99% |
-| Polski (`pl`) | 681/690 | 99% |
-| Português (Brasil) (`pt-BR`) | 608/690 | 88% |
-| 简体中文 (`zh-CN`) | 608/690 | 88% |
-| Türkçe (`tr`) | 608/690 | 88% |
+| English (`en-US`) | 715/715 | 100% |
+| Deutsch (`de`) | 631/715 | 88% |
+| Español (`es`) | 691/715 | 97% |
+| Français (`fr`) | 631/715 | 88% |
+| Italiano (`it`) | 609/715 | 85% |
+| Bahasa Indonesia (`id`) | 609/715 | 85% |
+| 日本語 (`ja`) | 609/715 | 85% |
+| Русский (`ru`) | 706/715 | 99% |
+| Українська (`uk`) | 706/715 | 99% |
+| Polski (`pl`) | 706/715 | 99% |
+| Português (Brasil) (`pt-BR`) | 609/715 | 85% |
+| 简体中文 (`zh-CN`) | 609/715 | 85% |
+| Türkçe (`tr`) | 609/715 | 85% |
 
 <!-- i18n:end -->
 

@@ -55,11 +55,19 @@ const FAN: usize = 12;
 
 /// The library listings, and the includes each is read with. Named once so the pages and the
 /// favorites drawn over them ask for the same listing and share one fetch.
+///
+/// A library song carries no date of its own, on any route or with any `extend`, while the
+/// library album it sits under does, so the songs ask for that album cut down to the one
+/// field. The include is scoped to the library rows on purpose: an untyped `include=catalog`
+/// would expand the catalog of every included album too, and a page grows fivefold.
 const SONGS: &str = "/me/library/songs";
 const ALBUMS: &str = "/me/library/albums";
 const ARTISTS: &str = "/me/library/artists";
-const SONGS_QUERY: &[(&str, &str)] =
-    &[("include", "catalog"), ("include[songs]", "artists,albums")];
+const SONGS_QUERY: &[(&str, &str)] = &[
+    ("include[library-songs]", "catalog,albums"),
+    ("include[songs]", "artists,albums"),
+    ("fields[library-albums]", "dateAdded"),
+];
 const CATALOG_QUERY: &[(&str, &str)] = &[("include", "catalog")];
 
 /// How long a fetched listing is kept for the next caller. Long enough for one library load,
@@ -565,13 +573,19 @@ impl AppleClient {
     /// Builds the station a track seeds and reads its first tracks.
     ///
     /// This is what the web player's autoplay calls, and the only way Apple hands out the
-    /// contents of a station: `/songs/{id}/station` names one but lists nothing.
+    /// contents of a station: `/songs/{id}/station` names one but lists nothing. The artists
+    /// and albums are asked for along with the songs, since a station row names them in text
+    /// only and a suggestion without ids leads nowhere.
     async fn seed_station(&self, track_id: &str) -> Result<(String, Vec<Track>)> {
         let limit = STATION.to_string();
         let answered = self
             .post(
                 "/me/stations/continuous",
-                &[("with", "tracks"), ("limit[results:tracks]", &limit)],
+                &[
+                    ("with", "tracks"),
+                    ("limit[results:tracks]", &limit),
+                    ("include[songs]", "artists,albums"),
+                ],
                 Some(serde_json::json!({
                     "data": [{ "id": track_id, "type": "songs" }]
                 })),
@@ -597,7 +611,7 @@ impl AppleClient {
         let answered = self
             .post(
                 &format!("/me/stations/next-tracks/{station}"),
-                &[("limit", &limit)],
+                &[("limit", &limit), ("include[songs]", "artists,albums")],
                 None,
             )
             .await?;
@@ -1223,9 +1237,8 @@ impl MusicApi for AppleClient {
             sections = self.charts(None).await.unwrap_or_default();
         }
         Ok(HomeFeed {
-            listen_again: Vec::new(),
-            quick_picks: None,
             sections,
+            ..HomeFeed::default()
         })
     }
 

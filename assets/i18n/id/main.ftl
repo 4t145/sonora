@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Pilihan cepat
-home-listen-again = Dengarkan lagi
-home-quick-picks-eyebrow = Mulai dari sebuah lagu
 home-quick-picks-empty = Sukai beberapa lagu dan rekomendasinya akan muncul di sini
 
 # search page
@@ -443,6 +441,7 @@ month-11 = Nov
 month-12 = Des
 
 # settings
+settings-search = Cari pengaturan
 settings-tab-general = Umum
 settings-tab-appearance = Tampilan
 settings-tab-playback = Pemutaran
@@ -677,7 +676,6 @@ toast-sign-in-to-play = { $name } hanya dapat diputar untuk pendengar yang sudah
 toast-track-unplayable = { $name } tidak dapat diputar
 toast-library-add-failed = { $name } tidak dapat ditambahkan ke koleksi Anda
 toast-library-remove-failed = { $name } tidak dapat dihapus dari koleksi Anda
-toast-library-pin-limit = Batas sematan Spotify telah tercapai. Lepas sematan item lain terlebih dahulu.
 toast-library-pin-failed = Gagal memperbarui sematan di Spotify.
 
 # lyrics
@@ -701,6 +699,9 @@ update-working = Mengunduh pembaruan…
 update-failed = Pembaruan tidak dapat dipasang. Coba lagi dari halaman rilis GitHub.
 settings-check-updates = Periksa pembaruan
 settings-check-updates-detail = Periksa ke GitHub saat startup apakah ada versi baru. Sonora memasang pembaruan secara otomatis hanya di Windows; di sistem operasi lain, Anda akan diarahkan ke daftar perubahannya
+settings-log = Berkas log
+settings-log-detail = Apa yang ditulis Sonora saat berjalan. Lampirkan ke laporan bug
+settings-log-open = Buka log
 
 # tags
 tags-edit-title = Edit tag

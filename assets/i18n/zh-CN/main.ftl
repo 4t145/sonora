@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = 快速推荐
-home-listen-again = 再次收听
-home-quick-picks-eyebrow = 从一首歌开始
 home-quick-picks-empty = 收藏几首歌后，它们会显示在这里
 
 # search page
@@ -443,6 +441,7 @@ month-11 = 11月
 month-12 = 12月
 
 # settings
+settings-search = 搜索设置
 settings-tab-general = 通用
 settings-tab-appearance = 外观
 settings-tab-playback = 播放
@@ -699,6 +698,9 @@ update-working = 正在下载更新…
 update-failed = 更新无法安装。请从发布页面重试。
 settings-check-updates = 检查更新
 settings-check-updates-detail = 启动时向 GitHub 查询一次是否有新版本。Sonora 仅在 Windows 上自行安装更新；其他平台会指引你查看更新内容
+settings-log = 日志文件
+settings-log-detail = Sonora 运行时写下的内容。请将其附在错误报告中
+settings-log-open = 打开日志
 
 # tags
 tags-edit-title = 编辑标签
@@ -723,7 +725,6 @@ toast-tags-saved = 已保存 { $name } 的标签
 toast-tags-failed = 标签无法保存
 
 nav-pin = 固定
-toast-library-pin-limit = 已达到 Spotify 的固定上限。请先取消固定其他项目。
 toast-library-pin-failed = 无法在 Spotify 中更新固定状态。
 nav-nothing-pinned = 这里什么都没有
 nav-pins-alphabetical = 按字母顺序

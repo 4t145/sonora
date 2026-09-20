@@ -11,6 +11,7 @@ use crate::{
     SavedArtist, Track, TrackTags, UserProfile, distinct_covers,
 };
 
+use super::index::Index;
 use super::scan::Scanned;
 use super::store::{Starred, Store};
 use super::{tags, wire};
@@ -22,14 +23,16 @@ pub struct LocalClient {
     scanned: RwLock<Scanned>,
     store: Store,
     cache_dir: PathBuf,
+    index: Index,
 }
 
 impl LocalClient {
-    pub fn new(scanned: Scanned, database: Database, cache_dir: PathBuf) -> Self {
+    pub fn new(scanned: Scanned, database: Database, cache_dir: PathBuf, index: Index) -> Self {
         Self {
             scanned: RwLock::new(scanned),
             store: Store::new(database),
             cache_dir,
+            index,
         }
     }
 
@@ -139,7 +142,7 @@ fn playlist_from(id: String, name: String, modified_at: i64, tracks: &[Track]) -
         public: false,
         cover: tracks.iter().find_map(|track| track.cover.clone()),
         track_count: tracks.len() as u32,
-        modified_at: Some(modified_at),
+        modified_at: Some(modified_at / 1_000),
     }
 }
 
@@ -258,11 +261,16 @@ impl MusicApi for LocalClient {
         let album_tracks = year_changed.then(|| self.album_track_paths(track_id));
 
         tags::write(path, &updated)?;
+        let mut written = vec![path.to_path_buf()];
         if let Some(album_tracks) = album_tracks {
             for sibling in album_tracks.into_iter().filter(|sibling| sibling != path) {
                 tags::write_year(&sibling, &updated.year)?;
+                written.push(sibling);
             }
         }
+        // A file written in place leaves its folder's time alone, so the next scan would trust
+        // the old tags. Dropping the rows here is what makes it read them again.
+        self.index.forget(&written);
         Ok(())
     }
 
@@ -277,7 +285,7 @@ impl MusicApi for LocalClient {
     }
 
     async fn track_from_path(&self, path: &Path) -> Result<Track> {
-        let (track, _) = wire::track_from_file(path, None, None, &self.cache_dir)
+        let (track, ..) = wire::track_from_file(path, None, None, &self.cache_dir)
             .ok_or_else(|| anyhow!("cannot read {} as an audio file", path.display()))?;
         Ok(track)
     }

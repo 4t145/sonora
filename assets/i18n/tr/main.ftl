@@ -325,8 +325,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Hızlı seçimler
-home-listen-again = Yeniden dinle
-home-quick-picks-eyebrow = Bir şarkıdan başla
 home-quick-picks-empty = Birkaç şarkı beğen, burada görünsünler
 
 # search page
@@ -426,6 +424,7 @@ month-11 = Kas
 month-12 = Ara
 
 # settings
+settings-search = Ayarlarda ara
 settings-tab-general = Genel
 settings-tab-appearance = Görünüm
 settings-tab-playback = Çalma
@@ -682,6 +681,9 @@ update-working = Güncelleme indiriliyor…
 update-failed = Güncelleme kurulamadı. Yayınlar sayfasından yeniden dene.
 settings-check-updates = Güncellemeleri denetle
 settings-check-updates-detail = Açılışta GitHub'a bir kez daha yeni bir sürüm çıktı mı diye sor. Sonora güncellemeyi yalnızca Windows'ta kendi kurar; diğer yerlerde nelerin değiştiğini gösterir
+settings-log = Günlük dosyası
+settings-log-detail = Sonora'nın çalışırken yazdıkları. Hata raporuna ekleyin
+settings-log-open = Günlüğü aç
 
 # tags
 tags-edit-title = Etiketleri düzenle
@@ -705,7 +707,6 @@ tags-comment = Yorum
 toast-tags-saved = { $name } için etiketler kaydedildi
 toast-tags-failed = Etiketler kaydedilemedi
 nav-pin = Sabitle
-toast-library-pin-limit = Spotify'ın sabitleme sınırına ulaşıldı. Önce başka bir ögenin sabitlemesini kaldır.
 toast-library-pin-failed = Spotify'daki sabitleme güncellenemedi.
 nav-nothing-pinned = Burada bir şey yok
 nav-pins-alphabetical = Alfabetik

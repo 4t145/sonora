@@ -340,8 +340,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Scelte rapide
-home-listen-again = Riascolta
-home-quick-picks-eyebrow = Inizia da un brano
 home-quick-picks-empty = Metti Mi piace a qualche brano e apparirà qui
 
 # search page
@@ -444,6 +442,7 @@ month-11 = nov
 month-12 = dic
 
 # settings
+settings-search = Cerca nelle impostazioni
 settings-tab-general = Generale
 settings-tab-appearance = Aspetto
 settings-tab-playback = Riproduzione
@@ -700,6 +699,9 @@ update-working = Scaricamento aggiornamento in corso…
 update-failed = Impossibile installare l'aggiornamento. Riprova dalla pagina delle release.
 settings-check-updates = Cerca aggiornamenti
 settings-check-updates-detail = Chiedi a GitHub una volta all'avvio se è disponibile una versione più recente. Sonora installa l'aggiornamento da sola solo su Windows; altrove ti mostra cosa è cambiato
+settings-log = File di log
+settings-log-detail = Ciò che Sonora ha scritto durante l'esecuzione. Allegalo a una segnalazione di bug
+settings-log-open = Apri il log
 tags-edit-title = Modifica tag
 tags-sheet-song = Brano
 tags-sheet-album = Album
@@ -721,7 +723,6 @@ tags-comment = Commento
 toast-tags-saved = Tag salvati per { $name }
 toast-tags-failed = Impossibile salvare i tag
 nav-pin = Fissa
-toast-library-pin-limit = Il limite di elementi fissati di Spotify è stato raggiunto. Rimuovine prima un altro.
 toast-library-pin-failed = Impossibile aggiornare l'elemento fissato su Spotify.
 nav-nothing-pinned = Niente qui
 nav-pins-alphabetical = Alfabetico

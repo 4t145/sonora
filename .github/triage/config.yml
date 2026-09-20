@@ -37,15 +37,15 @@ platforms:
 
 people:
   nolight132:
-    areas: [spotify, ui]
-    hardware: [linux, pipewire]
+    areas: [question, spotify, ui, lyrics, player, playback, packaging, settings, ci]
+    hardware: [linux, pipewire, wayland, niri]
 
   zxsleebu:
-    areas: [ui, library, player, lyrics]
+    areas: [question, ui, library, player, lyrics]
     hardware: [linux, wayland, kde]
 
   imizgun:
-    areas: [local, library, playback, ui]
+    areas: [question, local, library, playback, ui]
     hardware: [linux, wayland, niri, pipewire]
 
   fx-got:
@@ -53,7 +53,7 @@ people:
     hardware: [windows]
 
   Makakashan:
-    areas: [i18n, lyrics, player, packaging, nix]
+    areas: [i18n, packaging]
     hardware: [linux, wayland, niri, pipewire]
 
 # What a report has to contain before anyone can act on it. The bot asks for whichever of

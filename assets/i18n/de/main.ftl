@@ -339,8 +339,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Schnellauswahl
-home-listen-again = Noch einmal anhören
-home-quick-picks-eyebrow = Mit einem Song starten
 home-quick-picks-empty = Markiere ein paar Songs als Favoriten, dann erscheinen sie hier
 
 # search page
@@ -443,6 +441,7 @@ month-11 = Nov.
 month-12 = Dez.
 
 # settings
+settings-search = Einstellungen durchsuchen
 settings-tab-general = Allgemein
 settings-tab-appearance = Erscheinungsbild
 settings-tab-playback = Wiedergabe
@@ -721,6 +720,9 @@ update-working = Update wird geladen…
 update-failed = Das Update konnte nicht installiert werden. Versuch es über die Releases-Seite.
 settings-check-updates = Nach Updates suchen
 settings-check-updates-detail = Beim Start einmal bei GitHub nachfragen, ob eine neuere Version da ist. Sonora installiert das Update nur unter Windows selbst, sonst zeigt es dir, was sich geändert hat
+settings-log = Protokolldatei
+settings-log-detail = Was Sonora beim Laufen geschrieben hat. Häng sie an einen Fehlerbericht an
+settings-log-open = Protokoll öffnen
 
 # tags
 tags-edit-title = Tags bearbeiten
@@ -744,7 +746,6 @@ tags-comment = Kommentar
 toast-tags-saved = Tags für { $name } gespeichert
 toast-tags-failed = Die Tags konnten nicht gespeichert werden
 nav-pin = Anheften
-toast-library-pin-limit = Das Limit für angeheftete Einträge bei Spotify ist erreicht. Löse zuerst einen anderen Eintrag.
 toast-library-pin-failed = Das Anheften konnte bei Spotify nicht geändert werden.
 nav-nothing-pinned = Nichts hier
 nav-pins-alphabetical = Alphabetisch

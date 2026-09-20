@@ -8,6 +8,7 @@ mod genre;
 mod history;
 mod home;
 mod library;
+mod logging;
 mod lyrics;
 mod mosaic;
 mod pins;
@@ -15,11 +16,13 @@ mod playback;
 mod profile;
 mod queue;
 mod remote;
+mod scan;
 mod scrobble;
 mod search;
 mod session;
 mod settings;
 mod sheets;
+mod snapshot;
 mod song;
 mod tags;
 mod toast;
@@ -35,18 +38,20 @@ pub use genre::{GenreDetails, Genres};
 pub use history::{History, HistoryState};
 pub use home::Home;
 pub use library::{Library, LibraryEvent, LibraryPart, LibraryState, Problem, Ready, Shelf};
+pub use logging::log_file;
 pub use lyrics::{Lyrics, LyricsState};
 pub use pins::{PinSort, Pins};
 pub use playback::{Origin, Playback, PlaybackState, Repeat, Sleep, Whence};
 pub use profile::Profile;
 pub use queue::{Named, Queue, Resume, Stub};
 pub use remote::{Remote, attach as attach_remote};
+pub use scan::Scan;
 pub use scrobble::{ScrobbleRow, ScrobbleState, Scrobbling};
 pub use search::{AlbumHit, ArtistHit, Hit, Kind, PlaylistHit, Search};
 pub use session::{Failure, ProviderInfo, Session, SessionEvent, SessionState};
 pub use settings::{
-    AppSettings, DiscordName, FullscreenControlsAutohide, RomanizationScripts, SYSTEM_FONT,
-    SideTab, remember_window, window_placement,
+    AppSettings, DiscordName, FilterValue, FullscreenControlsAutohide, RomanizationScripts,
+    SYSTEM_FONT, SideTab, remember_window, window_placement,
 };
 pub use song::SongDetail;
 pub use tags::{TagState, Tags};
@@ -69,9 +74,24 @@ pub struct Io(Arc<Runtime>);
 
 impl Global for Io {}
 
+/// Worker threads for the tokio runtime. The work here is network calls and the json they
+/// answer with, never a long computation, so the default of one worker per core buys nothing
+/// and costs a stack and an allocator arena each.
+const WORKERS: usize = 4;
+/// The ceiling on blocking threads, which is where the sqlite reads and the tag writes go. The
+/// default is 512, far past anything Sonora queues at once.
+const BLOCKING: usize = 16;
+
 impl Io {
     pub fn new() -> Result<Self> {
-        Ok(Self(Arc::new(Runtime::new()?)))
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(WORKERS)
+            .max_blocking_threads(BLOCKING)
+            .thread_name("sonora-io")
+            .enable_all()
+            .build()?;
+
+        Ok(Self(Arc::new(runtime)))
     }
 
     pub fn global(cx: &App) -> Self {
@@ -113,6 +133,7 @@ pub struct Sonora {
     pub pins: Entity<Pins>,
     pub playback: Entity<Playback>,
     pub queue: Entity<Queue>,
+    pub scan: Entity<Scan>,
     pub scrobbling: Entity<Scrobbling>,
     pub settings: Entity<AppSettings>,
     pub updates: Entity<Updates>,
@@ -142,7 +163,8 @@ pub fn init(
     let settings = cx.new(|_| AppSettings::load(database.clone()));
     let session =
         cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
-    let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cx));
+    let cache = storage::Cache::standard();
+    let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cache, cx));
     let queue = cx.new(|cx| Queue::new(session.clone(), settings.clone(), cx));
     let playback = cx.new(|cx| Playback::new(session.clone(), queue.clone(), settings.clone(), cx));
     let history = cx.new(|cx| {
@@ -154,6 +176,7 @@ pub fn init(
             cx,
         )
     });
+    let scan = cx.new(|cx| Scan::new(session.clone(), cx));
     let scrobbling =
         cx.new(|cx| Scrobbling::new(playback.clone(), settings.clone(), io.clone(), cx));
     let lyrics = cx.new(|cx| {
@@ -191,6 +214,7 @@ pub fn init(
         pins,
         playback,
         queue,
+        scan,
         scrobbling,
         settings,
         updates,

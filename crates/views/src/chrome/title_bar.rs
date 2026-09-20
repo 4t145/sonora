@@ -29,6 +29,8 @@ pub(crate) struct TitleBarOptions {
     pub offset: Pixels,
     pub border: bool,
     pub content: Option<AnyView>,
+    /// Lets the fullscreen ambient background show through behind the controls.
+    pub transparent: bool,
 }
 
 impl Default for TitleBarOptions {
@@ -40,6 +42,7 @@ impl Default for TitleBarOptions {
             offset: Pixels::ZERO,
             border: true,
             content: None,
+            transparent: false,
         }
     }
 }
@@ -211,7 +214,9 @@ impl Render for TitleBar {
             .h(height)
             .flex_none()
             .when_some(radius, |this, radius| this.rounded_t(radius))
-            .when(!theme.transparent, |this| this.bg(theme.background))
+            .when(!self.options.transparent && !theme.transparent, |this| {
+                this.bg(theme.background)
+            })
             .when(self.options.border, |this| {
                 this.border_b_1().border_color(theme.title_bar_border)
             })

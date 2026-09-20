@@ -660,14 +660,17 @@ fn audio_loop<F: Fetch>(
     let mut reported_at = Instant::now();
 
     loop {
-        // a full queue or nothing to decode means waiting for work rather than spinning
-        let job = match current.is_some() && !paced.full() {
-            true => match jobs.try_recv() {
+        // anything but decoding means waiting for work rather than spinning: no
+        // track, a paused one, or a full queue. A restored track sits paused
+        // with an empty queue, which the old condition mistook for decoding.
+        let idle = current.is_none() || !playing || paced.full();
+        let job = match idle {
+            false => match jobs.try_recv() {
                 Ok(job) => Some(job),
                 Err(TryRecvError::Empty) => None,
                 Err(TryRecvError::Disconnected) => return,
             },
-            false => match jobs.recv_timeout(Paced::poll()) {
+            true => match jobs.recv_timeout(Paced::poll()) {
                 Ok(job) => Some(job),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(RecvTimeoutError::Disconnected) => return,
@@ -809,7 +812,7 @@ fn audio_loop<F: Fetch>(
         }
 
         let Some(held) = &mut current else { continue };
-        if !playing || paced.full() {
+        if idle {
             continue;
         }
 
