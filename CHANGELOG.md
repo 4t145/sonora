@@ -51,6 +51,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tracks it queued, instead of keeping a pause button over its cover.
 - Lyrics timed with hours, such as `[01:02:03.00]`, show at the right moment instead of being
   skipped.
+- Apple Music dates that include a timezone, such as `2026-09-15T12:03:39+00:00`, keep their
+  seconds and convert to UTC, instead of dropping the seconds.
 - Deezer playlists and favorites show the day they were added or last changed, instead of leaving
   the date column blank.
 - A Deezer song whose explicit flag arrives as a number still shows the explicit mark.

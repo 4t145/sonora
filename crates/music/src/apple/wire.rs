@@ -68,7 +68,8 @@ pub fn moment(attributes: &Value, key: &str) -> Option<i64> {
     let year: i64 = parts.next()?.parse().ok()?;
     let month: i64 = parts.next().unwrap_or("1").parse().unwrap_or(1);
     let day: i64 = parts.next().unwrap_or("1").parse().unwrap_or(1);
-    let mut clock = time.trim_end_matches('Z').split(':');
+    let (time, zone) = zone_of(time.trim_end_matches('Z'));
+    let mut clock = time.split(':');
     let hour: i64 = clock.next().unwrap_or("0").parse().unwrap_or(0);
     let minute: i64 = clock.next().unwrap_or("0").parse().unwrap_or(0);
     let second: i64 = clock
@@ -77,7 +78,20 @@ pub fn moment(attributes: &Value, key: &str) -> Option<i64> {
         .unwrap_or("0")
         .parse()
         .unwrap_or(0);
-    Some(days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+    Some(days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second - zone)
+}
+
+fn zone_of(time: &str) -> (&str, i64) {
+    let Some(at) = time.rfind(['+', '-']).filter(|&at| at > 0) else {
+        return (time, 0);
+    };
+    let (clock, zone) = time.split_at(at);
+    let sign = if zone.starts_with('-') { -1i64 } else { 1 };
+    let zone = zone.trim_start_matches(['+', '-']);
+    let mut parts = zone.split(':');
+    let hours: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+    let minutes: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+    (clock, sign * (hours * 3_600 + minutes * 60))
 }
 
 /// Days from the epoch to a civil date, by Howard Hinnant's algorithm.
