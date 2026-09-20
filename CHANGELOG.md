@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- An artist page opens as soon as their profile and popular tracks arrive, and fills its
+  releases in behind that, so an artist with a thousand of them no longer leaves the page
+  blank for half a minute.
+- Scrolling an artist's releases stays smooth however long the discography is, and resizing
+  the window keeps the same releases in view.
+
+### Fixed
+
+- Covers no longer swap places with each other while a grid is scrolled quickly.
+
 ## [0.38.0] - 2026-09-20
 
 ### Added
