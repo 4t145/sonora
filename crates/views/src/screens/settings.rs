@@ -312,7 +312,8 @@ pub struct SettingsView {
     scrobble_prompt: Option<&'static str>,
     /// The provider whose sign-in choice is up, by slug and name.
     sign_in_for: Option<(&'static str, &'static str)>,
-    /// Holds the key focus while a dialog is up, so escape reaches the page and closes it.
+    /// Holds the key focus while a dialog is up, so escape reaches the page and closes it,
+    /// and is where the language and typeface pickers put it back when they close.
     focus: FocusHandle,
     /// Whether the focus has already been taken for the dialog that is up.
     grabbed: bool,
@@ -349,13 +350,14 @@ impl SettingsView {
         cx.observe(&Scan::global(cx), |_, _, cx| cx.notify())
             .detach();
         let me = cx.entity_id();
-        let languages = SearchPopup::new("settings-language-search", me, cx);
+        let focus = cx.focus_handle();
+        let languages = SearchPopup::new("settings-language-search", me, focus.clone(), cx);
         cx.observe(&languages.input(), |this, _, cx| {
             this.languages.changed(cx);
             cx.notify();
         })
         .detach();
-        let typefaces = SearchPopup::new("settings-typeface-search", me, cx);
+        let typefaces = SearchPopup::new("settings-typeface-search", me, focus.clone(), cx);
         cx.observe(&typefaces.input(), |this, _, cx| {
             this.typefaces.changed(cx);
             cx.notify();
@@ -403,7 +405,7 @@ impl SettingsView {
             secret: cx.new(|cx| Input::new("login-cookie-hint", cx)),
             manual_secret: None,
             sign_in_for: None,
-            focus: cx.focus_handle(),
+            focus,
             grabbed: false,
             sign_in_running: false,
             chosen: None,

@@ -47,6 +47,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The fullscreen button works right after picking a language or a typeface in Settings, instead
+  of doing nothing until you clicked elsewhere first.
 - An album, playlist or artist stops showing itself as playing once radio has moved past the
   tracks it queued, instead of keeping a pause button over its cover.
 - Lyrics timed with hours, such as `[01:02:03.00]`, show at the right moment instead of being
