@@ -479,7 +479,7 @@ impl Render for LoginView {
             SessionState::Authorizing(Some(SignInPrompt::Accounts(_))) => t!("login-signed-out"),
             SessionState::Authorizing(_) => t!("login-authorizing"),
             SessionState::SignedIn(profile) => t!("login-signed-in", name = &profile.display_name),
-            SessionState::Failed(_) => t!("login-signed-out"),
+            SessionState::Offline(_) | SessionState::Failed(_) => t!("login-signed-out"),
         };
 
         let prompt = match &state {

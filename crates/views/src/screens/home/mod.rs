@@ -7,14 +7,16 @@ use gpui::{
     AnyElement, Context, Entity, MouseDownEvent, Pixels, Point, Render, ScrollHandle, WeakEntity,
     Window, div, px,
 };
+use i18n::t;
 use music::GenreItem;
-use state::{Home, Playback, SessionState, Sonora};
+use state::{Home, Network, Playback, SessionState, Sonora};
 use ui::{ActiveTheme as _, Mode, Popup, Scrollbar, Scroller};
 
 use crate::shared::cells;
 use crate::shared::picks::{Picks, Shape};
 use crate::shared::shelves::Shelves;
 use crate::shared::tracks::{PlaybackStatus, playback_status};
+use crate::shared::trouble;
 
 const STEADY: Pixels = px(0.5);
 
@@ -140,10 +142,39 @@ impl HomeView {
             })
             .into_any_element()
     }
+
+    /// The page home shows in place of its shelves: the No connection state the moment the
+    /// network is gone, since every row here comes from the provider, and the reason its feed
+    /// failed otherwise. Asking for the feed again is the retry, and it starts the pauses
+    /// between tries over.
+    fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let reason = match Network::lost(cx) {
+            true => None,
+            false => Some(self.home.read(cx).error()?.to_owned()),
+        };
+        let home = self.home.clone();
+
+        Some(
+            trouble::lost(
+                "home-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    home.update(cx, |home, cx| home.retry(cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
+        )
+    }
 }
 
 impl Render for HomeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().size_full().child(failure).into_any_element();
+        }
+
         let theme = *cx.theme();
         let available = cells::content_width(window, theme.metrics.inset * 2., cx);
         if (available - self.width).abs() >= STEADY {
@@ -179,6 +210,7 @@ impl Render for HomeView {
                     .children(shelves),
             )
             .when_some(context_menu, |this, menu| this.child(menu))
+            .into_any_element()
     }
 }
 

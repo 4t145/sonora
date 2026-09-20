@@ -94,6 +94,7 @@ MAP = {
     "volume-2": ("sound-high", "volume-loud-linear", "volume-up-line"),
     "volume-off": ("sound-off", "volume-cross-linear", "volume-mute-line"),
     "volume-x": ("sound-off", "volume-cross-linear", "volume-mute-line"),
+    "wifi-off": ("wifi-off", None, "wifi-off-line"),
     "x": ("xmark", "close-linear", "close-line"),
 }
 

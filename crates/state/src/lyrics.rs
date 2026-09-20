@@ -319,14 +319,16 @@ impl Lyrics {
                 }
                 match found {
                     Ok(()) => {
+                        crate::Network::reached(cx);
                         let instrumental = music::lyrics::instrumental(&ranking, &hits);
                         let ranked = ordered(&ranking, hits);
                         this.remember(id, ranked, displayed.as_ref(), instrumental, current, cx);
                     }
                     Err(error) => {
                         log::warn!("lyrics: cannot look up {}: {error:#}", track.name);
+                        let reason = crate::blamed(&error, cx);
                         if current {
-                            this.state = LyricsState::Failed(format!("{error:#}"));
+                            this.state = LyricsState::Failed(reason);
                             cx.notify();
                         }
                     }

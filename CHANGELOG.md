@@ -25,6 +25,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Sonora now notices the moment it loses the network and says so everywhere at once, rather than
+  leaving each page to fail on its own. Search, home, albums, playlists, artists, songs and
+  profiles show No connection over a crossed-out wifi mark with a Try again button, playing a
+  streamed track says there is no connection instead of failing quietly, and the pages come back
+  by themselves once the network does. Local music and an imported library keep working.
+- Losing the network no longer reads as a signed-out account. Sonora stays on your library and
+  your local music with the account it has, and picks the account back up on its own once the
+  network is there. The sign-in page now only appears when you really are signed out.
 - Your Library and Local Music open on the songs, albums, artists and playlists they held last
   time, right at startup, and swap them for the fresh ones as the provider answers.
 - Local music is scanned on several threads, and only what changed since the last scan is read

@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::{App, Context, Entity, Task};
 use music::{GenreItem, GenreSection, HomeFeed, Track};
 
-use crate::{Io, Library, LibraryPart, LibraryState, Session, SessionEvent, Shelf, join};
+use crate::{Io, Library, LibraryPart, LibraryState, Network, Session, SessionEvent, Shelf, join};
 
 const GROUP_SIZE: usize = 10;
 const LIMIT: usize = GROUP_SIZE * 3;
@@ -36,6 +36,8 @@ pub struct Home {
     picks_seed: u64,
     sections: Rc<Vec<GenreSection>>,
     feeding: bool,
+    /// Why the last fetch brought nothing, kept until a lot lands.
+    error: Option<String>,
     /// How many fetches have ended with no feed at all since the last sign-in.
     failures: usize,
     /// Whether the home page is on screen. While it is, a lot may add to the page but never
@@ -67,6 +69,7 @@ impl Home {
                 this.quick_picks = Rc::new(Vec::new());
                 this.sections = Rc::new(Vec::new());
                 this.feeding = false;
+                this.error = None;
                 this.failures = 0;
                 this.pending = None;
                 cx.notify();
@@ -87,6 +90,7 @@ impl Home {
             picks_seed,
             sections: Rc::new(Vec::new()),
             feeding: false,
+            error: None,
             failures: 0,
             visible: false,
             pending: None,
@@ -105,6 +109,23 @@ impl Home {
         self.feeding
     }
 
+    /// Why the page is empty, when the feed failed rather than came back empty. Nothing while
+    /// a fetch is in flight or the page has anything to draw, Quick picks mixed from the library
+    /// included, so the failure only shows where there is nothing else.
+    pub fn error(&self) -> Option<&str> {
+        match self.feeding || !self.sections.is_empty() || !self.quick_picks.is_empty() {
+            true => None,
+            false => self.error.as_deref(),
+        }
+    }
+
+    /// Asks for the feed again after a failure, with the pauses between tries started over.
+    pub fn retry(&mut self, cx: &mut Context<Self>) {
+        self.failures = 0;
+        self.task = None;
+        self.feed(cx);
+    }
+
     pub fn feed(&mut self, cx: &mut Context<Self>) {
         if self.feeding || !self.sections.is_empty() {
             return;
@@ -114,6 +135,7 @@ impl Home {
         };
 
         self.feeding = true;
+        self.error = None;
         let io = self.io.clone();
         self.task = Some(cx.spawn(async move |this, cx| {
             let opened = join(io.spawn(async move { client.home_paged().await })).await;
@@ -121,7 +143,11 @@ impl Home {
                 Ok(feed) => feed,
                 Err(error) => {
                     log::warn!("home: cannot load the feed: {error:#}");
-                    this.update(cx, |this, cx| this.fed(cx)).ok();
+                    this.update(cx, |this, cx| {
+                        this.error = Some(crate::blamed(&error, cx));
+                        this.fed(cx);
+                    })
+                    .ok();
                     return;
                 }
             };
@@ -131,7 +157,10 @@ impl Home {
                 let landed = this.update(cx, |this, cx| {
                     match lot {
                         Ok(feed) => this.land(feed, cx),
-                        Err(error) => log::warn!("home: cannot load the feed: {error:#}"),
+                        Err(error) => {
+                            log::warn!("home: cannot load the feed: {error:#}");
+                            this.error = Some(crate::blamed(&error, cx));
+                        }
                     }
                     cx.notify();
                 });
@@ -148,6 +177,8 @@ impl Home {
     /// only grow at their end, and the lot is kept whole to land once the page is out of
     /// sight. Out of sight, the lot lands as it is.
     fn land(&mut self, feed: HomeFeed, cx: &mut Context<Self>) {
+        self.error = None;
+        Network::reached(cx);
         if !self.visible {
             self.pending = None;
             self.take(feed, cx);

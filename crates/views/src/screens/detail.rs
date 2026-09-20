@@ -17,6 +17,7 @@ use ui::{
 };
 
 use crate::shared::menus::{album_menu, playlist_menu};
+use crate::shared::trouble;
 
 use crate::chrome::tools::{self, Sliders};
 use crate::chrome::{Chrome, Searchable, Toolbar, Tooled};
@@ -474,6 +475,10 @@ impl DetailView {
 
 impl Render for DetailView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().relative().size_full().child(failure);
+        }
+
         self.table.claim(cx);
         let inset = cx.theme().metrics.inset;
         let width = cells::content_width(window, Pixels::ZERO, cx);
@@ -508,6 +513,33 @@ impl Render for DetailView {
                     .child(table(&self.table)),
             )
             .when_some(context_menu, |this, menu| this.child(menu))
+    }
+}
+
+impl DetailView {
+    /// The page an album or a playlist shows instead of its header and its table when it cannot
+    /// be read: the No connection state as soon as the network is gone, whatever rows this page
+    /// happens to hold, and the failure of its own load otherwise.
+    fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let id = self.detail.read(cx).id()?.to_owned();
+        let reason = match trouble::unreachable(&id, cx) {
+            true => None,
+            false => Some(self.detail.read(cx).error()?.to_owned()),
+        };
+        let detail = self.detail.clone();
+
+        Some(
+            trouble::lost(
+                "detail-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    detail.update(cx, |detail, cx| detail.reload(cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
+        )
     }
 }
 

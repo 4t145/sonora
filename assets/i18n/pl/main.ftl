@@ -869,3 +869,10 @@ nav-pins-alphabetical = Alfabetycznie
 nav-pins-kind = Według typu
 nav-show-full-library = Pokaż całą bibliotekę
 nav-return-top = Do góry
+
+# trouble
+trouble-offline = Brak połączenia
+trouble-offline-detail = Sprawdź połączenie z internetem i spróbuj ponownie.
+trouble-not-loaded = Nie udało się wczytać
+trouble-retry = Spróbuj ponownie
+toast-offline = Brak połączenia. Nic nie zostanie odtworzone, dopóki nie wróci.

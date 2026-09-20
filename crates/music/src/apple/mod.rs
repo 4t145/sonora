@@ -73,6 +73,7 @@ impl AppleProvider {
                 let profile = client.profile().await?;
                 Ok(Some(session(client, profile)))
             }
+            Err(error) if crate::trouble::offline(&format!("{error:#}")) => Err(error),
             Err(error) => {
                 log::warn!("apple: the stored account is no longer usable: {error:#}");
                 Ok(None)
@@ -122,6 +123,10 @@ impl MusicProvider for AppleProvider {
 
     fn slug(&self) -> &'static str {
         "apple"
+    }
+
+    fn reach(&self) -> Option<String> {
+        Some("music.apple.com".to_owned())
     }
 
     fn sign_in_options(&self) -> Vec<SignIn> {

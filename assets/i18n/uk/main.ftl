@@ -867,3 +867,10 @@ nav-pins-alphabetical = За абеткою
 nav-pins-kind = За типом
 nav-show-full-library = Показувати всю медіатеку
 nav-return-top = Догори
+
+# trouble
+trouble-offline = Немає з'єднання
+trouble-offline-detail = Перевірте підключення до інтернету та спробуйте ще раз.
+trouble-not-loaded = Не вдалося завантажити
+trouble-retry = Повторити
+toast-offline = Немає з'єднання. Нічого не відтворюватиметься, доки воно не повернеться.

@@ -34,7 +34,7 @@ use crate::shared::pins::Pinned as _;
 use crate::shared::tracks::{
     self, LIBRARY_COLUMNS, PlaybackStatus, TrackField, TrackSource, Tracks, playback_status,
 };
-use crate::shared::{cards, cells, local, page};
+use crate::shared::{cards, cells, local, page, trouble};
 use albums::{AlbumField, AlbumSource};
 use artists::{ArtistField, ArtistSource};
 use playlists::{PlaylistField, PlaylistSource};
@@ -524,21 +524,35 @@ impl LibraryView {
         let table = self.table(self.section);
         match library.state(self.shelf) {
             LibraryState::Loading => return None,
-            LibraryState::Failed(_) => return Some(Vacancy::new(t!("library-not-loaded"))),
+            LibraryState::Failed(reason) => {
+                return Some(self.lost("library-lost", t!("library-not-loaded"), reason));
+            }
             _ if table.row_count(cx) > 0 => return None,
             _ => {}
         }
 
-        let failed = library.part_failed(self.shelf, self.section.part());
+        let problem = library.part_problem(self.shelf, self.section.part());
         let shape = library.shape(self.shelf);
 
-        Some(match (table.filtering(cx), failed) {
+        Some(match (table.filtering(cx), problem) {
             (true, _) => Vacancy::new(t!("library-no-matches")),
-            (false, true) => Vacancy::new(t!("library-part-not-loaded")),
-            (false, false) => {
+            (false, Some(reason)) => {
+                self.lost("library-part-lost", t!("library-part-not-loaded"), reason)
+            }
+            (false, None) => {
                 Vacancy::new(i18n::lookup(self.section.vacancy(self.shelf, shape), None))
                     .icon(self.section.glyph(shape))
             }
+        })
+    }
+
+    /// The state a shelf that did not load shows, with a button that loads it again.
+    fn lost(&self, id: &'static str, label: SharedString, reason: &str) -> Vacancy {
+        let library = self.library.clone();
+        let shelf = self.shelf;
+
+        trouble::lost(id, label, Some(reason), move |_, _, cx| {
+            library.update(cx, |library, cx| library.refresh(shelf, cx));
         })
     }
 
