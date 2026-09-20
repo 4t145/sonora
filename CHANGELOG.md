@@ -57,6 +57,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   seconds and convert to UTC, instead of dropping the seconds.
 - A local album folder that ends with its year, like `Album - 1999` or `Album 2004`, keeps
   that year instead of leaving the year blank.
+- An untagged song named like `01. Title` keeps the title and drops the track number, instead
+  of using the whole filename.
 - Deezer playlists and favorites show the day they were added or last changed, instead of leaving
   the date column blank.
 - A Deezer song whose explicit flag arrives as a number still shows the explicit mark.

@@ -180,7 +180,18 @@ fn infer_from_stem(stem: &str) -> (Option<String>, Option<String>) {
             return (Some(left.to_owned()), Some(right.to_owned()));
         }
     }
-    (None, None)
+    numbered(stem)
+        .map(|title| (Some(title), None))
+        .unwrap_or((None, None))
+}
+
+fn numbered(stem: &str) -> Option<String> {
+    let (digits, rest) = stem.split_once('.')?;
+    if digits.is_empty() || digits.len() > 3 || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let rest = rest.trim();
+    (!rest.is_empty()).then(|| rest.to_owned())
 }
 
 struct FallbackProbe {
