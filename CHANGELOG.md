@@ -38,6 +38,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Radio builds its suggestions from the track that is playing rather than the last one in the
   queue, and asks for the next batch while ten tracks are still left to play, so it never stops
   to load between songs.
+- A context menu opens beside the pointer rather than under it, and holding the right button
+  down and letting go over an item picks that item.
 
 ### Fixed
 
