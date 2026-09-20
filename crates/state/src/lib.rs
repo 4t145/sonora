@@ -186,9 +186,6 @@ pub fn init(
     lyrics_providers: Vec<Arc<dyn LyricsProvider>>,
 ) {
     cx.set_global(io.clone());
-    database.migrate();
-    music::credentials::migrate();
-
     let settings = cx.new(|_| AppSettings::load(database.clone()));
     let session =
         cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
