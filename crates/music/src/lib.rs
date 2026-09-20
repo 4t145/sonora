@@ -207,23 +207,15 @@ pub trait MusicApi: Send + Sync {
 
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>>;
     async fn playlist_covers(&self, playlist_id: &str, wanted: usize) -> Result<Vec<String>>;
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>>;
-
-    /// A track's station as the provider ranks it, with the continuation that fetches the next
-    /// stretch when the station goes on past this one. Defaults to `track_radio` in one go.
-    async fn station(&self, track_id: &str) -> Result<(Vec<Track>, Option<String>)> {
-        Ok((self.track_radio(track_id).await?, None))
-    }
-
-    /// The next stretch of the station seeded by `track_id`, from a continuation `station`
-    /// answered with.
-    async fn station_continuation(
+    /// The station seeded by `track_id`, from its start or from `from`, a continuation an
+    /// earlier call answered with. The continuation that comes back fetches the next stretch,
+    /// and `None` means the provider has no more. A provider that serves a station in one go
+    /// ignores `from` and answers `None`, which it is then never handed.
+    async fn track_radio(
         &self,
-        _track_id: &str,
-        _continuation: &str,
-    ) -> Result<(Vec<Track>, Option<String>)> {
-        anyhow::bail!("station continuation is not supported")
-    }
+        track_id: &str,
+        from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)>;
 
     async fn search(&self, query: &str) -> Result<Vec<Track>>;
 

@@ -10,26 +10,23 @@ use ytmusic::{Client, YtMusic, parse};
 use crate::Track;
 use crate::youtube::wire;
 
-/// The station YouTube Music opens when a track is played on its own: the seed first, then
-/// what YouTube's automix picks after it.
-pub(crate) async fn station(api: &YtMusic, video_id: &str) -> Result<(Vec<Track>, Option<String>)> {
-    let response = api
-        .execute("next", Client::Music, request(video_id, None))
-        .await?;
-    Ok(panel(&response, "playlistPanelRenderer"))
-}
-
-/// The next stretch of a station, from the continuation its last panel ended with. The seed
-/// goes with it: on its own the token answers with most of the panel before it again.
-pub(crate) async fn continuation(
+/// The station YouTube Music opens when a track is played on its own: the seed first, then what
+/// YouTube's automix picks after it. With `from` it is the next stretch instead, which arrives
+/// under a different renderer key. The seed goes with the continuation either way, since on its
+/// own the token answers with most of the panel before it again.
+pub(crate) async fn station(
     api: &YtMusic,
     video_id: &str,
-    continuation: &str,
+    from: Option<&str>,
 ) -> Result<(Vec<Track>, Option<String>)> {
+    let key = match from {
+        Some(_) => "playlistPanelContinuation",
+        None => "playlistPanelRenderer",
+    };
     let response = api
-        .execute("next", Client::Music, request(video_id, Some(continuation)))
+        .execute("next", Client::Music, request(video_id, from))
         .await?;
-    Ok(panel(&response, "playlistPanelContinuation"))
+    Ok(panel(&response, key))
 }
 
 /// The `next` request for the station seeded by `video_id`, at its start or at a continuation.

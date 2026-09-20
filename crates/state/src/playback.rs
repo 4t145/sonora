@@ -687,7 +687,7 @@ impl Playback {
         let io = Io::global(cx);
         self.fetch = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let (mut tracks, next) = client.station(&id).await?;
+                let (mut tracks, next) = client.track_radio(&id, None).await?;
                 tracks.retain(|track| track.id != seed_id && track.playable);
                 Ok((tracks, next))
             }))
@@ -715,7 +715,7 @@ impl Playback {
         let id = origin.id.clone();
         self.gather(origin, cx, move |client| {
             Box::pin(async move {
-                let (mut tracks, next) = client.station(&id).await?;
+                let (mut tracks, next) = client.track_radio(&id, None).await?;
                 tracks.retain(|track| track.playable);
                 Ok((tracks, next))
             })
@@ -1278,7 +1278,7 @@ impl Playback {
         self.topping = Some(cx.spawn(async move |this, cx| {
             let token = continuation.clone();
             let loaded = join(io.spawn(async move {
-                let (mut tracks, next) = client.station_continuation(&seed, &token).await?;
+                let (mut tracks, next) = client.track_radio(&seed, Some(&token)).await?;
                 unheard(&mut tracks, &heard);
                 anyhow::Ok((tracks, next))
             }))
@@ -1357,7 +1357,7 @@ impl Playback {
         let io = Io::global(cx);
         self.suggest = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let mut tracks = client.track_radio(&id).await?;
+                let (mut tracks, _) = client.track_radio(&id, None).await?;
                 unheard(&mut tracks, &queued);
                 fastrand::shuffle(&mut tracks);
                 tracks.truncate(SIMILAR_LIMIT);
@@ -1459,7 +1459,7 @@ impl Playback {
         let heard = self.queue.read(cx).ids();
         self.fetch = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let mut tracks = client.track_radio(&id).await?;
+                let (mut tracks, _) = client.track_radio(&id, None).await?;
                 unheard(&mut tracks, &heard);
                 anyhow::Ok(tracks)
             }))

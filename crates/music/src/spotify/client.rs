@@ -151,8 +151,12 @@ impl MusicApi for LibrespotClient {
         playlists::playlist_tracks(&self.session, playlist_id).await
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
-        radio::track_radio(&self.session, track_id).await
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
+        Ok((radio::track_radio(&self.session, track_id).await?, None))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {

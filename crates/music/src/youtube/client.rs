@@ -304,27 +304,12 @@ impl MusicApi for YouTubeClient {
         Ok(crate::distinct_covers(&tracks, wanted))
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
-        Ok(self
-            .api
-            .track_radio(track_id)
-            .await?
-            .into_iter()
-            .enumerate()
-            .map(|(index, track)| wire::track(track, index as u32))
-            .collect())
-    }
-
-    async fn station(&self, track_id: &str) -> Result<(Vec<Track>, Option<String>)> {
-        radio::station(&self.api, track_id).await
-    }
-
-    async fn station_continuation(
+    async fn track_radio(
         &self,
         track_id: &str,
-        continuation: &str,
+        from: Option<&str>,
     ) -> Result<(Vec<Track>, Option<String>)> {
-        radio::continuation(&self.api, track_id, continuation).await
+        radio::station(&self.api, track_id, from).await
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {
