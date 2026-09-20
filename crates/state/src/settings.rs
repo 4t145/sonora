@@ -567,7 +567,7 @@ impl AppSettings {
             }
             None => (Values::default(), writable),
         };
-      
+
         let state = match store.load() {
             Ok(Some(saved)) => saved,
             Ok(None) => StateValues::default(),
