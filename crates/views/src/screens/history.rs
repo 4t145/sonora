@@ -155,7 +155,7 @@ impl HistoryView {
             )
             .action(
                 Button::new("apply-clear-history")
-                    .danger()
+                    .destructive()
                     .label(t!("common-delete"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.history.update(cx, |history, cx| history.clear(cx));

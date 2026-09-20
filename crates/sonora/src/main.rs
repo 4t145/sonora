@@ -87,10 +87,10 @@ fn main() {
         let database = storage::Database::standard();
         let providers: Vec<Arc<dyn music::MusicProvider>> = vec![
             Arc::new(music::spotify::SpotifyProvider::from_env()),
+            Arc::new(music::apple::AppleProvider::new()),
             Arc::new(music::youtube::YouTubeProvider::new()),
             Arc::new(music::subsonic::SubsonicProvider::new()),
             Arc::new(music::deezer::DeezerProvider::new()),
-            Arc::new(music::apple::AppleProvider::new()),
         ];
         let local_provider: Arc<dyn music::MusicProvider> =
             Arc::new(music::local::LocalProvider::new(
@@ -98,6 +98,7 @@ fn main() {
                     .unwrap_or_else(std::env::temp_dir)
                     .join("sonora"),
                 database.clone(),
+                storage::Cache::standard(),
             ));
         let lyrics: Vec<Arc<dyn LyricsProvider>> = vec![
             Arc::new(music::spotify::SpotifyLyrics::from_env()),
@@ -217,9 +218,32 @@ fn follow(items: &[String], cx: &mut App) {
 /// With" launch or drop hands us across platforms.
 fn local_path_from_arg(arg: &str) -> Option<PathBuf> {
     match arg.strip_prefix("file://") {
-        Some(rest) => Some(PathBuf::from(percent_decode(rest))),
+        Some(rest) => Some(PathBuf::from(file_uri_path(rest))),
         None => Some(PathBuf::from(arg)),
     }
+}
+
+/// A `file://` URI body turned into a filesystem path. Windows `file:///C:/…`
+/// keeps a slash in front of the drive, which is not a path the OS will open.
+fn file_uri_path(rest: &str) -> String {
+    let decoded = percent_decode(rest);
+    let path = decoded
+        .strip_prefix("localhost")
+        .or_else(|| decoded.strip_prefix("LOCALHOST"))
+        .unwrap_or(decoded.as_str());
+    #[cfg(windows)]
+    {
+        if let Some(drive) = path.strip_prefix('/')
+            && drive
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic)
+            && drive.as_bytes().get(1) == Some(&b':')
+        {
+            return drive.to_owned();
+        }
+    }
+    path.to_owned()
 }
 
 fn percent_decode(value: &str) -> String {
@@ -265,9 +289,11 @@ fn open_window(cx: &mut App) {
         library,
         history: _,
         lyrics: _,
+        network: _,
         pins: _,
         playback,
         queue,
+        scan: _,
         scrobbling: _,
         settings: _,
         updates: _,

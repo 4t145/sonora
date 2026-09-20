@@ -227,7 +227,7 @@ impl RenderOnce for HeroPlayButton {
             let current = playback.track().and_then(|track| track.id.as_deref());
             current
                 .filter(|current| self.listing.holds(current, cx))
-                .map(|_| playback.state().clone())
+                .map(|_| playback.apparent())
         };
         let (label, icon, blocked) = match &state {
             Some(PlaybackState::Playing) => (t!("play-pause"), "icons/pause.svg", false),

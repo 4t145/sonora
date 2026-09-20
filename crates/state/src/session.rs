@@ -14,7 +14,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Shelf;
 use crate::catalog::CatalogSource;
 use crate::settings::AppSettings;
-use crate::{Io, join};
+use crate::{Io, Network, join};
 
 const HEARTBEAT: Duration = Duration::from_secs(30);
 /// How often the sign-in window is asked whether the user is through.
@@ -36,9 +36,11 @@ pub struct Failure {
 
 impl Failure {
     fn new(error: &Error) -> Self {
+        let reason = format!("{error:#}");
         let problem = error
             .downcast_ref::<SignInFailure>()
-            .map(|failure| failure.0);
+            .map(|failure| failure.0)
+            .or_else(|| music::trouble::offline(&reason).then_some(SignInProblem::Network));
         let detail = error
             .chain()
             .skip(1)
@@ -50,6 +52,12 @@ impl Failure {
             detail: (!detail.is_empty()).then(|| detail.join(": ")),
         }
     }
+
+    /// Whether the sign-in failed because there was no network, rather than because the account
+    /// was refused. A provider that was only unreachable is still the user's.
+    pub fn offline(&self) -> bool {
+        self.problem == Some(SignInProblem::Network)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +66,10 @@ pub enum SessionState {
     Restoring,
     Authorizing(Option<SignInPrompt>),
     SignedIn(UserProfile),
+    /// The stored account could not be reached. It is still the user's, so nothing is signed
+    /// out: the app stays on whatever the library kept and on the local files, and tries the
+    /// account again by itself once the network is back.
+    Offline(Failure),
     Failed(Failure),
 }
 
@@ -81,6 +93,8 @@ pub struct ProviderInfo {
     pub web_sign_in: bool,
     pub protected: bool,
     pub stored: bool,
+    /// Whether what is stored is an anonymous session rather than an account.
+    pub guest: bool,
     pub active: bool,
     pub pending: bool,
     pub error: Option<Failure>,
@@ -114,6 +128,8 @@ pub struct Session {
     local_playback: Option<Arc<dyn PlaybackFactory>>,
     local_capabilities: Capabilities,
     local_task: Option<Task<()>>,
+    /// Whether a local scan is under way, so the UI can show its progress.
+    scanning: bool,
     watch: Option<Task<()>>,
     reconnect: Option<Task<()>>,
     reconnecting: bool,
@@ -162,6 +178,7 @@ impl Session {
             local_playback: None,
             local_capabilities: Capabilities::NONE,
             local_task: None,
+            scanning: false,
             watch: None,
             reconnect: None,
             reconnecting: false,
@@ -234,6 +251,7 @@ impl Session {
                 web_sign_in: provider.web_sign_in().is_some() && webview::supported(),
                 protected: provider.protected(),
                 stored: provider.stored(),
+                guest: provider.stored_guest(),
                 active: self.active == Some(index),
                 pending: self.awaiting == Some(index),
                 error: match &self.error {
@@ -300,6 +318,12 @@ impl Session {
     pub fn provider_slug(&self) -> Option<&'static str> {
         let provider = &self.providers[self.active?];
         Some(provider.slug())
+    }
+
+    /// The host to try when checking whether the network is back. It is the active provider's
+    /// own, so the check never touches a service the app is not already using.
+    pub fn reach(&self) -> Option<String> {
+        self.providers.get(self.active?)?.reach()
     }
 
     pub fn local_slug(&self) -> &'static str {
@@ -577,6 +601,21 @@ impl Session {
         }
     }
 
+    /// Whether the active provider has an account stored, which is what tells a failed restore
+    /// from a user who signed out.
+    fn stored_active(&self) -> bool {
+        self.active
+            .is_some_and(|index| self.providers[index].stored())
+    }
+
+    /// Tries the stored account again once the network is back, for a run that started without
+    /// one. Anything but a run held up by the network is left alone.
+    pub fn restore_if_offline(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.state, SessionState::Offline(_)) {
+            self.restore(cx);
+        }
+    }
+
     fn remaining(&self) -> Option<usize> {
         self.active
             .filter(|index| self.providers[*index].stored())
@@ -720,13 +759,23 @@ impl Session {
 
     fn failed(&mut self, error: &Error, cx: &mut Context<Self>) {
         let failure = Failure::new(error);
+        Network::failed(&format!("{error:#}"), cx);
         if let Some(failed) = self.awaiting.or(self.active) {
             self.error = Some((failed, failure.clone()));
         }
+        // Only a restore may end up offline. A sign-in the user is watching says what went
+        // wrong on the page they started it from.
+        let restoring = self.awaiting.is_none();
         self.awaiting = None;
         if let Some((index, profile)) = self.resume.take() {
             self.active = Some(index);
             self.state = SessionState::SignedIn(profile);
+            cx.notify();
+            return;
+        }
+        if restoring && failure.offline() && self.stored_active() {
+            log::warn!("session: the account could not be reached, carrying on offline");
+            self.state = SessionState::Offline(failure);
             cx.notify();
             return;
         }
@@ -742,7 +791,7 @@ impl Session {
         if self.local_folders.is_empty() {
             return;
         }
-        self.rescan_local(cx);
+        self.rescan_local(false, cx);
     }
 
     /// Adds a folder to the local library, then rescans every configured folder together so
@@ -781,13 +830,23 @@ impl Session {
     }
 
     /// Rescans every configured local folder without changing the list, e.g. after files
-    /// changed on disk or a tag was edited.
-    pub fn rescan_local(&mut self, cx: &mut Context<Self>) {
+    /// changed on disk or a tag was edited. A `thorough` rescan is the one the user asked for:
+    /// it forgets what the last scan recorded, so every folder is listed and every file stat'd
+    /// again, which is the only way an edit made behind Sonora's back is noticed.
+    pub fn rescan_local(&mut self, thorough: bool, cx: &mut Context<Self>) {
+        if thorough {
+            self.local_provider.forget_scan();
+        }
         self.set_local_folders(self.local_folders.clone(), cx);
     }
 
+    /// Points the local library at `folders` and scans them. A scan already under way is
+    /// cancelled first: its folders may be the ones just removed, and two scans would only
+    /// fight over the same disk.
     fn set_local_folders(&mut self, folders: Vec<PathBuf>, cx: &mut Context<Self>) {
+        music::progress::cancel();
         if folders.is_empty() {
+            self.scanning = false;
             self.local_provider.sign_out();
             self.local_folders = Vec::new();
             self.settings.update(cx, |settings, cx| {
@@ -806,6 +865,8 @@ impl Session {
         let provider = self.local_provider.clone();
         let chosen = folders.clone();
         let io = self.io.clone();
+        self.scanning = true;
+        cx.notify();
         self.local_task = Some(cx.spawn(async move |this, cx| {
             let prompt: PromptSink = Arc::new(|_| {});
             let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -814,15 +875,19 @@ impl Session {
             )
             .await;
 
-            this.update(cx, |this, cx| match signed_in {
-                Ok(session) => {
-                    this.local_folders = chosen.clone();
-                    this.settings
-                        .update(cx, |settings, cx| settings.set_local_folders(chosen, cx));
-                    this.local_signed_in(session, cx);
-                }
-                Err(error) => {
-                    log::warn!("session: cannot update local music folders: {error:#}");
+            this.update(cx, |this, cx| {
+                this.scanning = false;
+                match signed_in {
+                    Ok(session) => {
+                        this.local_folders = chosen.clone();
+                        this.settings
+                            .update(cx, |settings, cx| settings.set_local_folders(chosen, cx));
+                        this.local_signed_in(session, cx);
+                    }
+                    Err(error) => {
+                        log::warn!("session: cannot update local music folders: {error:#}");
+                        cx.notify();
+                    }
                 }
             })
             .ok();
@@ -838,7 +903,7 @@ impl Session {
             return;
         }
         if !self.local_folders.is_empty() {
-            return self.rescan_local(cx);
+            return self.rescan_local(false, cx);
         }
 
         let provider = self.local_provider.clone();
@@ -859,6 +924,11 @@ impl Session {
             })
             .ok();
         }));
+    }
+
+    /// Whether a local scan is under way right now.
+    pub fn scanning(&self) -> bool {
+        self.scanning
     }
 
     fn local_signed_in(&mut self, session: ProviderSession, cx: &mut Context<Self>) {

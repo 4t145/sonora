@@ -1,4 +1,5 @@
 use crate::metrics::snapped;
+use crate::palette::{CoverPalette, of_image};
 use crate::skeleton::Skeleton;
 use crate::theme::ActiveTheme as _;
 use futures::AsyncReadExt as _;
@@ -22,9 +23,11 @@ const FILE_PREFIX: &str = "file://";
 
 const FALLBACK_ICON: &str = "icons/music.svg";
 pub(crate) const ROUNDED: Pixels = px(4.);
+/// The one limit on decoded artwork. An insert that crosses it evicts the least
+/// recently drawn covers at once, whatever their age, so the cache never holds
+/// more than this between sweeps either.
 const CACHE_BYTES: usize = 32 * 1024 * 1024;
 const CACHE_ITEMS: usize = 256;
-const HARD_BYTES: usize = 192 * 1024 * 1024;
 const MAX_SAMPLE_EDGE: u32 = 1024;
 const GRACE: Duration = Duration::from_secs(5);
 const KEEP_ITEMS: usize = 96;
@@ -36,6 +39,10 @@ const SOFT_SIGMA: f32 = 1.6;
 const SMALL_BYTES: usize = 64 * 1024;
 const BIG_BYTES: usize = 256 * 1024;
 const MAX_PENDING: usize = 8;
+/// How many cover palettes are kept. Each one is two colours, so the map costs
+/// nothing beside the frames, and holding them past an eviction is what keeps a
+/// button its colour while its cover is decoded again.
+const TINT_ITEMS: usize = 4096;
 
 type ArtworkKey = (Resource, u32);
 
@@ -223,6 +230,9 @@ struct ArtworkCache {
     items: HashMap<ArtworkKey, Cached>,
     pending: HashMap<ArtworkKey, Instant>,
     soft: HashMap<(Resource, u32), Arc<RenderImage>>,
+    /// The palette of every cover decoded this run, kept apart from the frames
+    /// so an eviction never costs a button its colour.
+    tints: HashMap<Resource, CoverPalette>,
     bytes: usize,
     _sweep: Task<()>,
 }
@@ -238,6 +248,7 @@ impl ArtworkCache {
                 items: HashMap::new(),
                 pending: HashMap::new(),
                 soft: HashMap::new(),
+                tints: HashMap::new(),
                 bytes: 0,
                 _sweep: sweeper(cx),
             });
@@ -254,6 +265,13 @@ impl ArtworkCache {
         cx: &mut App,
     ) {
         let bytes = value.as_ref().map_or(0, |image| image_bytes(image));
+        if let Ok(image) = &value
+            && !self.tints.contains_key(&resource.0)
+        {
+            let palette = of_image(image);
+            self.trim_tints();
+            self.tints.insert(resource.0.clone(), palette);
+        }
         self.bytes = self.bytes.saturating_add(bytes);
         self.items.insert(
             resource,
@@ -264,19 +282,23 @@ impl ArtworkCache {
             },
         );
 
-        while self.items.len() > 1 {
-            let forced = self.bytes > HARD_BYTES;
-            if !forced && self.bytes <= CACHE_BYTES && self.items.len() <= CACHE_ITEMS {
-                break;
-            }
-            let Some((resource, used)) = self.oldest() else {
+        while self.items.len() > 1 && (self.bytes > CACHE_BYTES || self.items.len() > CACHE_ITEMS) {
+            let Some((resource, _)) = self.oldest() else {
                 break;
             };
-            if !forced && used.elapsed() < GRACE {
-                break;
-            }
             self.evict(&resource, Some(&mut *window), cx);
         }
+    }
+
+    /// Drops the palettes of covers no longer held, once the map has grown past
+    /// its cap. Scrolling through more art than that pays one pass.
+    fn trim_tints(&mut self) {
+        if self.tints.len() < TINT_ITEMS {
+            return;
+        }
+        let live = &self.items;
+        self.tints
+            .retain(|resource, _| live.keys().any(|key| &key.0 == resource));
     }
 
     fn oldest(&self) -> Option<(ArtworkKey, Instant)> {
@@ -527,6 +549,16 @@ pub(crate) fn resource(url: impl Into<SharedString>) -> Resource {
         Some(path) => Resource::Path(Arc::from(Path::new(path))),
         None => Resource::Uri(SharedUri::from(url)),
     }
+}
+
+/// The palette of a cover the artwork cache has already decoded, or none while
+/// it has not been drawn yet. Nothing is decoded here, so the colours land on
+/// the frame the cover appears and never before it.
+pub fn cover_palette(url: &str, cx: &App) -> Option<CoverPalette> {
+    let installed = cx.try_global::<Installed>()?;
+    let resource = resource(url.to_owned());
+
+    installed.0.read(cx).tints.get(&resource).copied()
 }
 
 pub fn artwork_usage(cx: &App) -> Option<(usize, usize)> {

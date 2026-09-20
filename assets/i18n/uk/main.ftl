@@ -51,6 +51,9 @@ library-no-catalog-albums = Альбомів не знайдено
 library-no-catalog-artists = Виконавців не знайдено
 library-no-matches = Нічого не знайдено
 library-not-loaded = Бібліотека не завантажилася
+library-scanning = Переглядаю ваші теки…
+library-scanning-found = Переглядаю ваші теки… поки { $found }
+library-scanning-progress = Читаю вашу музику… { $read } з { $found }
 library-part-not-loaded = Цей розділ бібліотеки не завантажився
 library-local-unconfigured = Налаштуйте локальну бібліотеку
 
@@ -326,6 +329,8 @@ login-password-hint = Пароль
 login-server-submit = Підключитися
 login-account-title = Виберіть акаунт
 login-account-detail = У цій сесії виконано вхід у кілька акаунтів Google. Виберіть той, який має використовувати Sonora.
+login-choose-title = Вхід у { $provider }
+login-choose-detail = Виберіть спосіб входу в { $provider }.
 
 # album and playlist pages
 detail-album = Альбом
@@ -386,8 +391,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = Швидкий вибір
-home-listen-again = Послухати знову
-home-quick-picks-eyebrow = Почніть із треку
 home-quick-picks-empty = Додайте кілька треків, і вони з'являться тут
 
 # search page
@@ -498,6 +501,7 @@ month-11 = лист.
 month-12 = груд.
 
 # settings
+settings-search = Пошук у налаштуваннях
 settings-tab-general = Загальні
 settings-tab-appearance = Вигляд
 settings-tab-playback = Відтворення
@@ -511,8 +515,16 @@ settings-opacity-value = { $percent }%
 settings-theme-config = Відкрити конфіг
 settings-adaptive = Адаптивна тема
 settings-adaptive-detail = Підфарбовувати палітру обкладинкою альбому, що грає
+settings-ambient = Атмосферне тло
+settings-ambient-detail = Заливати повноекранний режим кольорами обкладинки
+settings-ambient-motion = Рух тла
+settings-ambient-motion-detail = Плавно рухати кольори тла, а не тримати їх нерухомими
 settings-visualizer = Візуалізатор
-settings-visualizer-detail = Показувати смужки спектра позаду обкладинки в повноекранному режимі
+settings-visualizer-detail = Як малюється спектр позаду обкладинки в повноекранному режимі
+settings-visualizer-style-none = Вимкнено
+settings-visualizer-style-bars = Смужки
+settings-visualizer-style-wave = Хвиля
+settings-visualizer-style-both = Смужки і хвиля
 settings-fullscreen-controls-autohide = Ховати керування в повноекранному режимі
 settings-fullscreen-controls-autohide-detail = Плавно ховати керування відтворенням, коли в повноекранному режимі немає дій
 settings-icons = Набір піктограм
@@ -658,6 +670,7 @@ settings-group-accounts = Акаунти
 settings-group-library = Медіатека
 settings-group-text = Текст
 settings-group-motion = Анімація
+settings-group-fullscreen = Повноекранний режим
 settings-group-title-bar = Заголовок вікна
 settings-group-window-style = Стиль вікна
 settings-equalizer = Еквалайзер
@@ -722,6 +735,9 @@ settings-choose-folder = Вибрати папку…
 settings-add-folder = Додати папку
 settings-remove-folder = Видалити папку
 settings-rescan = Пересканувати
+settings-scan-walking = Сканую…
+settings-scan-progress = { $percent }%
+settings-scan-done = Готово за { $seconds } с
 settings-tab-about = Про програму
 settings-version = Версія
 settings-version-detail = Складання Sonora, яке зараз запущено
@@ -851,3 +867,10 @@ nav-pins-alphabetical = За абеткою
 nav-pins-kind = За типом
 nav-show-full-library = Показувати всю медіатеку
 nav-return-top = Догори
+
+# trouble
+trouble-offline = Немає з'єднання
+trouble-offline-detail = Перевірте підключення до інтернету та спробуйте ще раз.
+trouble-not-loaded = Не вдалося завантажити
+trouble-retry = Повторити
+toast-offline = Немає з'єднання. Нічого не відтворюватиметься, доки воно не повернеться.

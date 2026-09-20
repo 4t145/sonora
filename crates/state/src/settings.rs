@@ -245,9 +245,6 @@ const DEFAULT_SIDEBAR_RIGHT_WIDTH: f32 = 254.;
 const DEFAULT_FONT_SIZE: f32 = 14.;
 const DEFAULT_LYRICS_SCALE: f32 = 1.;
 const DEFAULT_STARTUP: &str = "home";
-/// The shape of `settings.json`. For example, v2 moved runtime state out into `state.sqlite`.
-const SETTINGS_VERSION: u32 = 2;
-
 /// "Whatever the platform uses".
 pub const SYSTEM_FONT: &str = "auto";
 
@@ -265,7 +262,6 @@ struct Held {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct Values {
-    version: u32,
     normalisation: bool,
     gapless: bool,
     equalizer: bool,
@@ -295,8 +291,6 @@ struct Values {
     #[serde(default = "system_font")]
     font: String,
     startup: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    local_folder: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     local_folders: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -313,7 +307,10 @@ struct Values {
 struct Appearance {
     theme: String,
     adaptive_theme: bool,
+    ambient: bool,
+    ambient_motion: bool,
     visualizer: bool,
+    visualizer_style: String,
     icons: String,
     rounding: String,
     blur: bool,
@@ -341,7 +338,6 @@ struct Appearance {
 impl Default for Values {
     fn default() -> Self {
         Self {
-            version: SETTINGS_VERSION,
             normalisation: false,
             gapless: true,
             equalizer: false,
@@ -376,13 +372,20 @@ impl Default for Values {
             language: i18n::AUTO.to_owned(),
             font: system_font(),
             startup: DEFAULT_STARTUP.to_owned(),
-            local_folder: None,
             local_folders: Vec::new(),
             hidden_nav: Vec::new(),
             scrobbling: BTreeMap::new(),
             appearance: Appearance::default(),
         }
     }
+}
+
+/// One narrowed filter axis as stored per table: a flag that is on, or a range the user
+/// shrank. Whole ranges and flags that are off read as untouched and take no space.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FilterValue {
+    Flag(bool),
+    Range(f32, f32),
 }
 
 /// Everything `state.sqlite` holds under the `runtime` key: values the app changes on its own
@@ -402,6 +405,7 @@ struct StateValues {
     provider: String,
     tables: HashMap<String, Layout>,
     sorting: HashMap<String, Option<Sorting>>,
+    filters: HashMap<String, HashMap<String, FilterValue>>,
     views: HashMap<String, Mode>,
     pinned: Vec<Held>,
     sidebar_pinned_open: bool,
@@ -428,6 +432,7 @@ impl Default for StateValues {
             provider: "spotify".to_owned(),
             tables: HashMap::new(),
             sorting: HashMap::new(),
+            filters: HashMap::new(),
             views: HashMap::new(),
             pinned: Vec::new(),
             sidebar_pinned_open: false,
@@ -489,7 +494,10 @@ impl Default for Appearance {
         Self {
             theme: "dark".to_owned(),
             adaptive_theme: true,
+            ambient: true,
+            ambient_motion: true,
             visualizer: true,
+            visualizer_style: ui::VisualizerStyle::default().id().to_owned(),
             icons: icons::BASE.to_owned(),
             rounding: Rounding::Rounded.id().to_owned(),
             blur: true,
@@ -543,7 +551,7 @@ impl AppSettings {
                 (None, false)
             }
         };
-        let (mut values, writable) = match bytes.as_deref().map(serde_json::from_slice::<Values>) {
+        let (values, writable) = match bytes.as_deref().map(serde_json::from_slice::<Values>) {
             Some(Ok(values)) => (values, writable),
             Some(Err(error)) => {
                 log::warn!("settings: cannot parse {}: {error}", path.display());
@@ -551,22 +559,6 @@ impl AppSettings {
             }
             None => (Values::default(), writable),
         };
-        if values.lyrics_providers.iter().any(|name| name == "native") {
-            values.lyrics_providers.retain(|name| name != "native");
-            for name in ["Spotify", "YouTube Music"] {
-                if !values.lyrics_providers.iter().any(|held| held == name) {
-                    values.lyrics_providers.push(name.to_owned());
-                }
-            }
-        }
-        // A single `local_folder` predates multiple local libraries; fold it into
-        // `local_folders` once and never write the singular field back out.
-        if let Some(folder) = values.local_folder.take()
-            && !values.local_folders.contains(&folder)
-        {
-            values.local_folders.push(folder);
-        }
-
         let state = match store.load() {
             Ok(Some(saved)) => saved,
             Ok(None) => StateValues::default(),
@@ -575,7 +567,6 @@ impl AppSettings {
                 StateValues::default()
             }
         };
-        values.version = SETTINGS_VERSION;
 
         Self {
             values,
@@ -781,8 +772,31 @@ impl AppSettings {
         self.values.appearance.adaptive_theme
     }
 
-    pub fn visualizer(&self) -> bool {
-        self.values.appearance.visualizer
+    /// Whether fullscreen paints the ambient background sampled from the cover.
+    pub fn ambient(&self) -> bool {
+        self.values.appearance.ambient
+    }
+
+    /// Whether the ambient background drifts. Off leaves it a still gradient, which is what
+    /// the system reduce-motion preference does too.
+    pub fn ambient_motion(&self) -> bool {
+        self.values.appearance.ambient_motion
+    }
+
+    /// Whether the playing cover should colour the theme, given whether fullscreen is up. The
+    /// ambient background is painted out of the tint, so fullscreen tints whatever the adaptive
+    /// theme setting says.
+    pub fn cover_tint(&self, fullscreen: bool) -> bool {
+        self.adaptive_theme() || (fullscreen && self.ambient())
+    }
+
+    /// The visualizer's style, `None` when it is off. The old `visualizer` switch is still the
+    /// off state, so a settings file written before the two were one setting keeps its answer.
+    pub fn visualizer_style(&self) -> ui::VisualizerStyle {
+        match self.values.appearance.visualizer {
+            true => ui::VisualizerStyle::from_id(&self.values.appearance.visualizer_style),
+            false => ui::VisualizerStyle::None,
+        }
     }
 
     pub fn fullscreen_controls_autohide(&self) -> FullscreenControlsAutohide {
@@ -826,6 +840,7 @@ impl AppSettings {
             transparency: self.transparency(),
             blur: self.blur(),
             tint: None,
+            tint_secondary: None,
         }
     }
 
@@ -1097,6 +1112,32 @@ impl AppSettings {
         self.schedule_state_save(cx);
     }
 
+    /// The narrowed filter axes stored under a table key, if any.
+    pub fn filters(&self, table: &str) -> Option<HashMap<String, FilterValue>> {
+        self.state.filters.get(table).cloned()
+    }
+
+    /// Stores the narrowed filter axes of a table. An empty map drops the entry, so resetting
+    /// a table clears its stored filters on the next store.
+    pub fn set_filters(
+        &mut self,
+        table: &str,
+        filters: HashMap<String, FilterValue>,
+        cx: &mut Context<Self>,
+    ) {
+        if filters.is_empty() {
+            if self.state.filters.remove(table).is_none() {
+                return;
+            }
+        } else {
+            if self.state.filters.get(table) == Some(&filters) {
+                return;
+            }
+            self.state.filters.insert(table.to_owned(), filters);
+        }
+        self.schedule_state_save(cx);
+    }
+
     pub fn pinned(&self, slugs: &[&str]) -> Vec<Pin> {
         gather(&self.state.pinned, slugs)
     }
@@ -1328,8 +1369,23 @@ impl AppSettings {
         self.schedule_save(cx);
     }
 
-    pub fn set_visualizer(&mut self, visualizer: bool, cx: &mut Context<Self>) {
-        self.values.appearance.visualizer = visualizer;
+    pub fn set_ambient(&mut self, ambient: bool, cx: &mut Context<Self>) {
+        self.values.appearance.ambient = ambient;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_ambient_motion(&mut self, motion: bool, cx: &mut Context<Self>) {
+        self.values.appearance.ambient_motion = motion;
+        self.schedule_save(cx);
+    }
+
+    /// Picking a style turns the visualizer on; picking `None` turns it off and leaves the style
+    /// behind it alone, so the old choice comes back with it.
+    pub fn set_visualizer_style(&mut self, style: ui::VisualizerStyle, cx: &mut Context<Self>) {
+        self.values.appearance.visualizer = style.shown();
+        if style.shown() {
+            self.values.appearance.visualizer_style = style.id().to_owned();
+        }
         self.schedule_save(cx);
     }
 

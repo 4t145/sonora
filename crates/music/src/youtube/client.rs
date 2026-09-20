@@ -8,8 +8,8 @@ use ytmusic::YtMusic;
 
 use crate::youtube::{genres, subscriptions, wire};
 use crate::{
-    Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, HomeFeed, MediaKind, MusicApi,
-    Playlist, PlaylistDetail, SavedArtist, Track, UserProfile,
+    Album, AlbumDetail, Artist, ArtistProfile, Feed, Genre, GenreDetail, HomeFeed, MediaKind,
+    MusicApi, Playlist, PlaylistDetail, SavedArtist, Track, UserProfile,
 };
 
 const PORTRAIT_LIMIT: usize = 24;
@@ -178,14 +178,7 @@ impl MusicApi for YouTubeClient {
             .library_playlists()
             .await?
             .into_iter()
-            .filter(|playlist| playlist.id != EPISODES)
-            .map(|playlist| {
-                let mut playlist = wire::playlist(playlist, false, false);
-                if playlist.owned && playlist.owner.is_empty() {
-                    playlist.owner = self.account.clone();
-                }
-                playlist
-            })
+            .filter_map(|playlist| library_playlist(playlist, &self.account))
             .collect())
     }
 
@@ -354,7 +347,16 @@ impl MusicApi for YouTubeClient {
     }
 
     async fn home(&self) -> Result<HomeFeed> {
-        genres::home(&self.api).await
+        let mut feed = genres::home(self.api.clone(), self.account.clone());
+        let mut whole = HomeFeed::default();
+        while let Some(lot) = feed.recv().await {
+            whole = lot?;
+        }
+        Ok(whole)
+    }
+
+    async fn home_paged(&self) -> Result<Feed> {
+        Ok(genres::home(self.api.clone(), self.account.clone()))
     }
 
     async fn genres(&self) -> Result<Vec<Genre>> {
@@ -382,4 +384,18 @@ fn collect_thumbnails(node: &serde_json::Value) -> Vec<ytmusic::Thumbnail> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// A playlist of the library as Sonora lists it: one the user made is theirs by name, and the
+/// saved-episodes list YouTube keeps for podcasts is left out.
+pub(crate) fn library_playlist(source: ytmusic::Playlist, account: &str) -> Option<Playlist> {
+    if source.id == EPISODES {
+        return None;
+    }
+    let mut playlist = wire::playlist(source, false, false);
+    if playlist.owned && playlist.owner.is_empty() {
+        playlist.owner = account.to_owned();
+    }
+
+    Some(playlist)
 }

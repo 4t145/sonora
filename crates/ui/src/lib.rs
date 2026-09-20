@@ -8,7 +8,9 @@ mod drag;
 mod explicit;
 mod filters;
 mod form;
+mod glass;
 mod glide;
+mod grain;
 mod info_card;
 mod inline_links;
 mod input;
@@ -25,6 +27,7 @@ mod picker;
 mod pin;
 mod popover;
 mod popup;
+mod radio;
 mod scrollbar;
 mod scroller;
 mod scrubber;
@@ -43,7 +46,7 @@ mod vacancy;
 mod view;
 mod visualizer;
 
-pub use artwork::{Artwork, Avatar, artwork_usage};
+pub use artwork::{Artwork, Avatar, artwork_usage, cover_palette};
 pub use button::Button;
 pub use card::CARD_GROUP;
 pub use card::Card;
@@ -58,7 +61,9 @@ pub use filters::{
     Filter, FilterChange, FlagAxis, RangeAxis, RangeScrubber, RangeState, SortAxis, Unit,
 };
 pub use form::{FORM_CONTEXT, Submit};
+pub use glass::{GLASS_BLUR, GLASS_FILL, frost, glass};
 pub use glide::{Glide, ScrollPosition};
+pub use grain::grain;
 pub use info_card::{Fact, InfoCard};
 pub use inline_links::{InlineLink, InlineLinks};
 pub use input::{
@@ -77,12 +82,13 @@ pub use motion::{
     ease_out_cubic, ease_out_expo, ease_out_quad, entering, entrance_span, mix, veiled,
 };
 pub use notice::Notice;
-pub use palette::tint;
+pub use palette::{CoverPalette, decode, palette, tint};
 pub use panel::{Panel, Side};
 pub use picker::Picker;
 pub use pin::{DraggedPin, Pin, PinKind, Pinnable, Spot};
 pub use popover::{Popover, Popovers};
 pub use popup::Popup;
+pub use radio::Radio;
 pub use scrollbar::{
     Scrollbar, cancel_middle_scroll, quantize, release_middle_scroll, scrolled,
     update_middle_scroll,
@@ -100,8 +106,8 @@ pub use table::{
 };
 pub use tabs::{TabBar, Tabs};
 pub use theme::{
-    ActiveTheme, BACKDROP_TRANSPARENCY, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
-    MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, backdrop,
+    ActiveTheme, BACKDROP_TRANSPARENCY, CoverFill, Look, MAX_FONT, MAX_LYRICS_SCALE,
+    MAX_TRANSPARENCY, MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, backdrop,
 };
 pub use time::{clock, tabular};
 pub use toast::Toast;
@@ -109,4 +115,4 @@ pub use tooltip::{Perch, Tooltip};
 pub use traffic_light_controls::TrafficLightControls;
 pub use vacancy::Vacancy;
 pub use view::Mode;
-pub use visualizer::Visualizer;
+pub use visualizer::{Levels, Visualizer, VisualizerStyle};

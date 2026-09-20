@@ -12,11 +12,12 @@ use ui::{
     ActiveTheme as _, Button, InlineLink, InlineLinks, Menu, Picker, Popovers, Popup, SortAxis,
 };
 use ui::{
-    ColumnSpec, Listing as _, MIN_CONTENT, Pin, PinKind, Scrollbar, Scroller, TableDelegate,
-    TableEvent, TableState, Toggle, clock, table,
+    ColumnSpec, FilterChange, Listing as _, MIN_CONTENT, Pin, PinKind, Scrollbar, Scroller,
+    TableDelegate, TableEvent, TableState, Toggle, clock, table,
 };
 
 use crate::shared::menus::{album_menu, playlist_menu};
+use crate::shared::trouble;
 
 use crate::chrome::tools::{self, Sliders};
 use crate::chrome::{Chrome, Searchable, Toolbar, Tooled};
@@ -131,6 +132,9 @@ impl DetailView {
                     .scroll()
                     .set_offset(gpui::Point::default());
                 this.restore_sorting(cx);
+                // The rows belong to another detail now, so its filters must not leak across.
+                this.table.filter(FilterChange::Reset, cx);
+                this.restore_filters(cx);
             }
             this.retune(cx);
             this.rebuild(cx);
@@ -198,7 +202,7 @@ impl DetailView {
         let me = cx.entity();
         let toolbar = Toolbar::searchable(&me, cx);
 
-        Self {
+        let mut view = Self {
             detail,
             playback,
             playback_status: current_playback,
@@ -214,7 +218,9 @@ impl DetailView {
             popovers: Popovers::default(),
             sliders: Sliders::default(),
             me: me.downgrade(),
-        }
+        };
+        view.restore_filters(cx);
+        view
     }
 
     fn retune(&mut self, cx: &mut Context<Self>) {
@@ -268,6 +274,18 @@ impl DetailView {
             &key,
             cx,
         );
+    }
+
+    fn sift(&mut self, change: FilterChange, cx: &mut Context<Self>) {
+        self.table.filter(change, cx);
+        self.persist(cx);
+        cx.notify();
+    }
+
+    /// Fills filter axes the storage names for the detail on show. See `LibraryView::restore`.
+    fn restore_filters(&mut self, cx: &mut Context<Self>) {
+        let key = self.sort_key(cx);
+        page::restore(&self.settings.clone(), &self.table, &key, cx);
     }
 
     fn header(&self, cx: &Context<Self>) -> AnyElement {
@@ -457,6 +475,10 @@ impl DetailView {
 
 impl Render for DetailView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(failure) = self.failure(cx) {
+            return div().relative().size_full().child(failure);
+        }
+
         self.table.claim(cx);
         let inset = cx.theme().metrics.inset;
         let width = cells::content_width(window, Pixels::ZERO, cx);
@@ -491,6 +513,33 @@ impl Render for DetailView {
                     .child(table(&self.table)),
             )
             .when_some(context_menu, |this, menu| this.child(menu))
+    }
+}
+
+impl DetailView {
+    /// The page an album or a playlist shows instead of its header and its table when it cannot
+    /// be read: the No connection state as soon as the network is gone, whatever rows this page
+    /// happens to hold, and the failure of its own load otherwise.
+    fn failure(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let id = self.detail.read(cx).id()?.to_owned();
+        let reason = match trouble::unreachable(&id, cx) {
+            true => None,
+            false => Some(self.detail.read(cx).error()?.to_owned()),
+        };
+        let detail = self.detail.clone();
+
+        Some(
+            trouble::lost(
+                "detail-lost",
+                t!("trouble-not-loaded"),
+                reason.as_deref(),
+                move |_, _, cx| {
+                    detail.update(cx, |detail, cx| detail.reload(cx));
+                },
+            )
+            .size_full()
+            .into_any_element(),
+        )
     }
 }
 
@@ -562,9 +611,7 @@ impl Tooled for DetailView {
                 &self.sliders,
                 self.table.filters(cx),
                 move |change, cx| {
-                    sifted
-                        .update(cx, |view, cx| view.table.filter(change, cx))
-                        .ok();
+                    sifted.update(cx, |view, cx| view.sift(change, cx)).ok();
                 },
                 cx,
             ),

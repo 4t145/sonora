@@ -300,8 +300,6 @@ release-meta = { $year } • { $kind }
 
 # home page
 home-quick-picks = クイックピック
-home-listen-again = もう一度聴く
-home-quick-picks-eyebrow = 好きな1曲から始める
 home-quick-picks-empty = 何曲かお気に入りに追加するとここに表示されます
 
 # search page
@@ -401,6 +399,7 @@ month-11 = 11月
 month-12 = 12月
 
 # settings
+settings-search = 設定を検索
 settings-tab-general = 一般
 settings-tab-appearance = 外観
 settings-tab-playback = 再生

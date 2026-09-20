@@ -5,6 +5,7 @@ use gpui::{
 };
 
 use crate::button::Button;
+use crate::glass::glass;
 use crate::scrollbar::{Scrollbar, activate_middle_scroll, cancel_middle_scroll};
 use crate::theme::ActiveTheme as _;
 
@@ -20,6 +21,7 @@ pub struct Scroller {
     bar: Entity<Scrollbar>,
     children: Vec<AnyElement>,
     present_surface: bool,
+    owns_scroll: bool,
 }
 
 impl Scroller {
@@ -31,6 +33,18 @@ impl Scroller {
             bar: bar.clone(),
             children: Vec::new(),
             present_surface: true,
+            owns_scroll: true,
+        }
+    }
+
+    /// A region whose child scrolls itself, a `uniform_list` above all. The surface still
+    /// carries the wheel, the middle button and the bar, and leaves the offset to the handle
+    /// the child tracks.
+    #[track_caller]
+    pub fn listing(id: impl Into<ElementId>, bar: &Entity<Scrollbar>) -> Self {
+        Self {
+            owns_scroll: false,
+            ..Self::new(id, bar)
         }
     }
 
@@ -68,6 +82,7 @@ impl RenderOnce for Scroller {
             bar,
             children,
             present_surface,
+            owns_scroll,
         } = self;
 
         let scroll = bar.read(cx).scroll().clone();
@@ -79,9 +94,12 @@ impl RenderOnce for Scroller {
         let mut surface = middle_scroll(base, &bar)
             .id(id)
             .size_full()
-            .overflow_y_scroll()
-            .restrict_scroll_to_axis()
-            .track_scroll(&scroll)
+            .when(owns_scroll, |surface| {
+                surface
+                    .overflow_y_scroll()
+                    .restrict_scroll_to_axis()
+                    .track_scroll(&scroll)
+            })
             .on_scroll_wheel(move |event: &ScrollWheelEvent, window, cx| {
                 match event.delta.precise() {
                     true => gliding.update(cx, |bar, _| bar.stirred()),
@@ -158,13 +176,12 @@ pub fn perched(button: Button, cx: &App) -> Div {
         .justify_center()
         .child(
             div().flex().flex_none().block_mouse_except_scroll().child(
-                button
+                glass(button, cx)
                     .ghost()
                     .small()
                     .rounded_full()
                     .border_1()
-                    .border_color(theme.border)
-                    .bg(theme.popover),
+                    .border_color(theme.border),
             ),
         )
 }
@@ -203,6 +220,7 @@ pub fn return_to(
 
     Some(perched(
         Button::new(id)
+            .secondary()
             .icon("icons/undo-2.svg")
             .tooltip(tooltip)
             .on_click(move |_, window, cx| {

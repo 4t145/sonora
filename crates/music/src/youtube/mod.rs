@@ -164,64 +164,37 @@ impl YouTubeProvider {
         .context("cannot store youtube cookies")
     }
 
+    /// The session the stored cookies still hold, or nothing when YouTube refused them. A
+    /// failure that only says the host was unreachable is handed back instead, so a run without
+    /// a network never reads as an account that went bad.
     async fn restore_cookies(
         &self,
         cookies: &str,
         authuser: usize,
         page_id: Option<&str>,
-    ) -> Option<ProviderSession> {
+    ) -> Result<Option<ProviderSession>> {
         let api = self.cookie_client(cookies, authuser, page_id);
         match api.profile().await {
             Ok(profile) => {
                 log::debug!(
                     "youtube: restored the session for authuser {authuser} page {page_id:?}"
                 );
-                Some(self.authenticated_session(api, wire::profile(profile)))
+                Ok(Some(
+                    self.authenticated_session(api, wire::profile(profile)),
+                ))
             }
+            Err(error) if crate::trouble::offline(&format!("{error:#}")) => Err(error),
             Err(error) => {
                 log::warn!("youtube: the cached cookies are no longer usable: {error:#}");
-                None
+                Ok(None)
             }
         }
     }
 
-    fn store_guest(&self) {
-        if let Err(error) = self.save(&Saved::Guest) {
-            log::warn!("youtube: cannot remember the guest session: {error:#}");
-        }
-    }
-}
-
-/// Folds the `cookies.txt`, `authuser.txt` and `guest` files releases before 0.31 kept
-/// into the single credential file, then removes them. Part of the startup migration pass.
-pub(crate) fn migrate() {
-    let cache = credentials::dir("youtube");
-    let file = cache.join(credentials::FILE);
-    let cookies = cache.join("cookies.txt");
-    let authuser = cache.join("authuser.txt");
-    let guest = cache.join("guest");
-    if !file.exists() {
-        let legacy = match std::fs::read_to_string(&cookies) {
-            Ok(text) if !text.trim().is_empty() => Some(Saved::Cookies {
-                cookies: text.trim().to_owned(),
-                authuser: std::fs::read_to_string(&authuser)
-                    .ok()
-                    .and_then(|stored| stored.trim().parse().ok())
-                    .unwrap_or(0),
-                page_id: None,
-            }),
-            _ if guest.exists() => Some(Saved::Guest),
-            _ => None,
-        };
-        if let Some(saved) = legacy
-            && let Err(error) = save(&file, &saved)
-        {
-            log::warn!("youtube: cannot adopt the old credential files: {error:#}");
-            return;
-        }
-    }
-    for path in [&cookies, &authuser, &guest] {
-        credentials::remove(path);
+    /// Clears whatever was stored when a guest session starts. A guest run holds no account
+    /// and nothing worth keeping, so it leaves nothing behind for the next launch either.
+    fn drop_stored(&self) {
+        credentials::remove(&self.credentials);
     }
 }
 
@@ -261,6 +234,10 @@ impl MusicProvider for YouTubeProvider {
         "youtube"
     }
 
+    fn reach(&self) -> Option<String> {
+        Some("music.youtube.com".to_owned())
+    }
+
     fn public_art(&self) -> bool {
         true
     }
@@ -273,15 +250,20 @@ impl MusicProvider for YouTubeProvider {
         self.credentials.exists()
     }
 
+    fn stored_guest(&self) -> bool {
+        matches!(self.saved(), Some(Saved::Guest))
+    }
+
     async fn restore(&self) -> Result<Option<ProviderSession>> {
         match self.saved() {
             Some(Saved::Cookies {
                 cookies,
                 authuser,
                 page_id,
-            }) => Ok(self
-                .restore_cookies(&cookies, authuser, page_id.as_deref())
-                .await),
+            }) => {
+                self.restore_cookies(&cookies, authuser, page_id.as_deref())
+                    .await
+            }
             Some(Saved::Guest) => {
                 log::debug!("youtube: restoring guest session");
                 Ok(Some(self.guest_session(self.guest_client())))
@@ -298,7 +280,7 @@ impl MusicProvider for YouTubeProvider {
     ) -> Result<ProviderSession> {
         match method {
             SignIn::Anonymous | SignIn::Default => {
-                self.store_guest();
+                self.drop_stored();
                 Ok(self.guest_session(self.guest_client()))
             }
             SignIn::Secret => {

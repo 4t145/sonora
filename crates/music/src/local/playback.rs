@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -121,6 +123,30 @@ impl PlaybackEvents for Events {
 struct Slot {
     id: String,
     length: Option<Duration>,
+}
+
+/// A file read from `skip` on, with every position counted from there, so the decoder never
+/// sees the ID3v2 tag in front of the audio. A seek back to the first frame then lands on that
+/// frame, not inside the tag, where a cover picture can pass for a frame header.
+struct Audio {
+    file: File,
+    skip: u64,
+}
+
+impl Read for Audio {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.file.read(buf)
+    }
+}
+
+impl Seek for Audio {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let pos = match pos {
+            SeekFrom::Start(at) => SeekFrom::Start(at.saturating_add(self.skip)),
+            relative => relative,
+        };
+        Ok(self.file.seek(pos)?.saturating_sub(self.skip))
+    }
 }
 
 fn run(
@@ -360,11 +386,10 @@ fn load(sink: &rodio::Player, id: &str) -> Result<Slot> {
 
     let skip = wire::id3v2_end(path);
     if skip > 0 {
-        use std::io::{Seek, SeekFrom};
         let _ = file.seek(SeekFrom::Start(skip));
     }
     let gapless = !wire::has_lying_xing_frame_count(path, skip);
-    let reader = std::io::BufReader::new(file);
+    let reader = std::io::BufReader::new(Audio { file, skip });
 
     let mut builder = rodio::Decoder::builder()
         .with_data(reader)

@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.37.0"
+version = "0.38.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/sonorahq/sonora"
@@ -38,8 +38,8 @@ env_logger = "0.11"
 fastrand = "2.5"
 futures = "0.3"
 fluent-bundle = "0.16"
-gpui = { git = "https://github.com/sonorahq/gpui", rev = "770544dfcf70fdcf0b5c6e28edb58e2fa77a7e67" }
-gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "770544dfcf70fdcf0b5c6e28edb58e2fa77a7e67", features = [
+gpui = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00" }
+gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00", features = [
   "font-kit",
   "wayland",
   "x11",
@@ -70,7 +70,12 @@ image = { version = "0.25", default-features = false, features = [
   "png",
   "webp",
 ] }
-jiff = { version = "0.2", default-features = false, features = ["std"] }
+jiff = { version = "0.2", default-features = false, features = [
+  "std",
+  "tz-system",
+  "tzdb-bundle-platform",
+  "tzdb-zoneinfo",
+] }
 kakasi = "0.1"
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 libc = "0.2"
@@ -164,6 +169,11 @@ librespot-oauth = { git = "https://github.com/sonorahq/librespot", rev = "e7eb95
 librespot-playback = { git = "https://github.com/sonorahq/librespot", rev = "e7eb953d5848fd97bacd00e6c0e33500765eaa63" }
 librespot-protocol = { git = "https://github.com/sonorahq/librespot", rev = "e7eb953d5848fd97bacd00e6c0e33500765eaa63" }
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e85e5ad5565c45dfdda95051158eb6b56c3" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
 
 [profile.dev]
 split-debuginfo = "unpacked"

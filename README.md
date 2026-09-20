@@ -18,15 +18,15 @@ Stream from your favorite services and play local files — all in one **native*
     <table>
       <tr>
         <td colspan="2">
-          <img width="1602" height="992" alt="image" src="https://github.com/user-attachments/assets/d0357517-a28d-4c90-abd1-4f3e8d8cdedc" />
+          <img width="1613" height="981" alt="image" src="https://github.com/user-attachments/assets/7952a912-7fbc-4186-b467-a08dd7e71e22" />
         </td>
       </tr>
       <tr>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/70979e4c-261f-4561-b671-04d28a9971a9" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/580bf9d6-db85-4fde-b599-82ba2a28cc51" />
         </td>
         <td width="50%">
-          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/ff3b4284-25e2-4487-bf9b-60d8f56dc44d" />
+          <img width="1623" height="987" alt="image" src="https://github.com/user-attachments/assets/64fcd709-5917-432c-a418-2e07527343d2" />
         </td>
       </tr>
     </table>
@@ -187,19 +187,19 @@ AI-assisted proofreading and translation of human-written text are permitted.
 
 | Language | Translated | Coverage |
 | --- | --- | --- |
-| English (`en-US`) | 695/695 | 100% |
-| Deutsch (`de`) | 632/695 | 91% |
-| Español (`es`) | 610/695 | 88% |
-| Français (`fr`) | 632/695 | 91% |
-| Italiano (`it`) | 610/695 | 88% |
-| Bahasa Indonesia (`id`) | 610/695 | 88% |
-| 日本語 (`ja`) | 610/695 | 88% |
-| Русский (`ru`) | 690/695 | 99% |
-| Українська (`uk`) | 690/695 | 99% |
-| Polski (`pl`) | 690/695 | 99% |
-| Português (Brasil) (`pt-BR`) | 610/695 | 88% |
-| 简体中文 (`zh-CN`) | 610/695 | 88% |
-| Türkçe (`tr`) | 610/695 | 88% |
+| English (`en-US`) | 716/716 | 100% |
+| Deutsch (`de`) | 631/716 | 88% |
+| Español (`es`) | 609/716 | 85% |
+| Français (`fr`) | 631/716 | 88% |
+| Italiano (`it`) | 609/716 | 85% |
+| Bahasa Indonesia (`id`) | 609/716 | 85% |
+| 日本語 (`ja`) | 609/716 | 85% |
+| Русский (`ru`) | 711/716 | 99% |
+| Українська (`uk`) | 711/716 | 99% |
+| Polski (`pl`) | 711/716 | 99% |
+| Português (Brasil) (`pt-BR`) | 609/716 | 85% |
+| 简体中文 (`zh-CN`) | 609/716 | 85% |
+| Türkçe (`tr`) | 609/716 | 85% |
 
 <!-- i18n:end -->
 
