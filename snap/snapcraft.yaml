@@ -89,8 +89,6 @@ parts:
       - libxi-dev
       - libxkbcommon-dev
       - libxkbcommon-x11-dev
-      # A cookie sign-in (YouTube) dlopens libwebkit2gtk-4.1.so.0.
-      - libwebkit2gtk-4.1-dev
     stage-packages:
       - libasound2t64
       - libasound2-plugins
@@ -100,7 +98,10 @@ parts:
       - libsqlite3-0
       - libvulkan1
       - libwayland-client0
-      - libwebkit2gtk-4.1-0
+      # No libwebkit2gtk here on purpose: gnome-46-2404 stages it and the extension
+      # puts the platform's library directory on the load path, so a copy of our own
+      # would be 122 MiB shadowing the one already there. Nothing links it either --
+      # the cookie sign-in dlopens it -- so there is no build dependency to match.
       - libx11-6
       - libxcb1
       - libxcursor1
