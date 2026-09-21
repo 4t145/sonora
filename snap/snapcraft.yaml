@@ -58,18 +58,14 @@ slots:
 
 parts:
   sonora:
-    plugin: rust
+    # Not the rust plugin: it validates that rustup answers in the build environment,
+    # which /snap/bin is not on, and it would drive cargo for a workspace this part
+    # already overrides the build and the prime of anyway. Installing the toolchain
+    # here is the whole of what the plugin would have done.
+    plugin: nil
     source: .
-    # The workspace has several members; only the binary crate is wanted.
-    rust-path: [crates/sonora]
-    rust-channel: "1.98.1"
-    # The rust plugin validates that rustup is on the build environment, but the
-    # craft-parts inside snapcraft 9.0.1 does not put it there itself, so the build
-    # fails before it starts. Asking for the snap explicitly costs nothing on a
-    # version that does add it: build snaps are a set.
-    build-snaps:
-      - rustup
     build-packages:
+      - curl
       # .cargo/config.toml passes -fuse-ld=mold for x86_64-unknown-linux-gnu.
       - mold
       # crates/widevine compiles its CDM host from shim.cc.
@@ -113,10 +109,18 @@ parts:
     override-build: |
       craftctl default
 
-      # The rust plugin installs to $CRAFT_PART_INSTALL/bin; the desktop file and
-      # the launcher both expect usr/bin.
-      install -Dm755 "$CRAFT_PART_INSTALL/bin/sonora" "$CRAFT_PART_INSTALL/usr/bin/sonora"
-      rm -f "$CRAFT_PART_INSTALL/bin/sonora"
+      # rust-toolchain.toml pins the version, but it also asks for rust-analyzer and
+      # friends that a build has no use for; RUSTUP_TOOLCHAIN overrides the file so
+      # only the compiler is fetched. Keep the version in step with that file.
+      export RUSTUP_HOME="$CRAFT_PART_BUILD/.rustup"
+      export CARGO_HOME="$CRAFT_PART_BUILD/.cargo"
+      export RUSTUP_TOOLCHAIN=1.98.1
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUSTUP_TOOLCHAIN"
+      export PATH="$CARGO_HOME/bin:$PATH"
+
+      cargo build --release --locked --package sonora
+      install -Dm755 target/release/sonora "$CRAFT_PART_INSTALL/usr/bin/sonora"
 
       # Every asset is compiled into the executable, so only the launcher entry
       # and the icons are installed.
