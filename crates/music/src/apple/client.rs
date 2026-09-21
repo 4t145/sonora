@@ -25,8 +25,8 @@ use crate::apple::auth::{self, AGENT};
 use crate::apple::wire;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
-    HomeFeed, MediaKind, MusicApi, Page, Pages, PinTarget, Playlist, PlaylistDetail, SavedArtist,
-    Track, UserProfile,
+    HomeFeed, MediaKind, MusicApi, Page, Pages, PinOutcome, PinTarget, Playlist, PlaylistDetail,
+    SavedArtist, Track, UserProfile,
 };
 
 /// The API the web player calls.
@@ -37,9 +37,6 @@ const PAGE: usize = 100;
 
 /// How many search hits to ask for. Apple refuses a search page larger than this outright.
 const HITS: usize = 25;
-
-/// How many rows the library landing takes, which is all Apple allows for that one.
-const LANDING: usize = 25;
 
 /// How many pages one listing will walk before it stops. A library of a hundred thousand songs
 /// is not something to pull into memory in one go.
@@ -544,6 +541,13 @@ impl AppleClient {
         Ok(found.into_iter().next())
     }
 
+    /// The library ids of the listener's pins, in pin order.
+    async fn pin_ids(&self) -> Result<Vec<String>> {
+        let limit = PAGE.to_string();
+        let answered = self.get("/me/library/pins", &[("limit", &limit)]).await?;
+        Ok(wire::pin_ids(&answered))
+    }
+
     /// Keeps the library resources of one kind the listener has favorited, out of `items`
     /// paired with their library ids.
     ///
@@ -946,18 +950,78 @@ impl MusicApi for AppleClient {
         .await
     }
 
-    /// The library landing, newest first. Apple keeps no pins, so every row comes back
-    /// unpinned.
+    /// The library with Apple's own pins drawn over it: every playlist, album and artist,
+    /// the pinned ones first in pin order. The listings share the memo with the library
+    /// pages loading at the same time.
     async fn pin_targets(&self) -> Result<Option<Vec<PinTarget>>> {
-        let items = self
-            .walk(
-                "/me/library/recently-added",
-                LANDING,
-                &[("include", "catalog")],
-                |row| wire::pin_target(row, OWNER),
-            )
-            .await?;
-        Ok(Some(items))
+        let (pins, playlists, albums, artists) = futures::try_join!(
+            self.pin_ids(),
+            self.walk(
+                "/me/library/playlists",
+                PAGE,
+                &[("extend[library-playlists]", "tags")],
+                |row| Some((library_id(row)?, wire::pin_target(row, OWNER)?))
+            ),
+            self.walk(ALBUMS, PAGE, CATALOG_QUERY, |row| {
+                Some((library_id(row)?, wire::pin_target(row, OWNER)?))
+            }),
+            self.walk(ARTISTS, PAGE, CATALOG_QUERY, |row| {
+                Some((library_id(row)?, wire::pin_target(row, OWNER)?))
+            })
+        )?;
+        let rank: HashMap<&str, usize> = pins
+            .iter()
+            .enumerate()
+            .map(|(at, id)| (id.as_str(), at))
+            .collect();
+        let mut seen = HashSet::new();
+        let mut items: Vec<(usize, PinTarget)> = playlists
+            .into_iter()
+            .chain(albums)
+            .chain(artists)
+            .filter(|(_, item)| seen.insert(item.uri.clone()))
+            .map(|(id, mut item)| match rank.get(id.as_str()) {
+                Some(&at) => {
+                    item.pinned = true;
+                    (at, item)
+                }
+                None => (usize::MAX, item),
+            })
+            .collect();
+        // Pinned items first in pin order; the stable sort keeps the rest in listing order.
+        items.sort_by_key(|(at, _)| *at);
+        Ok(Some(items.into_iter().map(|(_, item)| item).collect()))
+    }
+
+    /// Pins or unpins through Apple's own pins. A catalog id is resolved to its library
+    /// id first; a playlist already carries one.
+    async fn set_pinned(&self, uri: &str, pinned: bool) -> Result<PinOutcome> {
+        let (_, rest) = uri
+            .split_once(':')
+            .context("cannot pin an item without a provider")?;
+        let (kind, id) = rest
+            .split_once(':')
+            .context("cannot pin an item without a kind")?;
+        let item = match kind {
+            "playlist" => id.to_owned(),
+            "album" => self
+                .mine("albums", id)
+                .await?
+                .context("that album is not in the library")?,
+            "artist" => self
+                .mine("artists", id)
+                .await?
+                .context("that artist is not in the library")?,
+            _ => bail!("that kind of item cannot be pinned"),
+        };
+        let path = format!("/me/library/pins/{item}");
+        match pinned {
+            true => self
+                .post(&path, &[], None)
+                .await
+                .map(|_| PinOutcome::Updated),
+            false => self.delete(&path, &[]).await.map(|_| PinOutcome::Updated),
+        }
     }
 
     async fn set_track_saved(&self, track_id: &str, saved: bool) -> Result<()> {
