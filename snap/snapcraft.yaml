@@ -63,6 +63,12 @@ parts:
     # The workspace has several members; only the binary crate is wanted.
     rust-path: [crates/sonora]
     rust-channel: "1.98.1"
+    # The rust plugin validates that rustup is on the build environment, but the
+    # craft-parts inside snapcraft 9.0.1 does not put it there itself, so the build
+    # fails before it starts. Asking for the snap explicitly costs nothing on a
+    # version that does add it: build snaps are a set.
+    build-snaps:
+      - rustup
     build-packages:
       # .cargo/config.toml passes -fuse-ld=mold for x86_64-unknown-linux-gnu.
       - mold
