@@ -66,6 +66,11 @@ parts:
     source: .
     build-packages:
       - curl
+      # opusic-sys and aws-lc-sys build their C libraries with cmake, and the cmake
+      # crate asks for the Ninja generator. A bare core24 container has neither; the
+      # runners and the freedesktop SDK do, which is why only the snap needs this said.
+      - cmake
+      - ninja-build
       # .cargo/config.toml passes -fuse-ld=mold for x86_64-unknown-linux-gnu.
       - mold
       # crates/widevine compiles its CDM host from shim.cc.
