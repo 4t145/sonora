@@ -368,6 +368,9 @@ impl SettingsView {
             Input::new("settings-search", cx)
                 .icon("icons/search.svg")
                 .clearable()
+                // the field floats over the rows the page scrolls beneath it, so it frosts
+                // them the way the category bar under it does
+                .blurred()
         });
         cx.observe(&search, |this, input, cx| {
             let query = input.read(cx).text().trim().to_owned();
@@ -4198,29 +4201,29 @@ impl Render for SettingsHeader {
 
         // a search lights no category, since its rows come from all of them, and picking
         // one ends the search
-        let categories =
-            TabBar::new("settings-categories")
-                .max_w_full()
-                .items(SettingsTab::ALL.map(|tab| {
-                    Button::new(tab.id())
-                        .label(i18n::lookup(tab.key(), None))
-                        .icon(tab.icon())
-                        .small()
-                        .ghost()
-                        .selected(!searching && tab == chosen)
-                        .when(calm == Some(tab), Button::hoverless)
-                        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                            if !hovered && this.calm == Some(tab) {
-                                this.calm = None;
-                                cx.notify();
-                            }
-                        }))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.calm = Some(tab);
-                            this.view.update(cx, |view, cx| view.select(tab, cx));
-                            navigate(Destination::Settings(tab), cx);
-                        }))
-                }));
+        let categories = TabBar::new("settings-categories")
+            .max_w_full()
+            .blurred()
+            .items(SettingsTab::ALL.map(|tab| {
+                Button::new(tab.id())
+                    .label(i18n::lookup(tab.key(), None))
+                    .icon(tab.icon())
+                    .small()
+                    .ghost()
+                    .selected(!searching && tab == chosen)
+                    .when(calm == Some(tab), Button::hoverless)
+                    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                        if !hovered && this.calm == Some(tab) {
+                            this.calm = None;
+                            cx.notify();
+                        }
+                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.calm = Some(tab);
+                        this.view.update(cx, |view, cx| view.select(tab, cx));
+                        navigate(Destination::Settings(tab), cx);
+                    }))
+            }));
 
         div()
             .relative()

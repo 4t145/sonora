@@ -186,6 +186,7 @@ pub struct Input {
     icon: Option<SharedString>,
     compact: bool,
     tucked: bool,
+    blurred: bool,
     clearable: bool,
     masked: bool,
     content: SharedString,
@@ -207,6 +208,7 @@ impl Input {
             icon: None,
             compact: false,
             tucked: false,
+            blurred: false,
             clearable: false,
             masked: false,
             content: SharedString::default(),
@@ -233,6 +235,15 @@ impl Input {
 
     pub fn tucked(mut self) -> Self {
         self.tucked = true;
+        self
+    }
+
+    /// Draws the field as frosted glass: a faint fill over a blur of whatever passes under
+    /// it, rather than the flat secondary fill. Only for a field that floats over content —
+    /// the settings header, say. On flat paint the blur shows nothing and the fill is all
+    /// that is left.
+    pub fn blurred(mut self) -> Self {
+        self.blurred = true;
         self
     }
 
