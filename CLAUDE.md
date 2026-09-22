@@ -34,7 +34,7 @@ crates/
   i18n/       Fluent localization: the `t!` macro, locale selection, embedded .ftl
   icons/      the icon packs: registry, active pack, path resolution, AssetSource
   embed/      build-script helper that walks a folder and writes include_bytes! literals
-  webview/    a native browser window with a throwaway session, for cookie sign-ins
+  webview/    a native browser window with a throwaway session, for cookie sign-ins and PO tokens
   widevine/   fetching the CDM from Google, the pssh box and CENC fMP4 parsing, for any DRM'd provider
 ```
 
@@ -110,12 +110,17 @@ sonora → views → state → music
   `ui`, so `ui` and `views` can both reach it.
 - `embed` is a build-support crate. Nothing links it at runtime; it is a `[build-dependencies]`
   entry of `icons` and `sonora` only.
-- `webview` is a leaf that knows nothing about gpui or music: `Login::open(Target)` puts up a
+- `webview` is a leaf that knows nothing about gpui or music: `Page::open(Target)` puts up a
   platform window over a throwaway session and `poll()` answers `Pending`, `Closed` or
   `Cookies(header)`. The user is through as soon as the proof cookies are on the provider's
   domain; a page of that domain without them means the account provider skipped the hand-off hop
   behind an interstitial of its own, and `poll` loads the sign-in url once more, which is what the
-  page's own Sign in button would do. Every backend fits the same six calls. `macos.rs` is AppKit and WebKit
+  page's own Sign in button would do. A `Target` carrying a `script` is not a sign-in at all: the
+  window is never shown, the script runs in every page it loads before the page's own scripts, and
+  it leaves its answer in one of the `proof` cookies, so the same poll carries it back. That is
+  how the YouTube proof-of-origin token is minted — see [Proof-of-origin
+  tokens](#proof-of-origin-tokens) — and it is why the hand-off retry is skipped for a scripted
+  target, which has none. Every backend fits the same six calls. `macos.rs` is AppKit and WebKit
   through `objc2`, `windows.rs` a Win32 host around an InPrivate WebView2, `linux.rs` a GTK window
   around WebKitGTK, and `unsupported.rs` is what any other platform gets. `native.rs` holds what
   the three share — the window's size, the source-url-to-host parsing, and the `Fetch`/`Reading`
@@ -649,6 +654,57 @@ the sink writes the first packet of the new audio. `Factory` implements
 Never drive a player from a view. Go through `state::Playback`, which owns the engine, pumps
 events into `PlaybackState`, and handles shuffle, repeat, skip debouncing, and the cooldown after
 an `Unavailable` track.
+
+### Proof-of-origin tokens
+
+YouTube stops serving streams to an address it has flagged unless the request carries a
+proof-of-origin token, which is what a run of 403s from the stream host looks like on a free
+account. `ytmusic`'s `WEB_REMIX` path sends one two ways: `serviceIntegrityDimensions.poToken` in
+the player request, and a `pot` parameter on the stream url. The guest `VISIONOS` client is not a
+WebPO client and carries none, which is also why `best_audio` now checks the guest url with a one
+byte range before a track commits to it and falls through to `WEB_REMIX` when the host refuses,
+whether or not an account is signed in.
+
+A token is bound to one identifier and refused against every other. For `WEB_REMIX` that
+identifier is the session, not the track: the account's data sync id when signed in, read once off
+the signed-in home page, and the visitor id otherwise. So one token covers a whole run.
+
+Minting one takes a real browser. Google's BotGuard virtual machine attests the engine it runs in,
+and a hand-written javascript environment does not pass however complete it looks — the gate is an
+`iframe` whose `contentWindow` it pulls pristine constructors out of, so the app's QuickJS
+interpreter is out of the question and so is anything short of an engine. Sonora therefore mints in
+the one real engine it ships: `state::potoken` opens a `webview::Page` on `youtube.com` that is
+never shown, running `crates/state/src/potoken.js`. That script stands between YouTube and its own
+`window.ytAtN` resolver to catch the challenge, pulls the interpreter in as a script element
+through a trusted types policy of its own, snapshots the vm, trades the attestation for an
+integrity token at Google's `GenerateIT`, mints, and leaves the token in a `SONORA_POT` cookie the
+page's poll already reads. A failure comes back in the same cookie behind a `!`.
+
+Nothing about that exchange is hardcoded, and that includes the fallbacks. The request key, the
+anti-abuse host, the rpc path and the api key all come out of the page's own `base.js`, which the
+script reads through the url in `ytcfg`, so a value Google rotates is followed on the next mint.
+There are deliberately no remembered values behind those patterns: a pattern only misses once
+Google has moved what it was looking for, which is exactly when a remembered value is stale, so a
+guess would trade a truthful failure for a request refused for a reason the log then misreports.
+The mint is not on the playback path, so `constants` fails naming the piece that went missing —
+`the player names no request key`, say — and the next track tries again. The request key is the one to watch: the player picks it off an
+`html5_web_po_request_key` experiment and keeps two literals behind that, of which the web client
+takes the second, so a third branch or a swapped order would need reading again.
+
+The two halves meet in `music::potoken`, which is provider-neutral: the client records the binding
+it needs and carries on, the window notices and mints, and the next track gets the real token. A
+mint is never on the playback path. Until one lands, and on any platform with no webview backend,
+the Flatpak runtime included, `ytmusic::potoken::cold_start` builds the placeholder the web player
+itself sends while BotGuard warms up, which YouTube honours for the first megabyte or two of a
+stream and no further. That is not enough to finish a download, which fetches the whole file in
+parallel chunks, so on a flagged address a track without a real token fails rather than plays
+short — which is why a failed mint waits `SOONEST`, five seconds, and only doubles up to
+`SLOWEST` from there. A long flat hold would be a long flat silence.
+
+`cargo run -p sonora --example potoken -- <binding>` runs that page on its own and prints the
+token, which is the only way to tell whether a machine's engine passes attestation at all: on an
+address YouTube has not flagged, a deliberately malformed token is accepted just as readily as a
+good one, so a stream that plays proves nothing.
 
 ### State entities
 
