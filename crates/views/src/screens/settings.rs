@@ -4238,7 +4238,10 @@ impl Render for SettingsHeader {
                 };
                 view.update(cx, |view, cx| view.set_header_height(height, cx));
             })
-            .when(!theme.transparent, |this| {
+            // The haze follows the window: a see-through page has content of its own passing
+            // under the header and reads worse without it. Only the flat fallback is dropped
+            // there, since a solid band over a see-through page is a slab.
+            .when(effects() || !theme.transparent, |this| {
                 this.child(veil(
                     Edge::Top,
                     height,
