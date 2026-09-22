@@ -4,11 +4,11 @@ use std::time::Instant;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Background, Div, ElementId, Hsla, Pixels, ScrollHandle, ScrollWheelEvent,
-    StyleRefinement, Window, div, linear_color_stop, linear_gradient, px,
+    Stateful, StyleRefinement, Window, div, linear_color_stop, linear_gradient, px,
 };
 
 use crate::button::Button;
-use crate::glass::{GLASS_FILL, glass};
+use crate::glass::glass;
 use crate::glide::Glide;
 use crate::motion::{Motion, Motioned as _, animates};
 use crate::theme::ActiveTheme as _;
@@ -202,12 +202,6 @@ impl RenderOnce for TabBar {
         // Concentric corners: the items sit one padding inside the bar.
         let radius = (rounding - rem * PAD).max(px(0.));
         let capped = overrides.max_size.width.is_some();
-        // A glass bar has no flat fill for a fade to melt into, so there it uses the same
-        // wash the glass lays over its blur.
-        let fill = match blurred {
-            true => theme.popover.opacity(GLASS_FILL),
-            false => theme.secondary,
-        };
         let moving = animates(cx);
         let rails = capped.then(|| {
             let rail = window.use_keyed_state((id.clone(), "rail"), cx, |_, _| Rail::new());
@@ -255,6 +249,12 @@ impl RenderOnce for TabBar {
                     .into_iter()
                     .map(|item| item.flex_shrink_0().rounded(radius)),
             );
+        // A glass bar has no flat fill to paint a fade with: a wash of its own thin fill hides
+        // nothing. It fades the tabs themselves instead, and leaves the blur behind them whole.
+        let row = match (blurred, rails.as_ref()) {
+            (true, Some(rails)) => masked(row, rails.washes),
+            _ => row.into_any_element(),
+        };
 
         let mut bar = base
             .relative()
@@ -266,13 +266,13 @@ impl RenderOnce for TabBar {
             .border_color(theme.border)
             .when(blurred, |bar| glass(bar, cx).shadow_sm())
             .child(row)
-            .when_some(rails, |bar, rails| {
+            .when_some(rails.filter(|_| !blurred), |bar, rails| {
                 bar.children(
                     rails
                         .washes
                         .into_iter()
                         .enumerate()
-                        .filter_map(|(side, wash)| fade(fill, radius, side == 0, wash)),
+                        .filter_map(|(side, wash)| fade(theme.secondary, radius, side == 0, wash)),
                 )
             });
 
@@ -312,6 +312,32 @@ fn fade(fill: Hsla, radius: Pixels, leading: bool, wash: Wash) -> Option<AnyElem
                 })
                 .into_any_element(),
         ),
+    }
+}
+
+/// The row faded out towards each edge that has tabs behind it, for a glass bar. An edge on
+/// its way out loosens over the same hush the painted fade takes. With neither edge fading the
+/// row goes back unmasked, since even an empty mask opens a layer and drops every backdrop in it.
+fn masked(row: Stateful<Div>, washes: [Wash; 2]) -> AnyElement {
+    let width = move |wash, t: f32| match wash {
+        Wash::Full => px(FADE),
+        Wash::Leaving => px(FADE) * (1. - t),
+        Wash::None => Pixels::ZERO,
+    };
+    let [leading, trailing] = washes;
+    match (leading, trailing) {
+        (Wash::None, Wash::None) => row.into_any_element(),
+        _ if !washes.contains(&Wash::Leaving) => row
+            .fade_sides(width(leading, 0.), width(trailing, 0.))
+            .into_any_element(),
+        _ => {
+            let leaving =
+                usize::from(leading == Wash::Leaving) | usize::from(trailing == Wash::Leaving) << 1;
+            row.motion(("tab-mask", leaving), HUSH, move |row, t| {
+                row.fade_sides(width(leading, t), width(trailing, t))
+            })
+            .into_any_element()
+        }
     }
 }
 
