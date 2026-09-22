@@ -1040,12 +1040,23 @@ touching the issue:
 
 ```sh
 ISSUE=612 REPO=sonorahq/sonora DRY_RUN=1 TRIAGE_API_KEY=… .github/triage/triage.sh
+ISSUE=612 REPO=sonorahq/sonora DRY_RUN=1 TRIAGE_API_KEY=… .github/triage/duplicates.sh
 ```
 
 A report that is missing something gets one comment asking for it and the `needs-info` label, which
 `stale.yml` closes on after 17 days. The same workflow re-runs when the reporter comments, and takes
 the label off once the report is complete, so the clock only runs while the ball is in their court.
 Pull requests get path labels from `actions/labeler` and are never closed as stale.
+
+`.github/triage/duplicates.sh` is the second half, and it runs on everything but a comment. Every
+title in the repository fits in one request and every body does not, so it asks twice: the first
+pass shortlists titles that could be the same report, the second reads those few in full and keeps
+only the ones it can say why about. A number that was not on the shortlist is dropped the way a
+label outside the config is, and the comment is posted once, so an edit that arrives before it
+found anything gets another look and a reopen does not. `duplicates` in `config.yml` holds how far
+back it reads, how many it opens and how many it ever lists. Nothing is labelled or closed: the
+comment asks the reporter to decide. Both scripts share `.github/triage/lib.sh`, which is where the
+endpoint, the session id and the json-mode fallback live.
 
 ## Commits
 

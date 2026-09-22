@@ -58,3 +58,17 @@ jobs:
           TRIAGE_BASE_URL: ${{ vars.TRIAGE_BASE_URL }}
           TRIAGE_MODEL: ${{ vars.TRIAGE_MODEL }}
         run: .github/triage/triage.sh
+
+      # Only on the way in. A comment answering a request for context is never a new report, and
+      # the script says nothing twice on its own.
+      - name: look for an issue that already reports this
+        if: github.event_name != 'issue_comment'
+        env:
+          GH_TOKEN: ${{ steps.buddy.outputs.token || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          TRIAGE_API_KEY: ${{ secrets.TRIAGE_API_KEY }}
+          TRIAGE_BASE_URL: ${{ vars.TRIAGE_BASE_URL }}
+          TRIAGE_MODEL: ${{ vars.TRIAGE_MODEL }}
+        run: .github/triage/duplicates.sh
