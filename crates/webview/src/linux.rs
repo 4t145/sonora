@@ -130,6 +130,7 @@ symbols! {
     webkit_user_script_unref: unsafe extern "C" fn(Ptr),
     webkit_web_view_get_uri: unsafe extern "C" fn(Ptr) -> *const c_char,
     webkit_web_view_load_uri: unsafe extern "C" fn(Ptr, *const c_char),
+    webkit_web_view_terminate_web_process: unsafe extern "C" fn(Ptr),
     webkit_settings_set_user_agent: unsafe extern "C" fn(Ptr, *const c_char),
     webkit_cookie_manager_set_accept_policy: unsafe extern "C" fn(Ptr, c_int),
     webkit_cookie_manager_get_cookies: unsafe extern "C" fn(Ptr, *const c_char, Ptr, Ready, Ptr),
@@ -425,6 +426,11 @@ impl Live {
         if state.dismissed {
             // `destroy` runs the handler that sets `closed`, which must not hold the lock.
             drop(state);
+            // Destroying the widget and dropping the context is not enough: WebKit keeps the web
+            // process alive afterwards, and with it the whole page it had loaded, which for the
+            // minting page is most of a gigabyte. Killing it is the only thing that gives that
+            // back, and the view is on its way out anyway.
+            unsafe { (api.webkit_web_view_terminate_web_process)(self.view) };
             unsafe { (api.gtk_widget_destroy)(self.window) };
             return true;
         }

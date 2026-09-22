@@ -701,6 +701,14 @@ parallel chunks, so on a flagged address a track without a real token fails rath
 short — which is why a failed mint waits `SOONEST`, five seconds, and only doubles up to
 `SLOWEST` from there. A long flat hold would be a long flat silence.
 
+Loading youtube.com to get one token is not cheap: measured on Linux, the page takes the process
+tree to around a gigabyte for the three seconds it is up, most of it the WebKit web process. It has
+to come back the moment the token lands, and destroying the widget and dropping the ephemeral
+context does not do it — WebKit keeps the web process, and the page with it. `linux.rs` calls
+`webkit_web_view_terminate_web_process` before the destroy, which drops the tree to around 330 MiB
+within a tick; roughly 190 MiB of that is WebKit's own processes and stays for the life of the run.
+Whether the other two backends need the same push has not been measured.
+
 `cargo run -p sonora --example potoken -- <binding>` runs that page on its own and prints the
 token, which is the only way to tell whether a machine's engine passes attestation at all: on an
 address YouTube has not flagged, a deliberately malformed token is accepted just as readily as a
