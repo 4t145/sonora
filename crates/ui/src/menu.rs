@@ -10,8 +10,9 @@ use gpui::{
 };
 
 use crate::Artwork;
+use crate::glass::{GLASS_BLUR, blurring};
 use crate::metrics::snapped;
-use crate::motion::Rising as _;
+use crate::motion::{Fading as _, Rising as _};
 use crate::scrollbar::Scrollbar;
 use crate::scroller::middle_scroll;
 use crate::separator::Separator;
@@ -28,6 +29,11 @@ const SUBMENU_TOP: Pixels = px(-14.);
 const WINDOW_MARGIN: Pixels = px(8.);
 pub(crate) const TRIGGER_GAP: Pixels = px(4.);
 const PANEL_SLACK: Pixels = px(6.);
+/// How much of the popover colour the panel keeps over its own blur. A menu is raised to be
+/// read, so it holds far more of its fill than a glass control does: what the blur buys is the
+/// wash of whatever it covers, not see-through for its own sake. With blurring off there is no
+/// wash left to read through, so the panel takes the flat popover colour instead.
+const PANEL_FILL: f32 = 0.75;
 /// How far the pointer has to travel from where a context menu was opened before letting go of
 /// the button picks the item under it. A plain click never moves this far, so it only opens the
 /// menu, while a press held and dragged onto an item behaves the way a context menu is expected
@@ -747,6 +753,11 @@ impl RenderOnce for Menu {
                 let offset = point(Pixels::ZERO, bounds.size.height + TRIGGER_GAP + TRIGGER_GAP);
                 (position, offset)
             });
+        let frosting = blurring(cx);
+        let fill = match frosting {
+            true => theme.popover.opacity(PANEL_FILL),
+            false => theme.popover,
+        };
         let panel_looks = div()
             .on_children_prepainted({
                 let guard = hover_guard.clone();
@@ -771,7 +782,7 @@ impl RenderOnce for Menu {
             .border_1()
             .gap_1()
             .border_color(theme.border)
-            .bg(theme.popover)
+            .bg(fill)
             .text_color(theme.popover_foreground)
             .key_context(MENU_CONTEXT)
             .when_some(width, |this, width| this.w(width))
@@ -788,6 +799,23 @@ impl RenderOnce for Menu {
         }
 
         let rising = panel_looks.rising("menu-rise");
+        // The renderer drops a backdrop while a paint filter is open and the entrance is one,
+        // so the panel cannot carry its own frost on the way in: it would arrive only once the
+        // rise was over, which reads as a blink. The frost is a sibling underneath instead,
+        // sized to the panel and fading in on the same curve.
+        let frosted = div()
+            .relative()
+            .when(frosting, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(theme.radius)
+                        .backdrop_blur(GLASS_BLUR)
+                        .fading("menu-frost"),
+                )
+            })
+            .child(rising);
         let surface = match should_defer {
             true => {
                 let anchored = anchored().anchor(corner);
@@ -795,10 +823,10 @@ impl RenderOnce for Menu {
                     Some((position, offset)) => anchored.position(position).offset(offset),
                     None => anchored.snap_to_window_with_margin(WINDOW_MARGIN),
                 }
-                .child(rising)
+                .child(frosted)
                 .into_any_element()
             }
-            false => rising.into_any_element(),
+            false => frosted.into_any_element(),
         };
 
         let mut menu = base

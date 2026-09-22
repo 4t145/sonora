@@ -17,6 +17,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A track played on its own now follows its station past the first batch on YouTube Music,
   rather than starting over from the last track, and never replays what the queue has heard.
 - Radio now plays in the order the provider ranks it rather than shuffled.
+- Menus, fields and floating panels frost what they cover, and menus sit lighter over it.
+- Hovering a menu item, a table row or a sidebar entry now shades what is behind it rather than
+  covering it, so a frosted surface keeps its blur under the pointer. Separators and outlines
+  read through the same way.
+- Settings > Appearance > Blur UI turns that frosting off. The old Blur setting is now Blur
+  window, and only shows on macOS and Windows, where it works.
 
 ### Fixed
 

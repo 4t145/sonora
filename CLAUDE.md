@@ -285,8 +285,8 @@ construction, layout and scene assembly, never GPU fill.
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Settings          | `$XDG_CONFIG_HOME/sonora/settings.json` (durable preferences and local music folder)                                              |
 | App state         | `$XDG_DATA_HOME/sonora/state.sqlite` (window/layout/playback state, pins, history, local playlists, usage flags)                  |
-| Credentials cache | `$XDG_CACHE_HOME/sonora/<provider>/credentials.json`, one per provider slug (`spotify`, `youtube`), owner-only mode                |
-| Local cover cache | `$XDG_CACHE_HOME/sonora/local-covers/`                                                                                             |
+| Credentials cache | `$XDG_CACHE_HOME/sonora/<provider>/credentials.json`, one per provider slug (`spotify`, `youtube`), owner-only mode               |
+| Local cover cache | `$XDG_CACHE_HOME/sonora/local-covers/`                                                                                            |
 | Library snapshots | `$XDG_CACHE_HOME/sonora/cache.sqlite` (what each shelf showed last, to draw before the provider answers)                          |
 | OAuth redirect    | `http://127.0.0.1:8989/login`, override with `SONORA_REDIRECT_URI`                                                                |
 | Scrobble callback | `http://127.0.0.1:8990/scrobble` (Last.fm and Libre.fm)                                                                           |
@@ -374,6 +374,34 @@ Stateful components (`Scrollbar`, `Input`, `TableState`) are `Render` entities i
 ## Theme and metrics
 
 `ui/src/theme.rs` is the single source of every color, radius, and font size.
+
+**One setting turns off the frosting that is only there for the look of it.** `ui::blurring(cx)`
+reads `Theme::blur`, which comes from `Look::blur` and the `appearance.blur` key in
+`settings.json`, and it is the only question such a site asks before painting a backdrop blur:
+`Menu`'s panel, `Card`'s play button, `Button::frosted`, `ui::perched`, the fullscreen pill bar
+and volume panel, which fold it into the `ambient::shown` flag they already branch on, and the
+settings category bar. `ui::glass`, `ui::frost`, `TabBar::blurred` and `shared::veil` stay
+unconditional primitives, so a site opts into the setting rather than out of it. `Input::blurred`
+is the exception and asks `blurring` itself at render, because a field's flag is set once in its
+constructor and a constructor cannot follow a setting; that is how the settings search field
+follows it. **Two things never ask.** `shared::veil` never does, at either of its call sites: the
+haze behind the settings header and the band the fullscreen controls raise over the visualizer are
+both there to make text readable over what passes under them, not for the look of it. Nor does the
+fullscreen ambient field, because the field _is_ the background rather than a treatment over one.
+The key kept the name the old window-blur setting had, so a stored preference carries over. That
+setting lives on as Blur window under its own key, `appearance.blur_window`, and reaches
+`ui::backdrop` through `Look::blur_window`. `ui::WINDOW_BLUR` is false on Linux and FreeBSD, whose
+compositors ignore the request, so the row is not offered there and `backdrop` never asks for
+`Blurred`.
+
+**A hover shades what it covers, and so does a line.** Every hover and press fill —
+`secondary_hover`, `secondary_active`, `table_hover`, `sidebar_accent` — is translucent, and so is
+`border`, which is what `ui::Separator` paints and what every outline and panel edge is drawn
+with. A frosted menu or a table over artwork therefore reads through the row the pointer is on and
+through the rules between its groups. The colours were lifted when the alpha came down, so each
+still lands where the old near-solid one did over the page it usually covers: changing one means
+recomputing it against that surface, not just editing the hex. `sidebar_border`,
+`title_bar_border` and `table_row_border` stay as they are — they edge flat chrome, never frost.
 
 ```rust
 use ui::ActiveTheme as _;
@@ -655,79 +683,20 @@ Never drive a player from a view. Go through `state::Playback`, which owns the e
 events into `PlaybackState`, and handles shuffle, repeat, skip debouncing, and the cooldown after
 an `Unavailable` track.
 
-### Proof-of-origin tokens
-
-YouTube stops serving streams to an address it has flagged unless the request carries a
-proof-of-origin token, which is what a run of 403s from the stream host looks like on a free
-account. `ytmusic`'s `WEB_REMIX` path sends one two ways: `serviceIntegrityDimensions.poToken` in
-the player request, and a `pot` parameter on the stream url. The guest `VISIONOS` client is not a
-WebPO client and carries none, which is also why `best_audio` now checks the guest url with a one
-byte range before a track commits to it and falls through to `WEB_REMIX` when the host refuses,
-whether or not an account is signed in.
-
-A token is bound to one identifier and refused against every other. For `WEB_REMIX` that
-identifier is the session, not the track: the account's data sync id when signed in, read once off
-the signed-in home page, and the visitor id otherwise. So one token covers a whole run.
-
-Minting one takes a real browser. Google's BotGuard virtual machine attests the engine it runs in,
-and a hand-written javascript environment does not pass however complete it looks — the gate is an
-`iframe` whose `contentWindow` it pulls pristine constructors out of, so the app's QuickJS
-interpreter is out of the question and so is anything short of an engine. Sonora therefore mints in
-the one real engine it ships: `state::potoken` opens a `webview::Page` on `youtube.com` that is
-never shown, running `crates/state/src/potoken.js`. That script stands between YouTube and its own
-`window.ytAtN` resolver to catch the challenge, pulls the interpreter in as a script element
-through a trusted types policy of its own, snapshots the vm, trades the attestation for an
-integrity token at Google's `GenerateIT`, mints, and leaves the token in a `SONORA_POT` cookie the
-page's poll already reads. A failure comes back in the same cookie behind a `!`.
-
-Nothing about that exchange is hardcoded, and that includes the fallbacks. The request key, the
-anti-abuse host, the rpc path and the api key all come out of the page's own `base.js`, which the
-script reads through the url in `ytcfg`, so a value Google rotates is followed on the next mint.
-There are deliberately no remembered values behind those patterns: a pattern only misses once
-Google has moved what it was looking for, which is exactly when a remembered value is stale, so a
-guess would trade a truthful failure for a request refused for a reason the log then misreports.
-The mint is not on the playback path, so `constants` fails naming the piece that went missing —
-`the player names no request key`, say — and the next track tries again. The request key is the one to watch: the player picks it off an
-`html5_web_po_request_key` experiment and keeps two literals behind that, of which the web client
-takes the second, so a third branch or a swapped order would need reading again.
-
-The two halves meet in `music::potoken`, which is provider-neutral: the client records the binding
-it needs and carries on, the window notices and mints, and the next track gets the real token. A
-mint is never on the playback path. Until one lands, and on any platform with no webview backend,
-the Flatpak runtime included, `ytmusic::potoken::cold_start` builds the placeholder the web player
-itself sends while BotGuard warms up, which YouTube honours for the first megabyte or two of a
-stream and no further. That is not enough to finish a download, which fetches the whole file in
-parallel chunks, so on a flagged address a track without a real token fails rather than plays
-short — which is why a failed mint waits `SOONEST`, five seconds, and only doubles up to
-`SLOWEST` from there. A long flat hold would be a long flat silence.
-
-Loading youtube.com to get one token is not cheap: measured on Linux, the page takes the process
-tree to around a gigabyte for the three seconds it is up, most of it the WebKit web process. It has
-to come back the moment the token lands, and destroying the widget and dropping the ephemeral
-context does not do it — WebKit keeps the web process, and the page with it. `linux.rs` calls
-`webkit_web_view_terminate_web_process` before the destroy, which drops the tree to around 330 MiB
-within a tick; roughly 190 MiB of that is WebKit's own processes and stays for the life of the run.
-Whether the other two backends need the same push has not been measured.
-
-`cargo run -p sonora --example potoken -- <binding>` runs that page on its own and prints the
-token, which is the only way to tell whether a machine's engine passes attestation at all: on an
-address YouTube has not flagged, a deliberately malformed token is accepted just as readily as a
-good one, so a stream that plays proves nothing.
-
 ### State entities
 
 `state::init` installs a `Sonora` global holding `session`, `library`, `playback`, `queue`,
 `settings`. Reach them with `Sonora::global(cx)`.
 
-| Entity                                     | Responsibility                                                                                                                                                             |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Session`                                  | auth lifecycle; emits `SessionEvent::{SignedIn, SignedOut}`; hands out `Arc<dyn MusicApi>` and `Arc<dyn PlaybackFactory>`                                                  |
-| `Library`                                  | one shelf per live provider; `LibraryState` is `Empty \| Loading \| Ready(Ready) \| Failed` — partial failure is normal, surface `Ready::problems`                        |
-| `Playback`                                 | engine ownership, transport, shuffle/repeat, volume, `Origin` tracking, `toggle_origin`                                                                                    |
-| `Queue`                                    | past / current / upcoming; `start`, `next`, `next_random`, `previous`, `rewind`                                                                                            |
-| `Scrobbling`                               | one row per `music::scrobble::Service`; follows `Playback` and fans each listen out, accounts live in `settings.json` under `scrobbling`                                   |
-| `Home`, `Detail`, `ArtistDetail`, `Search` | per-screen loaders, each owning its `Task`                                                                                                                                 |
-| `AppSettings`                              | debounced durable settings in JSON and runtime state in SQLite                                                                                                             |
+| Entity                                     | Responsibility                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Session`                                  | auth lifecycle; emits `SessionEvent::{SignedIn, SignedOut}`; hands out `Arc<dyn MusicApi>` and `Arc<dyn PlaybackFactory>`                          |
+| `Library`                                  | one shelf per live provider; `LibraryState` is `Empty \| Loading \| Ready(Ready) \| Failed` — partial failure is normal, surface `Ready::problems` |
+| `Playback`                                 | engine ownership, transport, shuffle/repeat, volume, `Origin` tracking, `toggle_origin`                                                            |
+| `Queue`                                    | past / current / upcoming; `start`, `next`, `next_random`, `previous`, `rewind`                                                                    |
+| `Scrobbling`                               | one row per `music::scrobble::Service`; follows `Playback` and fans each listen out, accounts live in `settings.json` under `scrobbling`           |
+| `Home`, `Detail`, `ArtistDetail`, `Search` | per-screen loaders, each owning its `Task`                                                                                                         |
+| `AppSettings`                              | debounced durable settings in JSON and runtime state in SQLite                                                                                     |
 
 Everything reacts to `SessionEvent`: signing out must clear derived state. If you add an entity that
 caches Spotify data, subscribe to `Session` and clear on `SignedOut`.
@@ -763,7 +732,7 @@ stays put while the rows scroll beneath it. The header measures itself with
 `on_children_prepainted` and hands the height to `SettingsView::set_header_height`, which is the
 page's top padding, so nothing about the header's size is guessed from metrics. Behind the field
 and the bar the header lays a veil for readability: the page colour fading out downward over a
-backdrop blur faded in the same way, skipped when `shared::effects()` is off. Over flat page the
+backdrop blur faded in the same way, skipped when `shared::effects()` or `ui::blurring` is off. Over flat page the
 blur shows nothing, as any blur does: what reads as a surface is the smear of the rows beneath,
 so the fade stays light enough to leave it visible. The renderer
 blurs a run of consecutive backdrops once, by the widest radius among them, and honours each
@@ -942,16 +911,6 @@ screen owns one `ui::Popovers` so only one of its popovers is open at a time, an
 `tools::Sliders` cache so scrubber positions survive across frames (`LibraryView` keeps one per
 section, so tab switches cannot bleed).
 
-**A cookie sign-in is the app's own browser window, nothing else.** `MusicProvider::web_sign_in`
-describes it: the url to load, the host that means the user is through, the cookie domain to
-collect and the proof cookie names. When `SignInPrompt::Secret` arrives, `Session::open_window`
-puts up a `webview::Login` and polls it; the header it produces goes through `submit_input`, and
-closing the window cancels the sign-in. There is no paste fallback and no modal: `Session::offered`
-drops `SignIn::Secret` from a provider's options unless `webview::supported()` and the provider
-describes a window, so a platform without a backend simply does not list it. A shared browser
-profile rotates Google's session cookies from any open tab and kills a copied header within
-hours; the throwaway session has no tab left to do that.
-
 **Filtering.** Implement `chrome::Searchable` on the view; `Toolbar::bind` binds it to the search
 field in the title bar. Don't build a second search box.
 
@@ -963,21 +922,6 @@ macOS and holds the Cocoa conventions (`cmd-w`, `cmd-m`, `cmd-h`, `alt-` word mo
 control keys). GPUI prefers the binding registered last within one context, which is what lets
 that set override the shared one. Only macOS draws the menu bar, so `actions::menus` adds the
 Edit and Window menus there alone.
-
-**The tray outlives the window.** `sonora/src/tray.rs` owns one `Tray` entity driven by two
-backends: `tray/native.rs` (`tray-icon`, macOS and Windows) and `tray/sni.rs` (`ksni`, Linux over
-D-Bus, no gtk). Both expose the same `Icon::new(sender) -> Option<Icon>` / `Icon::show(&Shown)`
-pair; the entity turns tray events into `Playback` calls the way `state::remote` does and rebuilds
-the labels from `t!` on every playback change, so they follow the language. `install` returns
-`false` when no tray can be placed — no StatusNotifierWatcher on the bus, say — and
-`actions::register` then keeps the old quit-on-last-window behaviour, so a headless Sonora never
-lingers unreachable. With a tray and `close_to_tray` on, the last window closing only flips
-`dock::show(false)` (Accessory policy on macOS; a no-op elsewhere) and `show_window` in `main.rs`
-brings it back from the tray, a Dock relaunch (`on_reopen`) or a `spotify:` link. `ksni` must stay
-on `async-io`: `gpui_linux` already drives `zbus` on that executor, and mixing in `zbus/tokio`
-panics at runtime. The icons come from `assets/tray/`, which `scripts/generate-icons.py` derives
-from the master like every other artefact — a template glyph for the macOS menu bar, the round
-one for Windows and Linux.
 
 **Assets.** `crates/sonora/src/assets.rs` answers GPUI for both icons and fonts: icons come from
 the `icons` crate, fonts from a `FONTS` table its build script writes by walking `assets/fonts`.
@@ -1020,39 +964,11 @@ distributing unlicensed code.
 - Dependencies go in the root `[workspace.dependencies]`, then `dep.workspace = true` in the crate.
   `gpui`/`gpui_platform` are pinned to one git rev — bump both together or the build breaks.
 
-## Issue triage
-
-A new issue is labelled, routed and checked for missing context by `.github/workflows/triage.yml`,
-which runs `.github/triage/triage.sh` against any OpenAI compatible endpoint. The model only ever
-answers with JSON. The script does every GitHub write, and it drops any label, platform or person
-that `.github/triage/config.yml` does not name, so a bad answer can at worst pick the wrong label
-off a fixed list. Adding an area means adding it to that config, to `.github/labeler.yml` and to the
-repository's labels, all three.
-
-Comments, labels and closes come from the Sonora Buddy GitHub App, so the timeline carries its
-name and the Sonora icon rather than github-actions. `SONORA_BUDDY_APP_ID` is a repository
-variable and `SONORA_BUDDY_KEY` holds its private key. Both are optional: with the variable
-unset every workflow falls back to `GITHUB_TOKEN` and behaves the same, signed by Actions.
-
-`TRIAGE_API_KEY` holds the inference key. Setting the `TRIAGE_BASE_URL` or `TRIAGE_MODEL` repository
-variable overrides the endpoint or the model without a commit. Run a decision locally without
-touching the issue:
-
-```sh
-ISSUE=612 REPO=sonorahq/sonora DRY_RUN=1 TRIAGE_API_KEY=… .github/triage/triage.sh
-```
-
-A report that is missing something gets one comment asking for it and the `needs-info` label, which
-`stale.yml` closes on after 17 days. The same workflow re-runs when the reporter comments, and takes
-the label off once the report is complete, so the clock only runs while the ball is in their court.
-Pull requests get path labels from `actions/labeler` and are never closed as stale.
-
 ## Commits
 
 Conventional Commits: `type(scope): description`, imperative, lowercase, no trailing period, no body.
 Scopes in use: `views`, `ui`, `music`, `state`, `playback`, `player`, `settings`, `router`, `local`,
-`sonora`, `nix`. Never add a `Co-Authored-By` trailer or any
-assistant attribution.
+`sonora`, `nix`.
 
 ## Pull requests
 
@@ -1068,7 +984,7 @@ One heading, one list. Nothing else:
 
 Bullets are lowercase, imperative, one line each, and describe behaviour rather than files. No
 Why/User impact/Validation sections, no checklists, no screenshot boilerplate, no test plan. This
-overrides any wider PR template. Never sign off or attribute the assistant.
+overrides any wider PR template.
 
 ## Releases
 
