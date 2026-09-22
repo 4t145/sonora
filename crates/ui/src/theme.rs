@@ -247,6 +247,10 @@ pub struct Theme {
     pub primary_hover: Hsla,
     pub danger: Hsla,
     pub danger_foreground: Hsla,
+    /// The hover and press fills. A hover shades the surface under it rather than replacing
+    /// it, so a frosted menu or a table over artwork still reads through the row the pointer
+    /// is on. Each colour is lifted to land where the old near-solid one did over the page it
+    /// usually covers, so only what shows through a hover moved, not its contrast.
     pub danger_hover: Hsla,
     pub popover: Hsla,
     pub popover_foreground: Hsla,
@@ -260,6 +264,8 @@ pub struct Theme {
     pub table_head_foreground: Hsla,
     pub table_row_border: Hsla,
     pub table_hover: Hsla,
+    /// The fill under a hovered or selected sidebar entry, thinned the way `secondary_hover`
+    /// is and for the same reason.
     pub table_active: Hsla,
     pub table_active_border: Hsla,
     pub radius: Pixels,
@@ -287,14 +293,14 @@ impl Theme {
         Self {
             background: rgb(0x0a0a0a).into(),
             foreground: rgb(0xfafafa).into(),
-            border: rgb(0x262626).into(),
+            border: rgba(0x50505066).into(),
             muted: rgb(0x262626).into(),
             overlay: rgba(0x0000008c).into(),
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x737373).into(),
             secondary: rgb(0x171717).into(),
-            secondary_hover: rgba(0x232323b3).into(),
-            secondary_active: rgba(0x303030b3).into(),
+            secondary_hover: rgba(0x36363666).into(),
+            secondary_active: rgba(0x4d4d4d66).into(),
             primary: rgb(0xfafafa).into(),
             primary_foreground: rgb(0x171717).into(),
             primary_hover: rgba(0xe5e5e5b3).into(),
@@ -306,13 +312,13 @@ impl Theme {
             progress_bar: rgb(0xf5f5f5).into(),
             selection: rgb(0x1d4ed8).into(),
             sidebar: rgb(0x0a0a0a).into(),
-            sidebar_accent: rgb(0x262626).into(),
+            sidebar_accent: rgba(0x50505066).into(),
             sidebar_border: rgb(0x262626).into(),
             title_bar_border: rgb(0x262626).into(),
             table_head: rgba(0x171717cc).into(),
             table_head_foreground: rgb(0x525252).into(),
             table_row_border: rgba(0x262626b3).into(),
-            table_hover: rgba(0x262626b3).into(),
+            table_hover: rgba(0x3b3b3b66).into(),
             table_active: rgba(0x1e40af33).into(),
             table_active_border: rgb(0x1d4ed8).into(),
             radius: px(6.),
@@ -329,14 +335,14 @@ impl Theme {
         Self {
             background: rgb(0xfafafa).into(),
             foreground: rgb(0x171717).into(),
-            border: rgb(0xd4d4d4).into(),
+            border: rgba(0x9b9b9b66).into(),
             muted: rgb(0xe5e5e5).into(),
             overlay: rgba(0x0000008c).into(),
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x737373).into(),
             secondary: rgb(0xf5f5f5).into(),
-            secondary_hover: rgba(0xe5e5e5b3).into(),
-            secondary_active: rgba(0xd4d4d4b3).into(),
+            secondary_hover: rgba(0xd5d5d566).into(),
+            secondary_active: rgba(0xb7b7b766).into(),
             primary: rgb(0x171717).into(),
             primary_foreground: rgb(0xfafafa).into(),
             primary_hover: rgba(0x262626b3).into(),
@@ -348,13 +354,13 @@ impl Theme {
             progress_bar: rgb(0x262626).into(),
             selection: rgb(0x2563eb).into(),
             sidebar: rgb(0xf5f5f5).into(),
-            sidebar_accent: rgb(0xe5e5e5).into(),
+            sidebar_accent: rgba(0xcdcdcd66).into(),
             sidebar_border: rgb(0xd4d4d4).into(),
             title_bar_border: rgb(0xd4d4d4).into(),
             table_head: rgba(0xf5f5f5e6).into(),
             table_head_foreground: rgb(0x737373).into(),
             table_row_border: rgba(0xd4d4d4b3).into(),
-            table_hover: rgba(0xf0f0f0b3).into(),
+            table_hover: rgba(0xe8e8e866).into(),
             table_active: rgba(0x2563eb1f).into(),
             table_active_border: rgb(0x2563eb).into(),
             radius: px(6.),
@@ -371,14 +377,14 @@ impl Theme {
         Self {
             background: rgb(0x07111f).into(),
             foreground: rgb(0xe6edf7).into(),
-            border: rgb(0x1e344d).into(),
+            border: rgba(0x40689266).into(),
             muted: rgb(0x15283d).into(),
             overlay: rgba(0x0000008c).into(),
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x8296ad).into(),
             secondary: rgb(0x102238).into(),
-            secondary_hover: rgba(0x17304db3).into(),
-            secondary_active: rgba(0x1e3b5db3).into(),
+            secondary_hover: rgba(0x23477066).into(),
+            secondary_active: rgba(0x2f5b8c66).into(),
             primary: rgb(0x38bdf8).into(),
             primary_foreground: rgb(0x07111f).into(),
             primary_hover: rgba(0x7dd3fcb3).into(),
@@ -390,13 +396,13 @@ impl Theme {
             progress_bar: rgb(0x38bdf8).into(),
             selection: rgb(0x0284c7).into(),
             sidebar: rgb(0x091827).into(),
-            sidebar_accent: rgb(0x17304d).into(),
+            sidebar_accent: rgba(0x2c548666).into(),
             sidebar_border: rgb(0x1e344d).into(),
             title_bar_border: rgb(0x1e344d).into(),
             table_head: rgba(0x102238e6).into(),
             table_head_foreground: rgb(0x8296ad).into(),
             table_row_border: rgba(0x1e344db3).into(),
-            table_hover: rgba(0x132b45b3).into(),
+            table_hover: rgba(0x1c3f6266).into(),
             table_active: rgba(0x0284c733).into(),
             table_active_border: rgb(0x38bdf8).into(),
             radius: px(6.),
@@ -413,14 +419,14 @@ impl Theme {
         Self {
             background: rgb(0x0b1410).into(),
             foreground: rgb(0xecf7ef).into(),
-            border: rgb(0x263d30).into(),
+            border: rgba(0x4e7a6066).into(),
             muted: rgb(0x203328).into(),
             overlay: rgba(0x0000008c).into(),
             overlay_foreground: rgb(0xfafafa).into(),
             muted_foreground: rgb(0x86a58f).into(),
             secondary: rgb(0x16261d).into(),
-            secondary_hover: rgba(0x203328b3).into(),
-            secondary_active: rgba(0x2a4334b3).into(),
+            secondary_hover: rgba(0x304a3a66).into(),
+            secondary_active: rgba(0x41664f66).into(),
             primary: rgb(0x86efac).into(),
             primary_foreground: rgb(0x0b1410).into(),
             primary_hover: rgba(0xbbf7d0b3).into(),
@@ -432,13 +438,13 @@ impl Theme {
             progress_bar: rgb(0x4ade80).into(),
             selection: rgb(0x16a34a).into(),
             sidebar: rgb(0x0d1812).into(),
-            sidebar_accent: rgb(0x203328).into(),
+            sidebar_accent: rgba(0x3c5c4966).into(),
             sidebar_border: rgb(0x263d30).into(),
             title_bar_border: rgb(0x263d30).into(),
             table_head: rgba(0x16261de6).into(),
             table_head_foreground: rgb(0x86a58f).into(),
             table_row_border: rgba(0x263d30b3).into(),
-            table_hover: rgba(0x1b2e23b3).into(),
+            table_hover: rgba(0x27423166).into(),
             table_active: rgba(0x16a34a33).into(),
             table_active_border: rgb(0x4ade80).into(),
             radius: px(6.),
@@ -454,12 +460,12 @@ impl Theme {
     pub fn ocean() -> Self {
         let mut theme = Self::midnight();
         theme.background = rgb(0x06171a).into();
-        theme.border = rgb(0x1d4145).into();
+        theme.border = rgba(0x3f808666).into();
         theme.muted = rgb(0x17373b).into();
         theme.muted_foreground = rgb(0x7fa9ad).into();
         theme.secondary = rgb(0x0f292d).into();
-        theme.secondary_hover = rgba(0x17373bb3).into();
-        theme.secondary_active = rgba(0x20474cb3).into();
+        theme.secondary_hover = rgba(0x244f5466).into();
+        theme.secondary_active = rgba(0x346b7266).into();
         theme.primary = rgb(0x5eead4).into();
         theme.primary_foreground = rgb(0x06171a).into();
         theme.primary_hover = rgba(0x99f6e4b3).into();
@@ -467,13 +473,13 @@ impl Theme {
         theme.progress_bar = rgb(0x2dd4bf).into();
         theme.selection = rgb(0x0d9488).into();
         theme.sidebar = rgb(0x081c1f).into();
-        theme.sidebar_accent = rgb(0x17373b).into();
+        theme.sidebar_accent = rgba(0x2d606566).into();
         theme.sidebar_border = rgb(0x1d4145).into();
         theme.title_bar_border = rgb(0x1d4145).into();
         theme.table_head = rgba(0x0f292de6).into();
         theme.table_head_foreground = rgb(0x5a787b).into();
         theme.table_row_border = rgba(0x1d4145b3).into();
-        theme.table_hover = rgba(0x123136b3).into();
+        theme.table_hover = rgba(0x1b454b66).into();
         theme.table_active = rgba(0x0d948833).into();
         theme.table_active_border = rgb(0x2dd4bf).into();
         theme
@@ -482,12 +488,12 @@ impl Theme {
     pub fn rose() -> Self {
         let mut theme = Self::dark();
         theme.background = rgb(0x180b10).into();
-        theme.border = rgb(0x4b2633).into();
+        theme.border = rgba(0x984e6766).into();
         theme.muted = rgb(0x3b2029).into();
         theme.muted_foreground = rgb(0xb58a98).into();
         theme.secondary = rgb(0x2b161e).into();
-        theme.secondary_hover = rgba(0x3b2029b3).into();
-        theme.secondary_active = rgba(0x4b2633b3).into();
+        theme.secondary_hover = rgba(0x55303c66).into();
+        theme.secondary_active = rgba(0x713a4d66).into();
         theme.primary = rgb(0xfda4af).into();
         theme.primary_foreground = rgb(0x180b10).into();
         theme.primary_hover = rgba(0xfecdd3b3).into();
@@ -495,13 +501,13 @@ impl Theme {
         theme.progress_bar = rgb(0xfb7185).into();
         theme.selection = rgb(0xe11d48).into();
         theme.sidebar = rgb(0x1c0d13).into();
-        theme.sidebar_accent = rgb(0x3b2029).into();
+        theme.sidebar_accent = rgba(0x6a3c4a66).into();
         theme.sidebar_border = rgb(0x4b2633).into();
         theme.title_bar_border = rgb(0x4b2633).into();
         theme.table_head = rgba(0x2b161ee6).into();
         theme.table_head_foreground = rgb(0x80626c).into();
         theme.table_row_border = rgba(0x4b2633b3).into();
-        theme.table_hover = rgba(0x341b24b3).into();
+        theme.table_hover = rgba(0x49273366).into();
         theme.table_active = rgba(0xe11d4833).into();
         theme.table_active_border = rgb(0xfb7185).into();
         theme
@@ -510,12 +516,12 @@ impl Theme {
     pub fn lavender() -> Self {
         let mut theme = Self::dark();
         theme.background = rgb(0x120e1c).into();
-        theme.border = rgb(0x3d3158).into();
+        theme.border = rgba(0x7e66b266).into();
         theme.muted = rgb(0x302745).into();
         theme.muted_foreground = rgb(0xa99bc2).into();
         theme.secondary = rgb(0x241c35).into();
-        theme.secondary_hover = rgba(0x302745b3).into();
-        theme.secondary_active = rgba(0x3d3158b3).into();
+        theme.secondary_hover = rgba(0x473a6466).into();
+        theme.secondary_active = rgba(0x5d4b8566).into();
         theme.primary = rgb(0xc4b5fd).into();
         theme.primary_foreground = rgb(0x120e1c).into();
         theme.primary_hover = rgba(0xddd6feb3).into();
@@ -523,13 +529,13 @@ impl Theme {
         theme.progress_bar = rgb(0xa78bfa).into();
         theme.selection = rgb(0x7c3aed).into();
         theme.sidebar = rgb(0x161020).into();
-        theme.sidebar_accent = rgb(0x302745).into();
+        theme.sidebar_accent = rgba(0x57497c66).into();
         theme.sidebar_border = rgb(0x3d3158).into();
         theme.title_bar_border = rgb(0x3d3158).into();
         theme.table_head = rgba(0x241c35e6).into();
         theme.table_head_foreground = rgb(0x786e8a).into();
         theme.table_row_border = rgba(0x3d3158b3).into();
-        theme.table_hover = rgba(0x2a213db3).into();
+        theme.table_hover = rgba(0x3c2f5666).into();
         theme.table_active = rgba(0x7c3aed33).into();
         theme.table_active_border = rgb(0xa78bfa).into();
         theme
@@ -538,12 +544,12 @@ impl Theme {
     pub fn amber() -> Self {
         let mut theme = Self::dark();
         theme.background = rgb(0x171108).into();
-        theme.border = rgb(0x49371d).into();
+        theme.border = rgba(0x94703c66).into();
         theme.muted = rgb(0x382b18).into();
         theme.muted_foreground = rgb(0xad9878).into();
         theme.secondary = rgb(0x291f11).into();
-        theme.secondary_hover = rgba(0x382b18b3).into();
-        theme.secondary_active = rgba(0x49371db3).into();
+        theme.secondary_hover = rgba(0x513f2466).into();
+        theme.secondary_active = rgba(0x6f542d66).into();
         theme.primary = rgb(0xfcd34d).into();
         theme.primary_foreground = rgb(0x171108).into();
         theme.primary_hover = rgba(0xfde68ab3).into();
@@ -551,13 +557,13 @@ impl Theme {
         theme.progress_bar = rgb(0xf59e0b).into();
         theme.selection = rgb(0xd97706).into();
         theme.sidebar = rgb(0x1b1409).into();
-        theme.sidebar_accent = rgb(0x382b18).into();
+        theme.sidebar_accent = rgba(0x634e2e66).into();
         theme.sidebar_border = rgb(0x49371d).into();
         theme.title_bar_border = rgb(0x49371d).into();
         theme.table_head = rgba(0x291f11e6).into();
         theme.table_head_foreground = rgb(0x7b6c55).into();
         theme.table_row_border = rgba(0x49371db3).into();
-        theme.table_hover = rgba(0x312514b3).into();
+        theme.table_hover = rgba(0x45341d66).into();
         theme.table_active = rgba(0xd9770633).into();
         theme.table_active_border = rgb(0xf59e0b).into();
         theme
