@@ -38,8 +38,8 @@ env_logger = "0.11"
 fastrand = "2.5"
 futures = "0.3"
 fluent-bundle = "0.16"
-gpui = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00" }
-gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "d8df76b973cc5c7a0ec122cb0bd8a6fa44a89e00", features = [
+gpui = { git = "https://github.com/sonorahq/gpui", rev = "9146562735ace7bc62fc2ecd032d47951ffc3915" }
+gpui_platform = { git = "https://github.com/sonorahq/gpui", rev = "9146562735ace7bc62fc2ecd032d47951ffc3915", features = [
   "font-kit",
   "wayland",
   "x11",
