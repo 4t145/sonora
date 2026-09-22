@@ -45,6 +45,17 @@ enum Saved {
     Guest,
 }
 
+/// Asks the app for the proof-of-origin token the client needs. Every answer comes out of
+/// `music::potoken`, so the client never waits on the browser window that fills it.
+struct Minter;
+
+#[async_trait]
+impl ytmusic::Minter for Minter {
+    async fn mint(&self, binding: &str) -> Option<String> {
+        crate::potoken::token(binding)
+    }
+}
+
 pub struct YouTubeProvider {
     credentials: PathBuf,
     /// The cookie store ytmusic writes back to as Google rotates the session. The pasted
@@ -89,12 +100,17 @@ impl YouTubeProvider {
         Arc::new(
             api.persist_cookies(self.cookies.clone())
                 .cache_resolutions(self.resolved.clone())
-                .cache_player(self.player.clone()),
+                .cache_player(self.player.clone())
+                .mint_po_tokens(Arc::new(Minter)),
         )
     }
 
     fn guest_client(&self) -> Arc<YtMusic> {
-        Arc::new(YtMusic::anonymous().cache_player(self.player.clone()))
+        Arc::new(
+            YtMusic::anonymous()
+                .cache_player(self.player.clone())
+                .mint_po_tokens(Arc::new(Minter)),
+        )
     }
 
     fn authenticated_session(&self, api: Arc<YtMusic>, profile: UserProfile) -> ProviderSession {
