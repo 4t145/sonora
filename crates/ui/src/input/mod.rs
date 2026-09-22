@@ -239,9 +239,9 @@ impl Input {
     }
 
     /// Draws the field as frosted glass: a faint fill over a blur of whatever passes under
-    /// it, rather than the flat secondary fill. Only for a field that floats over content —
-    /// the settings header, say. On flat paint the blur shows nothing and the fill is all
-    /// that is left.
+    /// it, rather than the flat secondary fill. Only for a field that floats over content,
+    /// the settings header say. The flag is usually set once at construction, so the field
+    /// asks `blurring` itself at render and falls back to the flat fill while it is off.
     pub fn blurred(mut self) -> Self {
         self.blurred = true;
         self

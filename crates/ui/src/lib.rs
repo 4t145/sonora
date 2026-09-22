@@ -61,7 +61,7 @@ pub use filters::{
     Filter, FilterChange, FlagAxis, RangeAxis, RangeScrubber, RangeState, SortAxis, Unit,
 };
 pub use form::{FORM_CONTEXT, Submit};
-pub use glass::{GLASS_BLUR, GLASS_FILL, frost, glass};
+pub use glass::{GLASS_BLUR, GLASS_FILL, blurring, frost, glass};
 pub use glide::{Glide, ScrollPosition};
 pub use grain::grain;
 pub use info_card::{Fact, InfoCard};
@@ -108,7 +108,8 @@ pub use table::{
 pub use tabs::{TabBar, Tabs};
 pub use theme::{
     ActiveTheme, BACKDROP_TRANSPARENCY, CoverFill, Look, MAX_FONT, MAX_LYRICS_SCALE,
-    MAX_TRANSPARENCY, MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, backdrop,
+    MAX_TRANSPARENCY, MIN_FONT, MIN_LYRICS_SCALE, Theme, ThemeKind, ThemeOverrides, WINDOW_BLUR,
+    backdrop,
 };
 pub use time::{clock, tabular};
 pub use toast::Toast;

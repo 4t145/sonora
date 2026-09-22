@@ -8,7 +8,7 @@ use gpui::{
 use i18n::t;
 
 use crate::button::Button;
-use crate::glass::glass;
+use crate::glass::{blurring, glass};
 use crate::input::{
     CARET, CARET_LINES, Copy, Cut, INPUT_CONTEXT, Input, Paste, SelectAll, clamp_offset,
     clamp_range, masked_text,
@@ -316,7 +316,7 @@ impl Render for Input {
             .px_3()
             .rounded(radius)
             .when_else(
-                self.blurred,
+                self.blurred && blurring(cx),
                 |this| glass(this, cx).shadow_sm(),
                 |this| this.bg(theme.secondary),
             )

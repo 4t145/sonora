@@ -31,6 +31,9 @@ const MAX_ACCENT_SATURATION: f32 = 0.85;
 /// one, which is the whole of what tells a white sleeve from a black one.
 const NEUTRAL_PIVOT: f32 = 0.5;
 const SYSTEM_FILLS: bool = cfg!(target_os = "windows");
+/// Whether the platform can blur the desktop behind a see-through window. Linux and FreeBSD
+/// compositors ignore the request, so the setting is not offered there at all.
+pub const WINDOW_BLUR: bool = !cfg!(any(target_os = "linux", target_os = "freebsd"));
 
 /// What a fill keeps of itself once the window is fully see-through. The page
 /// background has no floor — a clear window is the point — but everything drawn
@@ -52,10 +55,11 @@ const HEADER_FLOOR: f32 = 0.15;
 const SURFACE_WEIGHT: f32 = 0.68;
 const HEADER_WEIGHT: f32 = 0.5;
 
-/// The window background a look asks the platform for. Blur needs something to
-/// show through, so an opaque window always gets the plain background.
-pub fn backdrop(blur: bool, transparent: bool) -> WindowBackgroundAppearance {
-    match blur && transparent {
+/// The window background a look asks the platform for. Blur needs something to show through,
+/// so only a see-through window on a platform that can blur gets it, and only an opaque one
+/// can take the platform's own fill.
+pub fn backdrop(blur_window: bool, transparent: bool) -> WindowBackgroundAppearance {
+    match WINDOW_BLUR && blur_window && transparent {
         true => WindowBackgroundAppearance::Blurred,
         false => match SYSTEM_FILLS && !transparent {
             true => WindowBackgroundAppearance::Opaque,
@@ -71,7 +75,10 @@ pub struct Look {
     pub font: f32,
     pub transparent: bool,
     pub transparency: f32,
+    /// Whether the frosted treatments are painted. See `ui::blurring`.
     pub blur: bool,
+    /// Whether a see-through window asks the platform to blur the desktop behind it.
+    pub blur_window: bool,
     pub tint: Option<Hsla>,
     pub tint_secondary: Option<Hsla>,
 }
@@ -240,6 +247,10 @@ pub struct Theme {
     pub overlay_foreground: Hsla,
     pub muted_foreground: Hsla,
     pub secondary: Hsla,
+    /// The hover and press fills. A hover shades the surface under it rather than replacing
+    /// it, so a frosted menu or a table over artwork still reads through the row the pointer
+    /// is on. Each colour is lifted to land where the old near-solid one did over the page it
+    /// usually covers, so only what shows through a hover moved, not its contrast.
     pub secondary_hover: Hsla,
     pub secondary_active: Hsla,
     pub primary: Hsla,
@@ -247,16 +258,14 @@ pub struct Theme {
     pub primary_hover: Hsla,
     pub danger: Hsla,
     pub danger_foreground: Hsla,
-    /// The hover and press fills. A hover shades the surface under it rather than replacing
-    /// it, so a frosted menu or a table over artwork still reads through the row the pointer
-    /// is on. Each colour is lifted to land where the old near-solid one did over the page it
-    /// usually covers, so only what shows through a hover moved, not its contrast.
     pub danger_hover: Hsla,
     pub popover: Hsla,
     pub popover_foreground: Hsla,
     pub progress_bar: Hsla,
     pub selection: Hsla,
     pub sidebar: Hsla,
+    /// The fill under a hovered or selected sidebar entry, thinned the way `secondary_hover`
+    /// is and for the same reason.
     pub sidebar_accent: Hsla,
     pub sidebar_border: Hsla,
     pub title_bar_border: Hsla,
@@ -264,15 +273,18 @@ pub struct Theme {
     pub table_head_foreground: Hsla,
     pub table_row_border: Hsla,
     pub table_hover: Hsla,
-    /// The fill under a hovered or selected sidebar entry, thinned the way `secondary_hover`
-    /// is and for the same reason.
     pub table_active: Hsla,
     pub table_active_border: Hsla,
     pub radius: Pixels,
     pub font_size: Pixels,
     pub metrics: Metrics,
     pub transparent: bool,
+    /// Whether the frosted treatments are painted. Read it through `ui::blurring` rather
+    /// than reaching for the field, so every site asks the same question.
     pub blur: bool,
+    /// Whether a see-through window asks the platform to blur the desktop behind it. Only
+    /// `ui::backdrop` reads it.
+    pub blur_window: bool,
     pub tint: Option<Hsla>,
     /// The cover's runner-up hue, carried beside the lead tint for two-colour
     /// surfaces like the fullscreen ambient background. The selection itself stays single.
@@ -326,6 +338,7 @@ impl Theme {
             metrics: Metrics::default(),
             transparent: false,
             blur: false,
+            blur_window: false,
             tint: None,
             tint_secondary: None,
         }
@@ -368,6 +381,7 @@ impl Theme {
             metrics: Metrics::default(),
             transparent: false,
             blur: false,
+            blur_window: false,
             tint: None,
             tint_secondary: None,
         }
@@ -410,6 +424,7 @@ impl Theme {
             metrics: Metrics::default(),
             transparent: false,
             blur: false,
+            blur_window: false,
             tint: None,
             tint_secondary: None,
         }
@@ -452,6 +467,7 @@ impl Theme {
             metrics: Metrics::default(),
             transparent: false,
             blur: false,
+            blur_window: false,
             tint: None,
             tint_secondary: None,
         }
@@ -880,6 +896,7 @@ impl Theme {
         theme.metrics = Metrics::new(base);
         theme.transparent = look.transparent;
         theme.blur = look.blur;
+        theme.blur_window = look.blur_window;
         theme.tint = look.tint;
         theme.tint_secondary = look.tint_secondary;
         theme
@@ -1062,6 +1079,7 @@ mod tests {
             transparent: false,
             transparency: 0.,
             blur: false,
+            blur_window: false,
             tint: Some(TINT),
             tint_secondary: None,
         };
