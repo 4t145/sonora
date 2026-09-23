@@ -217,14 +217,14 @@ async fn engine_loop(
         equalizer: config.equalizer.clone(),
         spectrum,
     };
-    let output = match Output::open(chain) {
+    let mut output = match Output::open(chain) {
         Ok(output) => output,
         Err(error) => {
             log::error!("playback: cannot open audio output: {error:#}");
             return;
         }
     };
-    let sink = output.sink().clone();
+    let mut sink = output.sink().clone();
     sink.pause();
 
     let (fetched, mut arrivals) = unbounded_channel::<Fetched>();
@@ -299,7 +299,7 @@ async fn engine_loop(
                             id: Some(id.clone()),
                             at: at.unwrap_or_default(),
                         }).ok();
-                        if output.failed() || output.changed() {
+                        if output.changed() {
                             events.send(PlaybackEvent::OutputChanged).ok();
                             return;
                         }
@@ -311,7 +311,13 @@ async fn engine_loop(
                         hold = at;
                         prev_len = 0;
                         let Some(loaded) = cached else { continue };
-                        match begin(&sink, &id, &loaded, &config, autostart, hold.take()) {
+                        let begun = begin(&mut output, &id, &loaded, &config, autostart, hold.take());
+                        sink = output.sink().clone();
+                        if output.failed() {
+                            events.send(PlaybackEvent::OutputChanged).ok();
+                            return;
+                        }
+                        match begun {
                             Ok(slot) => {
                                 announce(&events, &slot, autostart, at.unwrap_or_default());
                                 prev_len = sink.len();
@@ -336,12 +342,13 @@ async fn engine_loop(
                         }
                         if let Some((_, loaded)) = ahead.as_ref().filter(|(cached, _)| *cached == id) {
                             if segue && current.is_some() && queued.is_none() {
-                                match append(&sink, &id, loaded, &config, false, None) {
-                                    Ok(slot) => {
+                                match append(&output, &id, loaded, &config) {
+                                    Ok(Some(slot)) => {
                                         log::debug!("playback: {id} is queued for a gapless segue");
                                         queued = Some(slot);
                                         prev_len = sink.len();
                                     }
+                                    Ok(None) => {}
                                     Err(error) => {
                                         log::warn!("playback: cannot decode preload {id}: {error:#}");
                                     }
@@ -434,9 +441,15 @@ async fn engine_loop(
                     pending = None;
                     inflight = None;
                     let at = hold.take();
-                    match result.and_then(|loaded| {
-                        begin(&sink, &id, &loaded, &config, autostart, at)
-                    }) {
+                    let begun = result.and_then(|loaded| {
+                        begin(&mut output, &id, &loaded, &config, autostart, at)
+                    });
+                    sink = output.sink().clone();
+                    if output.failed() {
+                        events.send(PlaybackEvent::OutputChanged).ok();
+                        return;
+                    }
+                    match begun {
                         Ok(slot) => {
                             announce(&events, &slot, autostart, at.unwrap_or_default());
                             prev_len = sink.len();
@@ -455,12 +468,13 @@ async fn engine_loop(
                         continue;
                     };
                     if segue && current.is_some() && queued.is_none() {
-                        match append(&sink, &id, &loaded, &config, false, None) {
-                            Ok(slot) => {
+                        match append(&output, &id, &loaded, &config) {
+                            Ok(Some(slot)) => {
                                 log::debug!("playback: {id} is queued for a gapless segue");
                                 queued = Some(slot);
                                 prev_len = sink.len();
                             }
+                            Ok(None) => {}
                             Err(error) => {
                                 log::warn!("playback: cannot decode preload {id}: {error:#}")
                             }
@@ -557,24 +571,29 @@ async fn await_drain(sink: &rodio::Player) {
     tokio::time::sleep(RAMP).await;
 }
 
-/// Puts a track on the sink on its own, opened at `at`, and starts it if asked.
+/// Puts a track on the output on its own, opened at `at`, and starts it if asked. The output
+/// reopens first when the track's rate needs it, which replaces its player, so a caller holding
+/// a clone of the sink takes it again afterwards.
 ///
 /// The position goes to the decoder rather than to the sink. Clearing only marks the track
 /// being replaced for skipping, and the callback that skips it is the one that carries out
 /// whatever seek the sink was asked for next, so a seek here would move the old track and leave
 /// the one just appended to play from the beginning.
 fn begin(
-    sink: &rodio::Player,
+    output: &mut Output,
     id: &str,
     loaded: &Loaded,
     config: &PlaybackConfig,
     start: bool,
     at: Option<Duration>,
 ) -> Result<Slot> {
+    let (slot, source) = prepare(id, loaded, config, true, at)?;
+    output.fit(source.sample_rate().get())?;
+    let sink = output.sink();
     if sink.len() > 0 {
         sink.clear();
     }
-    let slot = append(sink, id, loaded, config, true, at)?;
+    sink.append(source);
     match start {
         true => sink.play(),
         false => sink.pause(),
@@ -582,16 +601,32 @@ fn begin(
     Ok(slot)
 }
 
-/// Puts a track on the end of the sink's queue with its decoder opened at `at`, fading it in
-/// when it replaces a track rather than following one to its end.
+/// Puts a track on the end of the sink's queue to follow the current one without a gap. A
+/// track the output would have to reopen for is left out, so it plays through `begin` instead.
 fn append(
-    sink: &rodio::Player,
+    output: &Output,
+    id: &str,
+    loaded: &Loaded,
+    config: &PlaybackConfig,
+) -> Result<Option<Slot>> {
+    let (slot, source) = prepare(id, loaded, config, false, None)?;
+    if !output.fits(source.sample_rate().get()) {
+        log::debug!("playback: {id} needs the output at another rate, so it loads on its own");
+        return Ok(None);
+    }
+    output.sink().append(source);
+    Ok(Some(slot))
+}
+
+/// Opens a track's decoder at `at` behind its own gain envelope, fading it in when it replaces
+/// a track rather than following one to its end.
+fn prepare(
     id: &str,
     loaded: &Loaded,
     config: &PlaybackConfig,
     fade: bool,
     at: Option<Duration>,
-) -> Result<Slot> {
+) -> Result<(Slot, impl rodio::Source + Send + 'static)> {
     let gain = normalisation(config.normalisation, loaded.loudness_db);
     let envelope = Volume::new(gain);
     let initial = match fade {
@@ -623,14 +658,14 @@ fn append(
         },
         None => Duration::ZERO,
     };
-    sink.append(SmoothGain::new(source, envelope.clone(), initial, RAMP));
-    Ok(Slot {
+    let slot = Slot {
         id: id.to_string(),
         length: loaded.duration,
-        envelope,
+        envelope: envelope.clone(),
         gain,
         base,
-    })
+    };
+    Ok((slot, SmoothGain::new(source, envelope, initial, RAMP)))
 }
 
 fn announce(
