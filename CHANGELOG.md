@@ -42,6 +42,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Playback comes back on its own after your only output device disappears and returns, so a
   Bluetooth headset that drops its link and reconnects picks the track up again rather than
   leaving Sonora silent until you restart it.
+- Apple Music plays with the Widevine module an older Chromium keeps, which Sonora found
+  before but could not open.
+- The Widevine row in Settings shows its whole explanation rather than cutting it off, and
+  offers the download from Google even when a browser's copy was found. A copy downloaded that
+  way is the one Sonora uses from then on.
 - An empty Apple Music playlist opens as an empty playlist rather than a "Could not load" error.
 - The library shown at launch from the last session stays whole until the provider has sent
   all of it, rather than shrinking to the first page and filling back in.
