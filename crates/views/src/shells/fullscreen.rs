@@ -137,7 +137,7 @@ impl FullscreenView {
             muted: None,
             large: None,
             revision: 0,
-            track_menu: ItemMenu::new(playlist_scrollbar),
+            track_menu: ItemMenu::new(playlist_scrollbar, cx),
             context_menu: None,
             last_moved: Instant::now(),
             inside: true,

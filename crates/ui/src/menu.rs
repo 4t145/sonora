@@ -4,19 +4,23 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Anchor, AnyElement, AnyWindowHandle, App, Bounds, ClickEvent, Div, ElementId, Entity, Global,
-    Interactivity, MouseButton, MouseClickEvent, MouseDownEvent, Pixels, Point, ScrollWheelEvent,
-    SharedString, Size, Stateful, StyleRefinement, Window, anchored, deferred, div, point, px, svg,
+    Anchor, AnyElement, AnyWindowHandle, App, Bounds, ClickEvent, Div, ElementId, Entity,
+    FocusHandle, Focusable as _, Global, Interactivity, MouseButton, MouseClickEvent,
+    MouseDownEvent, Pixels, Point, ScrollWheelEvent, SharedString, Size, Stateful, StyleRefinement,
+    Window, anchored, deferred, div, point, px, svg,
 };
 
 use crate::Artwork;
+use crate::form::Submit;
 use crate::glass::{GLASS_BLUR, blurring};
+use crate::input::Input;
 use crate::metrics::snapped;
 use crate::motion::{Fading as _, Rising as _};
 use crate::scrollbar::Scrollbar;
 use crate::scroller::middle_scroll;
 use crate::separator::Separator;
 use crate::shield::Shield;
+use crate::table::{SelectNext, SelectPrevious};
 use crate::theme::ActiveTheme as _;
 
 pub const MENU_CONTEXT: &str = "Menu";
@@ -43,7 +47,6 @@ const SAFE_X: Pixels = px(6.);
 const SAFE_Y: Pixels = px(12.);
 const NEAR: usize = Near::Bar as usize + 1;
 
-type Press = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type Close = Rc<dyn Fn(&(), &mut Window, &mut App) + 'static>;
 type Action = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
@@ -88,6 +91,9 @@ pub struct SubmenuState {
     flip: Rc<Cell<Option<bool>>>,
     menu_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     panel_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// Keeps the submenu open after the pointer leaves, set while its search holds a query so
+    /// the list does not vanish mid-typing.
+    held: Rc<Cell<bool>>,
 }
 
 impl SubmenuState {
@@ -127,6 +133,7 @@ impl SubmenuState {
             cx.update(|cx| {
                 if state.generation.get() == generation
                     && !state.touched()
+                    && !state.held.get()
                     && !inside
                     && state.open.replace(false)
                 {
@@ -193,8 +200,153 @@ impl SubmenuState {
         self.open.set(false);
         self.near.set([false; NEAR]);
         self.flip.set(None);
+        self.held.set(false);
         self.menu_bounds.set(None);
         self.panel_bounds.set(None);
+    }
+}
+
+/// A search field drawn above a menu's items, with the row the arrow keys have reached. The
+/// menu focuses the field while it is drawn and hands focus back when it closes, so the owner
+/// only filters its items by `query`.
+#[derive(Clone)]
+pub struct MenuSearch {
+    input: Entity<Input>,
+    cursor: Rc<Cell<Option<usize>>>,
+    asked: Rc<RefCell<String>>,
+    restore: Rc<RefCell<Option<Option<FocusHandle>>>>,
+}
+
+impl MenuSearch {
+    pub fn new(hint: &'static str, cx: &mut App) -> Self {
+        Self {
+            input: cx.new(|cx| Input::new(hint, cx).compact().tucked()),
+            cursor: Rc::default(),
+            asked: Rc::default(),
+            restore: Rc::default(),
+        }
+    }
+
+    /// The field's text, trimmed and lowercased for matching.
+    pub fn query(&self, cx: &App) -> String {
+        self.input.read(cx).text().trim().to_lowercase()
+    }
+
+    /// Takes focus for the field once, remembering where it was so `release` can give it back.
+    /// A query left over from a menu that went away without closing is emptied here.
+    fn hold(&self, window: &mut Window, cx: &mut App) {
+        if self.restore.borrow().is_some() {
+            return;
+        }
+        if !self.input.read(cx).text().is_empty() {
+            self.input.update(cx, |input, cx| input.set_text("", cx));
+        }
+        let own = self.input.read(cx).focus_handle(cx);
+        let before = window.focused(cx).filter(|focus| *focus != own);
+        *self.restore.borrow_mut() = Some(before);
+        window.focus(&own, cx);
+    }
+
+    /// Empties the field and returns focus to where it was before `hold`. Without that, focus
+    /// stays on a field that is no longer drawn and later actions reach no handler. Focus the
+    /// user already moved elsewhere stays where it is.
+    fn release(&self, window: &mut Window, cx: &mut App) {
+        let Some(restore) = self.restore.borrow_mut().take() else {
+            return;
+        };
+        self.cursor.set(None);
+        self.input.update(cx, |input, cx| input.set_text("", cx));
+        if !self.input.read(cx).focus_handle(cx).is_focused(window) {
+            return;
+        }
+        match restore {
+            Some(focus) => window.focus(&focus, cx),
+            None => window.blur(),
+        }
+    }
+
+    /// Forgets the focus to hand back, for an owner about to open the menu afresh after it may
+    /// have gone away without closing. The next open takes focus and empties the field.
+    pub fn reset(&self) {
+        self.restore.borrow_mut().take();
+        self.cursor.set(None);
+    }
+
+    /// Takes in the field's current query, and says whether it changed since the last draw. A
+    /// changed query drops the row the arrow keys had picked.
+    fn renewed(&self, cx: &App) -> bool {
+        let query = self.query(cx);
+        if *self.asked.borrow() == query {
+            return false;
+        }
+        self.cursor.set(None);
+        *self.asked.borrow_mut() = query;
+        true
+    }
+
+    /// The place among the `count` pickable rows the cursor is on. It points at the first
+    /// match until the arrow keys move it, and nowhere while the field is empty.
+    fn place(&self, count: usize) -> Option<usize> {
+        let place = self
+            .cursor
+            .get()
+            .or_else(|| (!self.asked.borrow().is_empty()).then_some(0))?;
+        (count > 0).then(|| place.min(count - 1))
+    }
+
+    fn walk(&self, count: usize, step: isize) {
+        if count == 0 {
+            return;
+        }
+        let place = match self.place(count) {
+            Some(place) => (place as isize + step).rem_euclid(count as isize) as usize,
+            None if step > 0 => 0,
+            None => count - 1,
+        };
+        self.cursor.set(Some(place));
+    }
+}
+
+/// What a searchable menu's panel needs to answer the arrow keys and Enter. `rows` holds the
+/// item index of every row that can be picked, in order.
+struct Keys {
+    search: MenuSearch,
+    rows: Rc<[usize]>,
+    picked: Option<Action>,
+    action: Option<Action>,
+    searches: Rc<[MenuSearch]>,
+    scrollbar: Option<Entity<Scrollbar>>,
+}
+
+impl Keys {
+    fn bind(self, panel: Stateful<Div>) -> Stateful<Div> {
+        let Self {
+            search,
+            rows,
+            picked,
+            action,
+            searches,
+            scrollbar,
+        } = self;
+        let back = (search.clone(), rows.clone(), scrollbar.clone());
+
+        panel
+            .on_action(move |_: &SelectNext, _, cx| step(&search, &rows, 1, &scrollbar, cx))
+            .on_action(move |_: &SelectPrevious, _, cx| {
+                let (search, rows, scrollbar) = &back;
+                step(search, rows, -1, scrollbar, cx)
+            })
+            .on_action(move |_: &Submit, window, cx| {
+                let Some(press) = picked.as_ref() else {
+                    return;
+                };
+                let click = ClickEvent::default();
+                release(&searches, window, cx);
+                press(&click, window, cx);
+                if let Some(action) = action.as_ref() {
+                    action(&click, window, cx);
+                }
+            })
     }
 }
 
@@ -215,7 +367,7 @@ pub struct MenuItem {
     face: Option<SharedString>,
     icon: Option<&'static str>,
     artwork: Option<Option<SharedString>>,
-    press: Option<Press>,
+    press: Option<Action>,
     submenu: Option<Submenu>,
 }
 
@@ -303,7 +455,7 @@ impl MenuItem {
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.press = Some(Box::new(handler));
+        self.press = Some(Rc::new(handler));
         self
     }
 
@@ -328,6 +480,7 @@ pub struct Menu {
     deferred: bool,
     scrollbar: Option<Entity<Scrollbar>>,
     header: Option<AnyElement>,
+    search: Option<MenuSearch>,
     hover_guard: Option<SubmenuState>,
     trigger: Option<Trigger>,
     pressed: Option<Point<Pixels>>,
@@ -345,6 +498,7 @@ impl Menu {
             deferred: true,
             scrollbar: None,
             header: None,
+            search: None,
             hover_guard: None,
             trigger: None,
             pressed: None,
@@ -401,6 +555,28 @@ impl Menu {
         self
     }
 
+    /// Draws `search` as the header. The arrow keys and Enter then walk and pick the rows
+    /// that can be clicked, and the field keeps focus for as long as the menu is drawn.
+    pub fn search(mut self, search: MenuSearch) -> Self {
+        self.header = Some(search.input.clone().into_any_element());
+        self.search = Some(search);
+        self
+    }
+
+    /// The searches in this menu and its submenus, for a caller that closes the menu some way
+    /// the menu does not see and has to hand their focus back itself.
+    pub(crate) fn searches(&self) -> Rc<[MenuSearch]> {
+        self.search
+            .iter()
+            .chain(
+                self.items
+                    .iter()
+                    .filter_map(|item| item.submenu.as_ref()?.menu.search.as_ref()),
+            )
+            .cloned()
+            .collect()
+    }
+
     fn inline(mut self) -> Self {
         self.deferred = false;
         self
@@ -432,10 +608,49 @@ impl RenderOnce for Menu {
             deferred: should_defer,
             scrollbar,
             header,
+            search,
             hover_guard,
             trigger,
             pressed,
         } = self;
+
+        if let Some(search) = search.as_ref() {
+            search.hold(window, cx);
+        }
+        let mut searches: Vec<MenuSearch> = search.iter().cloned().collect();
+        for submenu in items.iter().filter_map(|item| item.submenu.as_ref()) {
+            let Some(inner) = submenu.menu.search.as_ref() else {
+                continue;
+            };
+            match submenu.state.is_open() {
+                true => submenu.state.held.set(!inner.query(cx).is_empty()),
+                false => inner.release(window, cx),
+            }
+            searches.push(inner.clone());
+        }
+        let searches: Rc<[MenuSearch]> = searches.into();
+        let dismiss = dismiss.map(|dismiss| -> Close {
+            let searches = searches.clone();
+            Rc::new(move |_, window, cx| {
+                release(&searches, window, cx);
+                dismiss(&(), window, cx);
+            })
+        });
+        let pickable: Vec<usize> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| !item.disabled && item.press.is_some())
+            .map(|(place, _)| place)
+            .collect();
+        let renewed = search.as_ref().is_some_and(|search| search.renewed(cx));
+        if let Some(scrollbar) = scrollbar.as_ref().filter(|_| renewed) {
+            scrollbar.read(cx).scroll().scroll_to_item(0);
+        }
+        let cursor = search
+            .as_ref()
+            .and_then(|search| search.place(pickable.len()))
+            .map(|place| pickable[place]);
+        let picked = cursor.and_then(|place| items[place].press.clone());
 
         if let (Some(scrollbar), Some(guard)) = (scrollbar.as_ref(), hover_guard.clone()) {
             scrollbar.update(cx, |scrollbar, _| {
@@ -457,7 +672,16 @@ impl RenderOnce for Menu {
         let viewport_width = window.viewport_size().width;
         let tucked = crate::metrics::tucked(theme.radius, window);
 
-        let rows = items.into_iter().map(move |item| {
+        let keys = search.map(|search| Keys {
+            search,
+            rows: pickable.into(),
+            picked,
+            action: action.clone(),
+            searches: searches.clone(),
+            scrollbar: scrollbar.clone(),
+        });
+        let row_searches = searches.clone();
+        let rows = items.into_iter().enumerate().map(move |(place, item)| {
             let MenuItem {
                 id,
                 label,
@@ -492,6 +716,7 @@ impl RenderOnce for Menu {
             }
             let action = action.clone();
             let press_action = action.clone();
+            let press = press.map(|press| releasing(press, &row_searches));
             let submenu_state = submenu.as_ref().map(|submenu| submenu.state.clone());
             let has_artwork = artwork.is_some();
             let detailed = detail.is_some();
@@ -515,7 +740,9 @@ impl RenderOnce for Menu {
                     |this| this.text_color(theme.muted_foreground).cursor_default(),
                     |this| this.cursor_pointer(),
                 )
-                .when(selected, |this| this.bg(theme.secondary_active))
+                .when(selected || cursor == Some(place), |this| {
+                    this.bg(theme.secondary_active)
+                })
                 .when(!disabled, |this| {
                     this.hover(move |this| this.bg(theme.secondary_hover))
                 })
@@ -570,7 +797,7 @@ impl RenderOnce for Menu {
                     })
                 })
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .when_some(press.map(Action::from), |this, press| {
+                .when_some(press, |this, press| {
                     let released = press.clone();
                     let release_action = press_action.clone();
                     this.on_click(move |event, window, cx| {
@@ -726,7 +953,7 @@ impl RenderOnce for Menu {
                     let panel = panel.clone();
                     move |bounds, _, _| panel.observe(bounds)
                 })
-                .child(div().w_full().py_1().child(header))
+                .child(div().w_full().child(header))
                 .child(body)
                 .into_any_element(),
             None => body,
@@ -785,6 +1012,7 @@ impl RenderOnce for Menu {
             .bg(fill)
             .text_color(theme.popover_foreground)
             .key_context(MENU_CONTEXT)
+            .when_some(keys, |this, keys| keys.bind(this))
             .when_some(width, |this, width| this.w(width))
             .when_some(ceiling, |this, ceiling| this.max_h(ceiling))
             .when_some(hover_guard, |this, guard| {
@@ -916,4 +1144,41 @@ fn grown(bounds: Bounds<Pixels>, x: Pixels, y: Pixels) -> Bounds<Pixels> {
             height: bounds.size.height + y * 2.,
         },
     }
+}
+
+/// Hands focus back from every search in `searches`, before the menu holding them goes away.
+pub(crate) fn release(searches: &[MenuSearch], window: &mut Window, cx: &mut App) {
+    for search in searches {
+        search.release(window, cx);
+    }
+}
+
+/// Wraps an item's press so the menu's searches give focus back first. A press that opens a
+/// dialog then keeps the focus the dialog takes.
+fn releasing(press: Action, searches: &Rc<[MenuSearch]>) -> Action {
+    let searches = searches.clone();
+    Rc::new(move |event, window, cx| {
+        release(&searches, window, cx);
+        press(event, window, cx);
+    })
+}
+
+/// Moves a search's cursor `by` rows through `rows` and scrolls the row it lands on into view.
+/// The field is notified rather than the window refreshed, so a cached view holding the menu
+/// draws again too.
+fn step(
+    search: &MenuSearch,
+    rows: &[usize],
+    by: isize,
+    scrollbar: &Option<Entity<Scrollbar>>,
+    cx: &mut App,
+) {
+    search.walk(rows.len(), by);
+    let Some(place) = search.cursor.get() else {
+        return;
+    };
+    if let Some(scrollbar) = scrollbar {
+        scrollbar.read(cx).scroll().scroll_to_item(rows[place]);
+    }
+    search.input.update(cx, |_, cx| cx.notify());
 }

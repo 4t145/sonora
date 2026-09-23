@@ -105,6 +105,7 @@ menu-add-tracks-to-playlist = { $count ->
 menu-new-playlist = New playlist
 menu-edit-tags = Edit tags
 menu-no-playlists = No playlists
+menu-search-playlists = Search a playlist
 menu-add-to-library = Add to Favorites
 menu-add-tracks-to-library = { $count ->
     [one] Add { $count } track to Favorites
