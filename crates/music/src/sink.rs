@@ -1,4 +1,4 @@
-//! The output queue both providers feed. A decoder runs on its own thread and hands finished
+//! The output queue every engine feeds. A decoder runs on its own thread and hands finished
 //! samples to `Paced`, which appends them to the shared rodio output and blocks the writer once
 //! enough is queued. Nothing here decodes or reaches the network, so the audio thread never
 //! waits on either.
