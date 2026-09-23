@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sonora plays every track at its own sample rate rather than resampling it to the device
   default, so a 96 kHz FLAC leaves the app at 96 kHz. Moving between tracks of different rates
   leaves a short pause.
+- Albanian (Shqip) interface language.
 
 ### Changed
 
