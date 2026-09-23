@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -179,14 +179,14 @@ async fn engine_loop(
         equalizer: config.equalizer.clone(),
         spectrum,
     };
-    let output = match Output::open(chain) {
+    let mut output = match Output::open(chain) {
         Ok(output) => output,
         Err(error) => {
             log::error!("playback: cannot open audio output: {error:#}");
             return;
         }
     };
-    let sink = output.sink().clone();
+    let mut sink = output.sink().clone();
     sink.pause();
 
     let mut ticker = tokio::time::interval(POLL);
@@ -232,8 +232,20 @@ async fn engine_loop(
                         current = None;
                         queued = None;
                         prev_len = 0;
-                        match load(&sink, &id) {
-                            Ok(slot) => {
+                        match decode(&id) {
+                            Ok((slot, source)) => {
+                                match output.fit(source.sample_rate().get()) {
+                                    Ok(true) => sink = output.sink().clone(),
+                                    Ok(false) => {}
+                                    Err(error) => {
+                                        log::error!(
+                                            "playback: cannot reopen audio output: {error:#}"
+                                        );
+                                        events.send(PlaybackEvent::OutputChanged).ok();
+                                        return;
+                                    }
+                                }
+                                sink.append(source);
                                 place(&sink, &id, at);
                                 match play {
                                     true => sink.play(),
@@ -276,8 +288,15 @@ async fn engine_loop(
                         if known || current.is_none() || queued.is_some() {
                             continue;
                         }
-                        match load(&sink, &id) {
-                            Ok(slot) => {
+                        match decode(&id) {
+                            Ok((slot, source)) => {
+                                if !output.fits(source.sample_rate().get()) {
+                                    log::debug!(
+                                        "playback: {id} needs the output at another rate, so it loads on its own"
+                                    );
+                                    continue;
+                                }
+                                sink.append(source);
                                 queued = Some(slot);
                                 prev_len = sink.len();
                             }
@@ -377,7 +396,9 @@ fn place(sink: &rodio::Player, id: &str, at: Option<Duration>) {
     }
 }
 
-fn load(sink: &rodio::Player, id: &str) -> Result<Slot> {
+/// Opens a local file and builds its decoder without queueing it, so the caller can read the
+/// sample rate before the output takes the audio.
+fn decode(id: &str) -> Result<(Slot, rodio::Decoder<BufReader<Audio>>)> {
     let path =
         wire::path_from_track_id(id).ok_or_else(|| anyhow!("{id} is not a local track id"))?;
     let mut file =
@@ -389,7 +410,7 @@ fn load(sink: &rodio::Player, id: &str) -> Result<Slot> {
         let _ = file.seek(SeekFrom::Start(skip));
     }
     let gapless = !wire::has_lying_xing_frame_count(path, skip);
-    let reader = std::io::BufReader::new(Audio { file, skip });
+    let reader = BufReader::new(Audio { file, skip });
 
     let mut builder = rodio::Decoder::builder()
         .with_data(reader)
@@ -400,11 +421,9 @@ fn load(sink: &rodio::Player, id: &str) -> Result<Slot> {
         builder = builder.with_byte_len(length.saturating_sub(skip));
     }
     let source = builder.build().context("cannot decode audio")?;
-    let duration = source.total_duration();
-    sink.append(source);
-
-    Ok(Slot {
+    let slot = Slot {
         id: id.to_owned(),
-        length: duration,
-    })
+        length: source.total_duration(),
+    };
+    Ok((slot, source))
 }

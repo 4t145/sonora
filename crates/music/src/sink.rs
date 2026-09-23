@@ -264,6 +264,29 @@ impl Paced {
         self.live.load(Ordering::Relaxed) > QUEUED_CHUNKS
     }
 
+    /// Whether everything queued has played out or been retired. A queue on a stream that has
+    /// failed or closed never plays out, so it counts as drained.
+    pub fn drained(&self) -> bool {
+        self.live.load(Ordering::Relaxed) == 0 || self.output.failed()
+    }
+
+    /// Whether packets at `rate` can go out without the output reopening.
+    pub fn fits(&self, rate: u32) -> bool {
+        self.output.fits(rate)
+    }
+
+    /// Reopens the output for packets at `rate` unless it fits already. Anything still queued
+    /// is dropped, so a caller that wants the tail heard waits for `drained` first.
+    pub fn fit(&mut self, rate: u32) -> Result<(), Gone> {
+        match self.output.fit(rate) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                log::error!("sink: cannot reopen the audio output: {error:#}");
+                Err(self.disconnected())
+            }
+        }
+    }
+
     /// Waits until there is room for another packet.
     pub fn drain(&mut self) -> Result<(), Gone> {
         while self.full() {
