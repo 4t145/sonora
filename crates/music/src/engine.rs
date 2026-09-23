@@ -26,7 +26,7 @@ use rodio::Source as _;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::audio::{Chain, Volume};
-use crate::sink::{Cue, Paced, packet};
+use crate::sink::{Cue, Paced, packet, watch_for_output};
 use crate::spectrum::Spectrum;
 use crate::{PlaybackConfig, PlaybackEvent, PlaybackEvents, Player};
 
@@ -684,9 +684,14 @@ fn audio_loop<F: Fetch>(
     interval: Duration,
     normalise: bool,
 ) {
-    let mut paced = match Paced::open(cue.clone(), chain, changed) {
+    let mut paced = match Paced::open(cue.clone(), chain, changed.clone()) {
         Ok(paced) => paced,
-        Err(error) => return log::error!("playback: cannot open audio output: {error:#}"),
+        Err(error) => {
+            // Nothing can be decoded without an output, so this thread is done. The engine is
+            // told once a device is back, and the one that replaces it opens on that.
+            log::error!("playback: cannot open audio output: {error:#}");
+            return watch_for_output(changed);
+        }
     };
 
     let mut current: Option<Playing<F>> = None;
