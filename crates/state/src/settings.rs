@@ -31,7 +31,7 @@ use ui::{
 
 use crate::pins::PinSort;
 use crate::queue::{Resume, gap_target};
-use crate::{Repeat, Sonora};
+use crate::{Outcome, Repeat, Sonora, Toasts};
 
 /// Which panel the right sidebar shows.
 /// What the Discord status calls itself. `Provider` asks the provider the track came from, so
@@ -553,6 +553,8 @@ pub struct AppSettings {
     /// What `settings.json` held when it was last read or written, so the watcher can tell our
     /// own writes from another program's.
     disk: Option<Vec<u8>>,
+    /// The line of the parse error while `settings.json` does not parse.
+    broken: Option<usize>,
     /// The watch on the folder holding `settings.json`. Dropping it ends the watch.
     watcher: Option<RecommendedWatcher>,
     reload: Option<Task<()>>,
@@ -581,13 +583,13 @@ impl AppSettings {
             }
         };
         let parsed = bytes.map(|bytes| (serde_json::from_slice::<Values>(&bytes), bytes));
-        let (values, writable, disk) = match parsed {
-            Some((Ok(values), bytes)) => (values, writable, Some(bytes)),
+        let (values, writable, disk, broken) = match parsed {
+            Some((Ok(values), bytes)) => (values, writable, Some(bytes), None),
             Some((Err(error), _)) => {
                 log::warn!("settings: cannot parse {}: {error}", path.display());
-                (Values::default(), false, None)
+                (Values::default(), false, None, Some(error.line()))
             }
-            None => (Values::default(), writable, None),
+            None => (Values::default(), writable, None, None),
         };
 
         let state = match store.load() {
@@ -609,8 +611,22 @@ impl AppSettings {
             watch: None,
             writable,
             disk,
+            broken,
             watcher: None,
             reload: None,
+        }
+    }
+
+    /// Tells the user that `settings.json` does not parse and that changes are not saved until
+    /// it does. Does nothing while the file is fine.
+    pub fn report_broken(&self, cx: &mut App) {
+        if let Some(line) = self.broken {
+            Toasts::about(
+                Outcome::Failed,
+                "toast-settings-broken",
+                line.to_string(),
+                cx,
+            );
         }
     }
 
@@ -1688,6 +1704,7 @@ impl AppSettings {
         };
         if self.disk.as_ref() == Some(&bytes) {
             self.writable = true;
+            self.broken = None;
             return;
         }
         let values = match serde_json::from_slice::<Values>(&bytes) {
@@ -1695,6 +1712,8 @@ impl AppSettings {
             Err(error) => {
                 log::warn!("settings: cannot parse {}: {error}", self.path.display());
                 self.writable = false;
+                self.broken = Some(error.line());
+                self.report_broken(cx);
                 return;
             }
         };
@@ -1703,6 +1722,7 @@ impl AppSettings {
         let previous = std::mem::replace(&mut self.values, values);
         self.disk = Some(bytes);
         self.writable = true;
+        self.broken = None;
         self.save = None;
         self.push_globals(&previous, cx);
         cx.emit(Reloaded);

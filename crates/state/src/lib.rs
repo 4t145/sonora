@@ -193,6 +193,7 @@ pub fn init(
     let settings = cx.new(|cx| {
         let mut settings = AppSettings::load(database.clone());
         settings.watch_file(cx);
+        settings.report_broken(cx);
         settings
     });
     let session =
