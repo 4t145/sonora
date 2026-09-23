@@ -4531,6 +4531,7 @@ dependencies = [
  "deunicode",
  "dirs",
  "env_logger",
+ "fastrand",
  "flate2",
  "futures",
  "http",
