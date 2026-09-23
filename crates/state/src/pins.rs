@@ -4,7 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
 use gpui::{App, Context, Entity};
-use music::{LibraryItem, LibraryItemKind};
+use music::{PinTarget, PinTargetKind};
 use ui::{Pin, PinKind};
 
 use crate::library::{Library, Shelf};
@@ -282,7 +282,7 @@ impl Pins {
         let mine = cx.entity();
         let pin = pin.clone();
         self.library.update(cx, |library, cx| {
-            library.set_sidebar_pinned(
+            library.set_pinned(
                 uri,
                 pinned,
                 move |kept, cx| {
@@ -333,7 +333,7 @@ impl Pins {
         }
         self.library
             .read(cx)
-            .sidebar_items()?
+            .pin_targets()?
             .iter()
             .find(|item| pin_of(item).is_some_and(|listed| listed.same(pin)))
             .map(|item| item.uri.clone())
@@ -343,14 +343,14 @@ impl Pins {
     /// dropped elsewhere leaves it. Only a change since the last look counts, so a local pin the
     /// provider never held stays put, and the first look after signing in imports what is there.
     fn absorb(&mut self, cx: &mut Context<Self>) {
-        if self.library.read(cx).sidebar_pin_pending() {
+        if self.library.read(cx).pin_pending() {
             return;
         }
         let Some(items) = self
             .library
             .read(cx)
-            .sidebar_items()
-            .map(<[LibraryItem]>::to_vec)
+            .pin_targets()
+            .map(<[PinTarget]>::to_vec)
         else {
             self.mirrored.clear();
             return;
@@ -406,13 +406,13 @@ fn rank(kind: PinKind) -> u8 {
     }
 }
 
-/// The pin a provider's library row stands for, or `None` for a row Sonora cannot open on its own,
+/// The pin a provider's pin target stands for, or `None` for a row Sonora cannot open on its own,
 /// such as a folder or a podcast.
-fn pin_of(item: &LibraryItem) -> Option<Pin> {
+fn pin_of(item: &PinTarget) -> Option<Pin> {
     let kind = match item.kind {
-        LibraryItemKind::Playlist => PinKind::Playlist,
-        LibraryItemKind::Album => PinKind::Album,
-        LibraryItemKind::Artist => PinKind::Artist,
+        PinTargetKind::Playlist => PinKind::Playlist,
+        PinTargetKind::Album => PinKind::Album,
+        PinTargetKind::Artist => PinKind::Artist,
         _ => return None,
     };
     let (_, id) = item.uri.rsplit_once(':')?;
@@ -423,11 +423,11 @@ fn pin_of(item: &LibraryItem) -> Option<Pin> {
 #[cfg(test)]
 mod tests {
     use super::pin_of;
-    use music::{LibraryItem, LibraryItemKind};
+    use music::{PinTarget, PinTargetKind};
     use ui::PinKind;
 
-    fn item(uri: &str, kind: LibraryItemKind) -> LibraryItem {
-        LibraryItem {
+    fn item(uri: &str, kind: PinTargetKind) -> PinTarget {
+        PinTarget {
             uri: uri.to_owned(),
             name: "name".into(),
             subtitle: "subtitle".into(),
@@ -439,10 +439,10 @@ mod tests {
 
     #[test]
     fn a_library_row_keeps_only_its_bare_id() {
-        let pin = pin_of(&item("spotify:album:4aB", LibraryItemKind::Album)).unwrap();
+        let pin = pin_of(&item("spotify:album:4aB", PinTargetKind::Album)).unwrap();
         assert_eq!(pin.kind, PinKind::Album);
         assert_eq!(pin.id, "4aB");
-        assert!(pin_of(&item("spotify:show:4aB", LibraryItemKind::Show)).is_none());
-        assert!(pin_of(&item("bare", LibraryItemKind::Album)).is_none());
+        assert!(pin_of(&item("spotify:show:4aB", PinTargetKind::Show)).is_none());
+        assert!(pin_of(&item("bare", PinTargetKind::Album)).is_none());
     }
 }

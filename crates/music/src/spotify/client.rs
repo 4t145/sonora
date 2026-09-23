@@ -227,19 +227,12 @@ impl MusicApi for LibrespotClient {
         playlists::remove_track(&self.session, playlist_id, track_id).await
     }
 
-    async fn set_library_item_pinned(
-        &self,
-        uri: &str,
-        pinned: bool,
-    ) -> Result<crate::LibraryPinResult> {
-        pathfinder::set_library_item_pinned(&self.session, uri, pinned).await
+    async fn set_pinned(&self, uri: &str, pinned: bool) -> Result<crate::PinOutcome> {
+        pathfinder::set_pinned(&self.session, uri, pinned).await
     }
 
-    async fn library_items(
-        &self,
-        order: crate::LibraryOrder,
-    ) -> Result<Option<Vec<crate::LibraryItem>>> {
-        pathfinder::library(&self.session, order).await.map(Some)
+    async fn pin_targets(&self) -> Result<Option<Vec<crate::PinTarget>>> {
+        pathfinder::library(&self.session).await.map(Some)
     }
 
     async fn playlists(&self) -> Result<Vec<Playlist>> {

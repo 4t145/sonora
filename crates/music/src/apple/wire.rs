@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::{
-    Album, Artist, ArtistProfile, ArtistRef, LibraryItem, LibraryItemKind, Playlist, ReleaseType,
+    Album, Artist, ArtistProfile, ArtistRef, PinTarget, PinTargetKind, Playlist, ReleaseType,
     SavedArtist, Track,
 };
 
@@ -412,16 +412,16 @@ pub fn view<'a>(value: &'a Value, name: &str) -> &'a [Value] {
         .unwrap_or_default()
 }
 
-/// One row of the mixed library landing, whatever kind of thing it is.
+/// One row of the library landing as a pin target, whatever kind of thing it is.
 ///
 /// The uri is Spotify-shaped on purpose: a sidebar pin is built by taking what follows the last
 /// colon, so an id on its own could never become one.
-pub fn library_item(value: &Value, owner: &str) -> Option<LibraryItem> {
+pub fn pin_target(value: &Value, owner: &str) -> Option<PinTarget> {
     let kind = value.get("type")?.as_str()?;
     let attributes = value.get("attributes")?;
     let (kind, uri, subtitle) = match kind {
         "library-albums" | "albums" => (
-            LibraryItemKind::Album,
+            PinTargetKind::Album,
             catalog(value)
                 .and_then(|found| found.get("id"))
                 .and_then(Value::as_str)
@@ -429,12 +429,12 @@ pub fn library_item(value: &Value, owner: &str) -> Option<LibraryItem> {
             text(attributes, "artistName").unwrap_or_default(),
         ),
         "library-playlists" | "playlists" => (
-            LibraryItemKind::Playlist,
+            PinTargetKind::Playlist,
             value.get("id").and_then(Value::as_str).map(str::to_owned),
             text(attributes, "curatorName").unwrap_or_else(|| owner.to_owned()),
         ),
         "library-artists" | "artists" => (
-            LibraryItemKind::Artist,
+            PinTargetKind::Artist,
             catalog(value)
                 .and_then(|found| found.get("id"))
                 .and_then(Value::as_str)
@@ -444,11 +444,11 @@ pub fn library_item(value: &Value, owner: &str) -> Option<LibraryItem> {
         _ => return None,
     };
     let part = match kind {
-        LibraryItemKind::Album => "album",
-        LibraryItemKind::Artist => "artist",
+        PinTargetKind::Album => "album",
+        PinTargetKind::Artist => "artist",
         _ => "playlist",
     };
-    Some(LibraryItem {
+    Some(PinTarget {
         uri: format!("apple:{part}:{}", uri?),
         name: text(attributes, "name")?,
         subtitle,
@@ -643,9 +643,9 @@ mod tests {
                             "artwork": { "url": "https://is1.mzstatic.com/a/{w}x{h}bb.jpg" } },
             "relationships": { "catalog": { "data": [{ "id": "1691419979", "attributes": {} }] } }
         });
-        let item = library_item(&row, "Me").unwrap();
+        let item = pin_target(&row, "Me").unwrap();
         assert_eq!(item.uri, "apple:album:1691419979");
-        assert_eq!(item.kind, LibraryItemKind::Album);
+        assert_eq!(item.kind, PinTargetKind::Album);
         assert_eq!(item.subtitle, "Of Virtue");
     }
 
@@ -655,6 +655,6 @@ mod tests {
             "type": "library-music-videos",
             "attributes": { "name": "A Video" }
         });
-        assert!(library_item(&row, "Me").is_none());
+        assert!(pin_target(&row, "Me").is_none());
     }
 }

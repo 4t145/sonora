@@ -38,10 +38,10 @@ use async_trait::async_trait;
 pub use equalizer::Equalizer;
 pub use models::{
     Album, AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, ArtistRef, Contributor, Credit,
-    Genre, GenreDetail, GenreItem, GenreSection, HomeFeed, LibraryItem, LibraryItemKind,
-    LibraryOrder, LibraryPinResult, Lyrics, LyricsHit, LyricsLane, LyricsLine, LyricsQuery,
-    LyricsWord, Playlist, PlaylistDetail, ReleaseType, RomanizedText, SavedArtist, Track, TrackKey,
-    TrackTags, UserDetail, UserProfile, Voice, WritingSystem,
+    Genre, GenreDetail, GenreItem, GenreSection, HomeFeed, Lyrics, LyricsHit, LyricsLane,
+    LyricsLine, LyricsQuery, LyricsWord, PinOutcome, PinTarget, PinTargetKind, Playlist,
+    PlaylistDetail, ReleaseType, RomanizedText, SavedArtist, Track, TrackKey, TrackTags,
+    UserDetail, UserProfile, Voice, WritingSystem,
 };
 pub use spectrum::Spectrum;
 
@@ -153,14 +153,14 @@ pub trait MusicApi: Send + Sync {
     }
     async fn track_playcount(&self, track_id: &str) -> Result<Option<u64>>;
     async fn playlists(&self) -> Result<Vec<Playlist>>;
-    /// Change a provider's own library pin, rather than a local sidebar shortcut.
-    async fn set_library_item_pinned(&self, _uri: &str, _pinned: bool) -> Result<LibraryPinResult> {
-        anyhow::bail!("library pinning is not supported")
+    /// Changes the provider's own pin for `uri`, one of the uris `pin_targets` lists.
+    async fn set_pinned(&self, _uri: &str, _pinned: bool) -> Result<PinOutcome> {
+        anyhow::bail!("pinning is not supported")
     }
 
-    /// The provider's mixed library, including pins and its recent-play ordering.
-    /// None means this provider exposes only the separate saved collections.
-    async fn library_items(&self, _order: LibraryOrder) -> Result<Option<Vec<LibraryItem>>> {
+    /// What the provider can pin, each saying whether it is pinned now. `None` means the
+    /// provider keeps no pins of its own.
+    async fn pin_targets(&self) -> Result<Option<Vec<PinTarget>>> {
         Ok(None)
     }
     async fn create_playlist(&self, name: &str) -> Result<String>;
@@ -406,8 +406,8 @@ pub struct Capabilities {
     /// put into and taken out of through `set_in_library`. Off where the library is the
     /// favorites, as on Spotify, and where it is fixed, as on a self-hosted server.
     pub library: bool,
-    /// The provider keeps sidebar pins of its own, listed by `library_items` and changed
-    /// through `set_library_item_pinned`. Off, a pin lives in Sonora's settings alone.
+    /// The provider keeps sidebar pins of its own, listed by `pin_targets` and changed
+    /// through `set_pinned`. Off, a pin lives in Sonora's settings alone.
     pub pins: bool,
 }
 
