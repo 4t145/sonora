@@ -74,7 +74,7 @@ pub use input::{
 };
 pub use label::{eyebrow, faint, heading, upper, vacant};
 pub use layout::{ALWAYS, MIN_CONTENT, ROOMY, Room, SNUG, VAST, WIDE};
-pub use menu::{MENU_CONTEXT, Menu, MenuItem, SubmenuState};
+pub use menu::{MENU_CONTEXT, Menu, MenuItem, MenuSearch, SubmenuState};
 pub use metrics::{LEADING, Metrics, Rounding, Text, snapped, tucked};
 pub use modal::Modal;
 pub use motion::{

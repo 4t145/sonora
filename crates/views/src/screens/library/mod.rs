@@ -248,6 +248,7 @@ impl LibraryView {
                 },
                 playback.clone(),
                 playlist_scrollbar,
+                cx,
             )
             .from(move |_| Some(from.clone()))
             .with_liked(library.clone())

@@ -188,6 +188,7 @@ impl TrackSource {
         provider: impl Tracks,
         playback: Entity<Playback>,
         playlist_scrollbar: Entity<Scrollbar>,
+        cx: &mut App,
     ) -> Self {
         Self {
             columns,
@@ -199,7 +200,7 @@ impl TrackSource {
             album: None,
             playlist: None,
             history: None,
-            menu: ItemMenu::new(playlist_scrollbar),
+            menu: ItemMenu::new(playlist_scrollbar, cx),
             table: None,
             sieve: TrackSieve::default(),
             spread: RefCell::new(None),
