@@ -8,7 +8,7 @@ use gpui::{
 };
 
 use crate::button::Button;
-use crate::glass::glass;
+use crate::glass::{blurring, glass};
 use crate::glide::Glide;
 use crate::motion::{Motion, Motioned as _, animates};
 use crate::theme::ActiveTheme as _;
@@ -43,8 +43,9 @@ pub struct Tabs {
 /// behind it fades them out rather than cutting them off. There is no scrollbar.
 ///
 /// Colours come from the theme (`secondary`, `border`) and any caller style wins over them,
-/// so a call site stays in charge of the tint. `.blurred()` swaps the solid fill for
-/// `glass` under a soft shadow, iOS-style.
+/// so a call site stays in charge of the tint. `.blurred()` marks a bar that floats over
+/// content: it always casts a soft shadow, and swaps the solid fill for `glass` while
+/// `blurring` is on.
 #[derive(IntoElement)]
 pub struct TabBar {
     base: Div,
@@ -188,6 +189,7 @@ impl RenderOnce for TabBar {
             blurred,
         } = self;
         let theme = *cx.theme();
+        let glassy = blurred && blurring(cx);
         let rem = window.rem_size();
         let overrides = std::mem::take(base.style());
         // Caller styles win over the bar defaults below, so the rounding the
@@ -252,7 +254,7 @@ impl RenderOnce for TabBar {
             );
         // A glass bar has no flat fill to paint a fade with: a wash of its own thin fill hides
         // nothing. It fades the tabs themselves instead, and leaves the blur behind them whole.
-        let row = match (blurred, rails.as_ref()) {
+        let row = match (glassy, rails.as_ref()) {
             (true, Some(rails)) => {
                 // The mask reads its strength off the rail's clock rather than an animation
                 // element, so nothing else asks for the frames it needs while an edge empties.
@@ -276,9 +278,10 @@ impl RenderOnce for TabBar {
             .bg(theme.secondary)
             .border_1()
             .border_color(theme.border)
-            .when(blurred, |bar| glass(bar, cx).shadow_sm())
+            .when(blurred, |bar| bar.shadow_sm())
+            .when(glassy, |bar| glass(bar, cx))
             .child(row)
-            .when_some(rails.filter(|_| !blurred), |bar, rails| {
+            .when_some(rails.filter(|_| !glassy), |bar, rails| {
                 bar.children(
                     rails
                         .washes

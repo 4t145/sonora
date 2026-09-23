@@ -317,9 +317,10 @@ impl Render for Input {
             .rounded(radius)
             .when_else(
                 self.blurred && blurring(cx),
-                |this| glass(this, cx).shadow_sm(),
+                |this| glass(this, cx),
                 |this| this.bg(theme.secondary),
             )
+            .when(self.blurred, |this| this.shadow_sm())
             .when_else(
                 self.tucked,
                 |this| this.w_full(),
