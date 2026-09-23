@@ -25,8 +25,8 @@ use crate::apple::auth::{self, AGENT};
 use crate::apple::wire;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
-    HomeFeed, LibraryItem, LibraryOrder, MediaKind, MusicApi, Page, Pages, Playlist,
-    PlaylistDetail, SavedArtist, Track, UserProfile,
+    HomeFeed, MediaKind, MusicApi, Page, Pages, PinTarget, Playlist, PlaylistDetail, SavedArtist,
+    Track, UserProfile,
 };
 
 /// The API the web player calls.
@@ -38,7 +38,7 @@ const PAGE: usize = 100;
 /// How many search hits to ask for. Apple refuses a search page larger than this outright.
 const HITS: usize = 25;
 
-/// How many rows the mixed library landing takes, which is all Apple allows for that one.
+/// How many rows the library landing takes, which is all Apple allows for that one.
 const LANDING: usize = 25;
 
 /// How many pages one listing will walk before it stops. A library of a hundred thousand songs
@@ -946,18 +946,15 @@ impl MusicApi for AppleClient {
         .await
     }
 
-    /// The mixed library landing, newest first. Apple only orders it one way, so the other
-    /// orders are left to the separate collections.
-    async fn library_items(&self, order: LibraryOrder) -> Result<Option<Vec<LibraryItem>>> {
-        if !matches!(order, LibraryOrder::Recents | LibraryOrder::RecentlyAdded) {
-            return Ok(None);
-        }
+    /// The library landing, newest first. Apple keeps no pins, so every row comes back
+    /// unpinned.
+    async fn pin_targets(&self) -> Result<Option<Vec<PinTarget>>> {
         let items = self
             .walk(
                 "/me/library/recently-added",
                 LANDING,
                 &[("include", "catalog")],
-                |row| wire::library_item(row, OWNER),
+                |row| wire::pin_target(row, OWNER),
             )
             .await?;
         Ok(Some(items))
