@@ -49,6 +49,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Frosted menus and fields no longer turn grey under their own shadow on the light theme.
 - Menus and dialogs show their shadow from the moment they open rather than once they have
   settled.
+- The tray icon of the Flatpak and the AppImage shows the Sonora logo in trays such as Dank
+  Material Shell, which drew a missing-texture placeholder in its place.
 
 ## [0.38.0] - 2026-09-20
 
