@@ -11,6 +11,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The Add to playlist menu has a search field at the top. Type to narrow the list, then use the
   arrow keys and Enter to pick a playlist.
+- Sonora picks up changes to `settings.json` while it runs, so a script that rewrites your theme
+  colours from the wallpaper recolours the app right away, without a restart.
 
 ### Changed
 
