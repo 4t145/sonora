@@ -745,7 +745,6 @@ impl FullscreenView {
     fn pill(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let frosted = ambient::shown(cx);
-        let hazy = frosted && ui::blurring(cx);
         let gap = px(PILL_GAP);
         let linger = cx.listener(|this: &mut Self, hovering: &bool, _, cx| {
             this.over_pill = *hovering;
@@ -778,7 +777,7 @@ impl FullscreenView {
             .on_hover(linger)
             .child(
                 TabBar::new("fullscreen-pill-bar")
-                    .when(hazy, TabBar::blurred)
+                    .when(frosted, TabBar::blurred)
                     .rounded(theme.radius + gap)
                     .items([
                         tab(

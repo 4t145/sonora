@@ -4248,7 +4248,7 @@ impl Render for SettingsHeader {
         // one ends the search
         let categories = TabBar::new("settings-categories")
             .max_w_full()
-            .when(ui::blurring(cx), TabBar::blurred)
+            .blurred()
             .items(SettingsTab::ALL.map(|tab| {
                 Button::new(tab.id())
                     .label(i18n::lookup(tab.key(), None))

@@ -783,6 +783,7 @@ impl RenderOnce for Menu {
             .gap_1()
             .border_color(theme.border)
             .bg(fill)
+            .shadow_md()
             .text_color(theme.popover_foreground)
             .key_context(MENU_CONTEXT)
             .when_some(width, |this, width| this.w(width))

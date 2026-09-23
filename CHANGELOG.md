@@ -23,6 +23,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   read through the same way.
 - Settings > Appearance > Blur UI turns that frosting off. The old Blur setting is now Blur
   window, and only shows on macOS and Windows, where it works.
+- Menus cast a soft shadow, and dialogs have rounder corners.
 
 ### Fixed
 
@@ -34,6 +35,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Covers no longer swap places with each other while a grid is scrolled quickly.
 - The cover handed to the system media controls is the album artwork rather than the
   64-pixel thumbnail a track carries, so media widgets and lock screens draw it sharp.
+- Frosted menus and fields no longer turn grey under their own shadow on the light theme.
+- Menus and dialogs show their shadow from the moment they open rather than once they have
+  settled.
 
 ## [0.38.0] - 2026-09-20
 
