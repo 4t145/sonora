@@ -27,6 +27,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - An empty Apple Music playlist opens as an empty playlist rather than a "Could not load" error.
+- The library shown at launch from the last session stays whole until the provider has sent
+  all of it, rather than shrinking to the first page and filling back in.
 - Guest mode is remembered again, so choosing it no longer brings the welcome screen
   back on every launch.
 - YouTube Music tracks that stopped loading with a 403 now play: Sonora sends the
