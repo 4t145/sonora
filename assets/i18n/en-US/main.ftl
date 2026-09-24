@@ -105,6 +105,7 @@ menu-add-tracks-to-playlist = { $count ->
 menu-new-playlist = New playlist
 menu-edit-tags = Edit tags
 menu-no-playlists = No playlists
+menu-search-playlists = Search a playlist
 menu-add-to-library = Add to Favorites
 menu-add-tracks-to-library = { $count ->
     [one] Add { $count } track to Favorites
@@ -376,6 +377,11 @@ release-meta = { $year } • { $kind }
 # home page
 home-quick-picks = Quick picks
 home-quick-picks-empty = Like a few songs and they will show up here
+home-recently-added = Recently added
+home-playlists = Playlists
+home-favorite-albums = Favorite albums
+home-artists = Artists
+home-collection-albums = Albums from your collection
 
 # search page
 search-placeholder = What do you want to listen to?
@@ -513,8 +519,10 @@ settings-saver = Battery saving
 settings-saver-detail = Cap the frame rate of animations while Sonora is not focused, applied from the next launch
 settings-corners = Corners
 settings-corners-detail = How rounded surfaces and controls are
-settings-blur = Blur
-settings-blur-detail = Draw the window over a blurred desktop. Needs an opacity below 100%
+settings-blur = Blur UI
+settings-blur-detail = Frost the menus and floating controls over whatever they cover
+settings-blur-window = Blur window
+settings-blur-window-detail = Draw the window over a blurred desktop. Needs an opacity below 100%
 settings-font = Font size
 settings-font-detail = Base text size, everything else scales with it
 settings-font-value = { $size } px
@@ -582,7 +590,7 @@ settings-sleep-off = Off
 settings-sleep-end-of-track = End of track
 settings-sleep-minutes = { $count } mins
 settings-widevine = Widevine module
-settings-widevine-detail = Apple Music tracks are encrypted and need Google's Widevine module. Sonora uses the copy a browser here already has, or one it downloaded from Google with your consent.
+settings-widevine-detail = Apple Music tracks are encrypted and need Google's Widevine module. Sonora uses one it downloaded from Google with your consent, or else the copy a browser here already has.
 settings-widevine-none = Apple Music tracks are encrypted and need Google's Widevine module. No browser here has one, so Sonora can download it from Google with your consent.
 settings-widevine-looking = Looking…
 settings-widevine-asking = Waiting for your answer
@@ -598,6 +606,7 @@ confirm-uninstall-widevine-title = Uninstall the Widevine module?
 confirm-uninstall-widevine = Sonora deletes the copy it downloaded from Google. Apple Music tracks stop playing until it is downloaded again.
 widevine-prompt-title = Widevine module
 widevine-prompt-wanted = Apple Music tracks are encrypted and need Google's Widevine module. No browser on this computer has one. Sonora can download it from Google's servers, the same file Chrome installs, and keep it in its own folder.
+widevine-prompt-replace = Apple Music tracks are encrypted and need Google's Widevine module. A browser on this computer has one, and Sonora can download Google's own copy to use instead, the same file Chrome installs, kept in its own folder.
 widevine-prompt-downloading = Downloading…
 widevine-prompt-terms = Version { $version } is downloaded. Installing it means accepting Google's terms for the module:
 widevine-prompt-installing = Installing…
@@ -632,6 +641,8 @@ settings-fullscreen-lyrics-size-detail = Size of the lyrics text on the fullscre
 settings-lyrics-size-value = { $size }%
 settings-lyrics-for-local-files = Lyrics for local files
 settings-lyrics-for-local-files-detail = Use metadata from local files to fetch lyrics from the internet
+settings-prefer-local-lyrics = Prefer local lyrics
+settings-prefer-local-lyrics-detail = Use the lyrics stored in a local file's tags or its .lrc file instead of searching the other providers
 settings-karaoke-lyrics = Karaoke lyrics
 settings-karaoke-lyrics-detail = Highlight lyrics word by word when timing is available
 settings-blur-lyrics = Blur inactive lyrics
@@ -645,6 +656,7 @@ settings-lyrics-providers-selected = { $count ->
     [one] { $count } selected
    *[other] { $count } selected
     }
+settings-lyrics-provider-local = Local files
 settings-lyrics-provider-spotify = Spotify
 settings-lyrics-provider-youtube = YouTube Music
 settings-lyrics-provider-apple-music = Apple Music
@@ -800,6 +812,7 @@ lyrics-instrumental = This song is instrumental
 lyrics-failed = Could not reach the lyrics service
 lyrics-follow = Follow the song again
 lyrics-source = Lyrics from { $source }
+lyrics-source-local = Lyrics from the local file
 lyrics-writers = Written by { $writers }
 
 update-available = Sonora { $version } is out
@@ -852,3 +865,4 @@ trouble-offline-detail = Check your internet connection and try again.
 trouble-not-loaded = Could not load
 trouble-retry = Try again
 toast-offline = No connection. Nothing will stream until it is back.
+toast-settings-broken = Fix line { $name } of settings.json to save changes

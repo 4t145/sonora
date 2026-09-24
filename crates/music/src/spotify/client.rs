@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{MediaKind, MusicApi};
+use crate::{MediaKind, MusicApi, escape};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use librespot_core::Session;
@@ -11,8 +11,8 @@ use crate::spotify::{
     albums, artists, collection, collection2, pathfinder, playlists, profiles, radio, search, wire,
 };
 use crate::{
-    Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, HomeFeed, Playlist,
-    PlaylistDetail, SavedArtist, Track, UserDetail, UserProfile,
+    Album, AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, Genre, GenreDetail, HomeFeed,
+    Playlist, PlaylistDetail, SavedArtist, Track, UserDetail, UserProfile,
 };
 
 const MADE_FOR_YOU: &str = "0JQ5DAt0tbjZptfcdMSKl3";
@@ -36,7 +36,7 @@ impl LibrespotClient {
         let body = self
             .session
             .spclient()
-            .get_user_profile(&profiles::escaped(username), None, None)
+            .get_user_profile(&escape::component(username), None, None)
             .await
             .inspect_err(|error| log::debug!("profiles: cannot read {username}: {error}"))
             .ok()?;
@@ -59,7 +59,10 @@ impl MusicApi for LibrespotClient {
             MediaKind::Artist => "artist",
             MediaKind::Playlist => "playlist",
         };
-        Some(format!("https://open.spotify.com/{kind}/{id}"))
+        Some(format!(
+            "https://open.spotify.com/{kind}/{}",
+            escape::component(id)
+        ))
     }
 
     async fn profile(&self) -> Result<UserProfile> {
@@ -80,6 +83,10 @@ impl MusicApi for LibrespotClient {
 
     async fn artist(&self, artist_id: &str) -> Result<Artist> {
         artists::artist(&self.session, artist_id).await
+    }
+
+    async fn artist_catalogue(&self, artist_id: &str, known: &[Track]) -> Result<ArtistCatalogue> {
+        artists::catalogue(&self.session, artist_id, known.to_vec()).await
     }
 
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile> {
@@ -151,8 +158,12 @@ impl MusicApi for LibrespotClient {
         playlists::playlist_tracks(&self.session, playlist_id).await
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
-        radio::track_radio(&self.session, track_id).await
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        _from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
+        Ok((radio::track_radio(&self.session, track_id).await?, None))
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {
@@ -219,19 +230,12 @@ impl MusicApi for LibrespotClient {
         playlists::remove_track(&self.session, playlist_id, track_id).await
     }
 
-    async fn set_library_item_pinned(
-        &self,
-        uri: &str,
-        pinned: bool,
-    ) -> Result<crate::LibraryPinResult> {
-        pathfinder::set_library_item_pinned(&self.session, uri, pinned).await
+    async fn set_pinned(&self, uri: &str, pinned: bool) -> Result<crate::PinOutcome> {
+        pathfinder::set_pinned(&self.session, uri, pinned).await
     }
 
-    async fn library_items(
-        &self,
-        order: crate::LibraryOrder,
-    ) -> Result<Option<Vec<crate::LibraryItem>>> {
-        pathfinder::library(&self.session, order).await.map(Some)
+    async fn pin_targets(&self) -> Result<Option<Vec<crate::PinTarget>>> {
+        pathfinder::library(&self.session).await.map(Some)
     }
 
     async fn playlists(&self) -> Result<Vec<Playlist>> {
@@ -239,11 +243,7 @@ impl MusicApi for LibrespotClient {
         let mut offset = 0;
         let mut seen = HashSet::new();
         loop {
-            let body = self
-                .session
-                .spclient()
-                .get_rootlist(offset, Some(300))
-                .await?;
+            let body = playlists::rootlist_page(&self.session, offset, 300).await?;
             let rootlist =
                 RootList::parse_from_bytes(&body).context("cannot decode the rootlist protobuf")?;
             let count = rootlist.contents.items.len();

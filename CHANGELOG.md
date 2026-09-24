@@ -7,6 +7,81 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-09-24
+
+### Added
+
+- The Add to playlist menu has a search field at the top. Type to narrow the list, then use the
+  arrow keys and Enter to pick a playlist.
+- Sonora picks up changes to `settings.json` while it runs, so a script that rewrites your theme
+  colours from the wallpaper recolours the app right away, without a restart. If the file has
+  an error, Sonora tells you which line and saves nothing until it is fixed.
+- Sonora plays every track at its own sample rate rather than resampling it to the device
+  default, so a 96 kHz FLAC leaves the app at 96 kHz. Moving between tracks of different rates
+  leaves a short pause.
+- Normalize loudness now works for Apple Music, Deezer, local files, and Navidrome and other
+  OpenSubsonic servers, using each service's own loudness figure and the tracks' ReplayGain
+  tags. A quiet track is raised only as far as it can go without clipping.
+- Albanian (Shqip) interface language.
+- Guest mode now serves recommendations from your local music collection on the Home screen,
+  including Quick picks, recently added albums, local playlists, and artists.
+
+### Changed
+
+- An artist page opens as soon as their profile and popular tracks arrive, and fills its
+  releases in behind that, so an artist with a thousand of them no longer leaves the page
+  blank for half a minute.
+- Scrolling an artist's releases stays smooth however long the discography is, and resizing
+  the window keeps the same releases in view.
+- A track played on its own now follows its station past the first batch on YouTube Music,
+  rather than starting over from the last track, and never replays what the queue has heard.
+- Radio now plays in the order the provider ranks it rather than shuffled.
+- Menus, fields and floating panels frost what they cover, and menus sit lighter over it.
+- Hovering a menu item, a table row or a sidebar entry now shades what is behind it rather than
+  covering it, so a frosted surface keeps its blur under the pointer. Separators and outlines
+  read through the same way.
+- Settings > Appearance > Blur UI turns that frosting off. The old Blur setting is now Blur
+  window, and only shows on macOS and Windows, where it works.
+- Menus cast a soft shadow, and dialogs have rounder corners.
+
+### Fixed
+
+- The Playlists page loads for a Spotify account whose username has a letter outside plain
+  ASCII, such as ö, instead of failing with a 400 error.
+- Playback comes back on its own after your only output device disappears and returns, so a
+  Bluetooth headset that drops its link and reconnects picks the track up again rather than
+  leaving Sonora silent until you restart it.
+- Apple Music plays with the Widevine module an older Chromium keeps, which Sonora found
+  before but could not open.
+- The Widevine row in Settings shows its whole explanation rather than cutting it off, and
+  offers the download from Google even when a browser's copy was found. A copy downloaded that
+  way is the one Sonora uses from then on.
+- An empty Apple Music playlist opens as an empty playlist rather than a "Could not load" error.
+- The library shown at launch from the last session stays whole until the provider has sent
+  all of it, rather than shrinking to the first page and filling back in.
+- Sonora shows up once in your system's audio mixer, rather than once for your streaming
+  service and again for local files.
+- Guest mode is remembered again, so choosing it no longer brings the welcome screen
+  back on every launch.
+- YouTube Music tracks that stopped loading with a 403 now play: Sonora sends the
+  proof-of-origin token YouTube asks for, minting it in a hidden browser window, and falls
+  back to a second stream when the first one is refused.
+- Covers no longer swap places with each other while a grid is scrolled quickly.
+- The cover handed to the system media controls is the album artwork rather than the
+  64-pixel thumbnail a track carries, so media widgets and lock screens draw it sharp.
+- Frosted menus and fields no longer turn grey under their own shadow on the light theme.
+- Menus and dialogs show their shadow from the moment they open rather than once they have
+  settled.
+- The tray icon of the Flatpak and the AppImage shows the Sonora logo in trays such as Dank
+  Material Shell, which drew a missing-texture placeholder in its place.
+- Updating on Windows no longer puts the Sonora shortcut back on your desktop after you deleted
+  it, or overwrites one you made yourself.
+- Apple Music pins sync both ways: what is pinned on music.apple.com joins the sidebar,
+  and pinning an album, artist or playlist in Sonora pins it there too.
+- Editing the track or disc number of a local MP3 now sticks, including in files that carry an
+  ID3v1 tag or an older tag stacked behind the first. An ID3v2.3 file stays ID3v2.3, so other
+  players and taggers see the new number too.
+
 ## [0.38.0] - 2026-09-20
 
 ### Added
@@ -123,6 +198,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Playback needs Google's Widevine module. Sonora uses the copy a browser on your computer has,
   or offers to download it from Google and shows Google's terms first. Settings can remove a
   downloaded module again.
+- Local files are a lyrics provider for the synced or plain lyrics embedded in them or kept in a
+  same-name `.lrc` file beside them, and can be preferred over the others.
 
 ### Fixed
 
@@ -1724,7 +1801,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.38.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/sonorahq/sonora/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/sonorahq/sonora/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/sonorahq/sonora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0

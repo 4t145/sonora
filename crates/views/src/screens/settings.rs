@@ -135,6 +135,7 @@ enum Slot {
     Visualizer,
     Icons,
     Opacity,
+    WindowBlur,
     Blur,
     Corners,
     FullscreenControlsAutohide,
@@ -165,6 +166,7 @@ enum Slot {
     EqualizerPreset,
     EqualizerBands,
     LyricsProviders,
+    PreferLocalLyrics,
     Karaoke,
     Romanized,
     LyricsForLocal,
@@ -292,6 +294,10 @@ pub struct SettingsView {
     /// Whether the header has measured itself at least once. Until then the height is a
     /// zero stand-in, and the page stays hidden rather than flashing unpadded for a frame.
     header_measured: bool,
+    /// How wide the rows measured last. The Widevine row wraps its explanation to this width
+    /// and needs it before the deck is built, so the first frame falls back to the widest the
+    /// column can be.
+    column: Option<Pixels>,
     scrollbar: Entity<Scrollbar>,
     opacity: ScrubberState,
     sleep: ScrubberState,
@@ -367,6 +373,9 @@ impl SettingsView {
             Input::new("settings-search", cx)
                 .icon("icons/search.svg")
                 .clearable()
+                // the field floats over the rows the page scrolls beneath it, so it frosts
+                // them the way the category bar under it does
+                .blurred()
         });
         cx.observe(&search, |this, input, cx| {
             let query = input.read(cx).text().trim().to_owned();
@@ -390,6 +399,7 @@ impl SettingsView {
             query: String::new(),
             header_height: Pixels::ZERO,
             header_measured: false,
+            column: None,
             scrollbar: cx.new(|_| Scrollbar::new(ScrollHandle::new()).watching(me)),
             opacity: ScrubberState::new("opacity"),
             sleep: ScrubberState::new("sleep"),
@@ -448,6 +458,15 @@ impl SettingsView {
         self.scrollbar.update(cx, |bar, cx| {
             bar.set_track_top(height, cx);
         });
+        cx.notify();
+    }
+
+    /// Takes the rows' measured width, which only the Widevine row's height depends on.
+    fn set_column(&mut self, width: Pixels, cx: &mut Context<Self>) {
+        if self.column == Some(width) {
+            return;
+        }
+        self.column = Some(width);
         cx.notify();
     }
 
@@ -536,12 +555,15 @@ impl SettingsView {
                 Slot::Adaptive,
                 Slot::Icons,
                 Slot::Opacity,
+            ]
+            .into_iter()
+            .chain(ui::WINDOW_BLUR.then_some(Slot::WindowBlur))
+            .chain([
                 Slot::Blur,
                 Slot::Corners,
                 Slot::Title("settings-group-fullscreen"),
                 Slot::Ambient,
-            ]
-            .into_iter()
+            ])
             .chain(
                 self.settings
                     .read(cx)
@@ -581,12 +603,15 @@ impl SettingsView {
                     slots.push(Slot::EqualizerPreset);
                     slots.push(Slot::EqualizerBands);
                 }
-                slots.extend([
-                    Slot::Title("settings-group-lyrics"),
-                    Slot::LyricsProviders,
-                    Slot::Karaoke,
-                    Slot::Romanized,
-                ]);
+                slots.extend([Slot::Title("settings-group-lyrics"), Slot::LyricsProviders]);
+                if self
+                    .settings
+                    .read(cx)
+                    .lyrics_provider_enabled(music::lyrics::LOCAL)
+                {
+                    slots.push(Slot::PreferLocalLyrics);
+                }
+                slots.extend([Slot::Karaoke, Slot::Romanized]);
                 slots
             }
             SettingsTab::Privacy => {
@@ -648,6 +673,10 @@ impl SettingsView {
             Slot::Visualizer => (t!("settings-visualizer"), t!("settings-visualizer-detail")),
             Slot::Icons => (t!("settings-icons"), t!("settings-icons-detail")),
             Slot::Opacity => (t!("settings-opacity"), t!("settings-opacity-detail")),
+            Slot::WindowBlur => (
+                t!("settings-blur-window"),
+                t!("settings-blur-window-detail"),
+            ),
             Slot::Blur => (t!("settings-blur"), t!("settings-blur-detail")),
             Slot::Corners => (t!("settings-corners"), t!("settings-corners-detail")),
             Slot::FullscreenControlsAutohide => (
@@ -719,6 +748,10 @@ impl SettingsView {
             Slot::LyricsProviders => (
                 t!("settings-lyrics-providers"),
                 t!("settings-lyrics-providers-detail"),
+            ),
+            Slot::PreferLocalLyrics => (
+                t!("settings-prefer-local-lyrics"),
+                t!("settings-prefer-local-lyrics-detail"),
             ),
             Slot::Karaoke => (
                 t!("settings-karaoke-lyrics"),
@@ -799,6 +832,7 @@ impl SettingsView {
                     + SECTION_GAP,
                 window,
             ),
+            Slot::Widevine => snapped(self.widevine_height(&theme, window, cx), window),
             _ => snapped(standard_height(&theme), window),
         }
     }
@@ -815,6 +849,23 @@ impl SettingsView {
             total += SECTION_GAP + card_height(theme, false);
         }
         total + ACCOUNTS_SLACK
+    }
+
+    /// The Widevine row: its title and action over every line its explanation wraps to.
+    fn widevine_height(&self, theme: &Theme, window: &Window, cx: &App) -> Pixels {
+        let (detail, _) = widevine_copy(self.drm.read(cx).state());
+        let width = self.column.unwrap_or(WIDTH);
+        let lines = wrapped_lines(
+            i18n::lookup(detail, None),
+            theme.text(Text::Small),
+            width,
+            window,
+        );
+        SECTION_GAP
+            + widevine_head(theme)
+            + ROW_GAP
+            + line(theme, Text::Small) * lines as f32
+            + SECTION_GAP
     }
 
     /// The local folder block: the header over one line per watched folder.
@@ -861,6 +912,7 @@ impl SettingsView {
             Slot::Visualizer => self.visualizer_style_row(cx).element,
             Slot::Icons => self.icons_row(cx).element,
             Slot::Opacity => self.opacity_row(cx).element,
+            Slot::WindowBlur => self.blur_window_row(cx).element,
             Slot::Blur => self.blur_row(cx).element,
             Slot::Corners => self.corners_row(cx).element,
             Slot::FullscreenControlsAutohide => self.fullscreen_controls_autohide_row(cx).element,
@@ -891,6 +943,7 @@ impl SettingsView {
             Slot::EqualizerPreset => self.equalizer_preset_row(cx).element,
             Slot::EqualizerBands => self.equalizer_bands_row(cx).element,
             Slot::LyricsProviders => self.lyrics_providers_row(cx).element,
+            Slot::PreferLocalLyrics => self.prefer_local_lyrics_row(cx).element,
             Slot::Karaoke => self.karaoke_lyrics_row(cx).element,
             Slot::Romanized => self.romanized_lyrics_row(cx).element,
             Slot::LyricsForLocal => self.lyrics_for_local_files_row(cx).element,
@@ -1275,7 +1328,36 @@ impl SettingsView {
         )
     }
 
+    /// Turns every frosted treatment in the app on or off at once: the menus, the fields, the
+    /// floating panels and the bands the chrome lays over the page. A backdrop blur is the
+    /// priciest thing the renderer does per frame, which is the whole reason it is a choice.
     fn blur_row(&self, cx: &mut Context<Self>) -> Setting {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let look = self.look(cx);
+        let overrides = self.settings.read(cx).theme_overrides().clone();
+
+        self.row(
+            t!("settings-blur"),
+            t!("settings-blur-detail"),
+            muted,
+            small,
+            Switch::new("blur", look.blur)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let blur = !look.blur;
+                    this.settings
+                        .update(cx, |settings, cx| settings.set_blur(blur, cx));
+                    Theme::set(Look { blur, ..look }, &overrides, cx);
+                    cx.notify();
+                }))
+                .into_any_element(),
+        )
+    }
+
+    /// Asks the platform to blur the desktop behind a see-through window. It needs something to
+    /// show through, so the switch is off and disabled while the window is opaque.
+    fn blur_window_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
@@ -1284,17 +1366,24 @@ impl SettingsView {
         let opaque = !look.transparent;
 
         self.row(
-            t!("settings-blur"),
-            t!("settings-blur-detail"),
+            t!("settings-blur-window"),
+            t!("settings-blur-window-detail"),
             muted,
             small,
-            Switch::new("blur", look.blur && !opaque)
+            Switch::new("blur-window", look.blur_window && !opaque)
                 .disabled(opaque)
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    let blur = !look.blur;
+                    let blur_window = !look.blur_window;
                     this.settings
-                        .update(cx, |settings, cx| settings.set_blur(blur, cx));
-                    Theme::set(Look { blur, ..look }, &overrides, cx);
+                        .update(cx, |settings, cx| settings.set_blur_window(blur_window, cx));
+                    Theme::set(
+                        Look {
+                            blur_window,
+                            ..look
+                        },
+                        &overrides,
+                        cx,
+                    );
                     cx.notify();
                 }))
                 .into_any_element(),
@@ -2180,57 +2269,97 @@ impl SettingsView {
     /// The Widevine module row, which only appears while the current provider is one whose
     /// tracks need the module and this build has a host for one. Sonora uses a browser's copy
     /// when one is here and otherwise offers Google's download, so the row says where that
-    /// stands and offers the download by hand when the user said no or nothing asked yet.
+    /// stands. The download is offered by hand whenever Google's copy is not the one in use,
+    /// because a browser's copy can be one this host cannot open. The explanation wraps below
+    /// the title rather than truncating, to the height `widevine_height` measured.
     fn widevine_row(&self, cx: &mut Context<Self>) -> Setting {
         let theme = *cx.theme();
         let muted = theme.muted_foreground;
         let small = theme.text(Text::Small);
         let state = self.drm.read(cx).state().clone();
         let (detail, note) = widevine_copy(&state);
-        let offerable = matches!(state, CdmState::Declined | CdmState::Missing);
+        let offerable = matches!(
+            state,
+            CdmState::Declined | CdmState::Missing | CdmState::Ready(Origin::Installed)
+        );
         let removable = matches!(state, CdmState::Ready(Origin::Fetched));
+        let title = t!("settings-widevine");
+        let detail = i18n::lookup(detail, None);
 
-        self.row(
-            t!("settings-widevine"),
-            i18n::lookup(detail, None),
-            muted,
-            small,
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_color(muted)
-                .text_size(small)
-                .child(i18n::lookup(note, None))
-                .when(offerable, |row| {
-                    row.child(
-                        Button::new("fetch-widevine")
-                            .label(t!("settings-widevine-fetch"))
-                            .small()
-                            .outline()
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.drm.update(cx, |drm, cx| drm.download(cx));
-                            })),
+        let action = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap_2()
+            .text_color(muted)
+            .text_size(small)
+            .child(i18n::lookup(note, None))
+            .when(offerable, |row| {
+                row.child(
+                    Button::new("fetch-widevine")
+                        .label(t!("settings-widevine-fetch"))
+                        .small()
+                        .outline()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.drm.update(cx, |drm, cx| drm.download(cx));
+                        })),
+                )
+            })
+            .when(removable, |row| {
+                row.child(
+                    Button::new("uninstall-widevine")
+                        .label(t!("settings-widevine-uninstall"))
+                        .small()
+                        .ghost()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let drm = this.drm.clone();
+                            Confirm::ask(
+                                Kind::Widevine,
+                                move |cx| drm.update(cx, |drm, cx| drm.uninstall(cx)),
+                                cx,
+                            );
+                        })),
+                )
+            });
+
+        let element = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .py_3()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_4()
+                    .h(widevine_head(&theme))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .line_height(relative(LEADING))
+                            .child(title.clone()),
                     )
-                })
-                .when(removable, |row| {
-                    row.child(
-                        Button::new("uninstall-widevine")
-                            .label(t!("settings-widevine-uninstall"))
-                            .small()
-                            .ghost()
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                let drm = this.drm.clone();
-                                Confirm::ask(
-                                    Kind::Widevine,
-                                    move |cx| drm.update(cx, |drm, cx| drm.uninstall(cx)),
-                                    cx,
-                                );
-                            })),
-                    )
-                })
-                .into_any_element(),
-        )
+                    .child(action),
+            )
+            .child(
+                div()
+                    .overflow_hidden()
+                    .line_height(relative(LEADING))
+                    .text_color(muted)
+                    .text_size(small)
+                    .child(detail.clone()),
+            )
+            .into_any_element();
+
+        Setting {
+            title,
+            detail,
+            element,
+        }
     }
 
     fn updates_row(&self, cx: &mut Context<Self>) -> Setting {
@@ -2550,6 +2679,7 @@ impl SettingsView {
         let theme = *cx.theme();
         let settings = self.settings.read(cx);
         let providers = [
+            (music::lyrics::LOCAL, "settings-lyrics-provider-local"),
             ("Spotify", "settings-lyrics-provider-spotify"),
             ("YouTube Music", "settings-lyrics-provider-youtube"),
             ("Apple Music", "settings-lyrics-provider-apple-music"),
@@ -2584,6 +2714,26 @@ impl SettingsView {
             theme.muted_foreground,
             theme.text(Text::Small),
             picker.into_any_element(),
+        )
+    }
+
+    fn prefer_local_lyrics_row(&self, cx: &mut Context<Self>) -> Setting {
+        let theme = *cx.theme();
+        let muted = theme.muted_foreground;
+        let small = theme.text(Text::Small);
+        let on = self.settings.read(cx).prefer_local_lyrics();
+
+        self.row(
+            t!("settings-prefer-local-lyrics"),
+            t!("settings-prefer-local-lyrics-detail"),
+            muted,
+            small,
+            Switch::new("prefer-local-lyrics", on)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings
+                        .update(cx, |settings, cx| settings.set_prefer_local_lyrics(!on, cx));
+                }))
+                .into_any_element(),
         )
     }
 
@@ -3964,6 +4114,28 @@ fn widevine_copy(state: &CdmState) -> (&'static str, &'static str) {
     }
 }
 
+/// How tall the Widevine row's top line stands: the title, or the small button beside it
+/// when that is taller.
+fn widevine_head(theme: &Theme) -> Pixels {
+    line(theme, Text::Body).max(theme.metrics.control_small)
+}
+
+/// How many lines `text` wraps to at `width` in the window's font at `size`. Falls back to
+/// one when the text cannot be shaped.
+fn wrapped_lines(text: SharedString, size: Pixels, width: Pixels, window: &Window) -> usize {
+    let run = window.text_style().to_run(text.len());
+    window
+        .text_system()
+        .shape_text(text, size, &[run], Some(width), None)
+        .map(|lines| {
+            lines
+                .iter()
+                .map(|line| line.wrap_boundaries().len() + 1)
+                .sum()
+        })
+        .unwrap_or(1)
+}
+
 /// Hands a file to the system's default application for it, without waiting on that program.
 fn open_path(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
@@ -4075,6 +4247,7 @@ impl Render for SettingsView {
 
         let general = self.tab == SettingsTab::General && !searching;
         let about = self.tab == SettingsTab::About && !searching;
+        let view = cx.entity().downgrade();
 
         div()
             .relative()
@@ -4109,6 +4282,18 @@ impl Render for SettingsView {
                             .px_6()
                             .pb_6()
                             .pt(self.header_height)
+                            // every child stretches across the column, so the widest is the
+                            // width the rows are laid out at
+                            .on_children_prepainted(move |bounds, _, cx| {
+                                let Some(width) = bounds
+                                    .iter()
+                                    .map(|bounds| bounds.size.width)
+                                    .reduce(Pixels::max)
+                                else {
+                                    return;
+                                };
+                                view.update(cx, |view, cx| view.set_column(width, cx)).ok();
+                            })
                             .when(general, |this| {
                                 this.child(self.profile(cx))
                                     .child(Separator::horizontal().w_full())
@@ -4168,29 +4353,29 @@ impl Render for SettingsHeader {
 
         // a search lights no category, since its rows come from all of them, and picking
         // one ends the search
-        let categories =
-            TabBar::new("settings-categories")
-                .max_w_full()
-                .items(SettingsTab::ALL.map(|tab| {
-                    Button::new(tab.id())
-                        .label(i18n::lookup(tab.key(), None))
-                        .icon(tab.icon())
-                        .small()
-                        .ghost()
-                        .selected(!searching && tab == chosen)
-                        .when(calm == Some(tab), Button::hoverless)
-                        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                            if !hovered && this.calm == Some(tab) {
-                                this.calm = None;
-                                cx.notify();
-                            }
-                        }))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.calm = Some(tab);
-                            this.view.update(cx, |view, cx| view.select(tab, cx));
-                            navigate(Destination::Settings(tab), cx);
-                        }))
-                }));
+        let categories = TabBar::new("settings-categories")
+            .max_w_full()
+            .blurred()
+            .items(SettingsTab::ALL.map(|tab| {
+                Button::new(tab.id())
+                    .label(i18n::lookup(tab.key(), None))
+                    .icon(tab.icon())
+                    .small()
+                    .ghost()
+                    .selected(!searching && tab == chosen)
+                    .when(calm == Some(tab), Button::hoverless)
+                    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                        if !hovered && this.calm == Some(tab) {
+                            this.calm = None;
+                            cx.notify();
+                        }
+                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.calm = Some(tab);
+                        this.view.update(cx, |view, cx| view.select(tab, cx));
+                        navigate(Destination::Settings(tab), cx);
+                    }))
+            }));
 
         div()
             .relative()
@@ -4205,7 +4390,10 @@ impl Render for SettingsHeader {
                 };
                 view.update(cx, |view, cx| view.set_header_height(height, cx));
             })
-            .when(!theme.transparent, |this| {
+            // The haze follows the window: a see-through page has content of its own passing
+            // under the header and reads worse without it. Only the flat fallback is dropped
+            // there, since a solid band over a see-through page is a slab.
+            .when(effects() || !theme.transparent, |this| {
                 this.child(veil(
                     Edge::Top,
                     height,

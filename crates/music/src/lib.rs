@@ -6,6 +6,7 @@ pub mod deezer;
 pub mod drm;
 pub mod engine;
 pub mod equalizer;
+pub mod escape;
 pub mod kugou;
 #[cfg(test)]
 mod live_tests;
@@ -15,6 +16,7 @@ pub mod lyrics;
 mod models;
 pub mod musixmatch;
 pub mod netease;
+pub mod potoken;
 pub mod progress;
 pub mod scrobble;
 mod sink;
@@ -36,9 +38,9 @@ use async_trait::async_trait;
 
 pub use equalizer::Equalizer;
 pub use models::{
-    Album, AlbumDetail, Artist, ArtistProfile, ArtistRef, Contributor, Credit, Genre, GenreDetail,
-    GenreItem, GenreSection, HomeFeed, LibraryItem, LibraryItemKind, LibraryOrder,
-    LibraryPinResult, Lyrics, LyricsHit, LyricsLane, LyricsLine, LyricsQuery, LyricsWord, Playlist,
+    Album, AlbumDetail, Artist, ArtistCatalogue, ArtistProfile, ArtistRef, Contributor, Credit,
+    Genre, GenreDetail, GenreItem, GenreSection, HomeFeed, Lyrics, LyricsHit, LyricsLane,
+    LyricsLine, LyricsQuery, LyricsWord, PinOutcome, PinTarget, PinTargetKind, Playlist,
     PlaylistDetail, ReleaseType, RomanizedText, SavedArtist, Track, TrackKey, TrackTags,
     UserDetail, UserProfile, Voice, WritingSystem,
 };
@@ -92,6 +94,20 @@ pub trait MusicApi: Send + Sync {
     }
 
     async fn artist(&self, artist_id: &str) -> Result<Artist>;
+
+    /// The rest of an artist page, fetched once `artist` has put the overview up: the whole
+    /// discography and the popular tracks that only the discography can rank. `known` is the
+    /// top tracks already on the page, so the provider can rank around them. A provider whose
+    /// `artist` already answers with everything leaves the default, which is nothing more to
+    /// fetch.
+    async fn artist_catalogue(
+        &self,
+        _artist_id: &str,
+        _known: &[Track],
+    ) -> Result<ArtistCatalogue> {
+        Ok(ArtistCatalogue::default())
+    }
+
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile>;
     async fn artist_images(&self, ids: Vec<String>) -> Result<HashMap<String, String>>;
 
@@ -138,15 +154,23 @@ pub trait MusicApi: Send + Sync {
     }
     async fn track_playcount(&self, track_id: &str) -> Result<Option<u64>>;
     async fn playlists(&self) -> Result<Vec<Playlist>>;
-    /// Change a provider's own library pin, rather than a local sidebar shortcut.
-    async fn set_library_item_pinned(&self, _uri: &str, _pinned: bool) -> Result<LibraryPinResult> {
-        anyhow::bail!("library pinning is not supported")
+    /// Changes the provider's own pin for `uri`, one of the uris `pin_targets` lists or
+    /// `pin_uri` builds.
+    async fn set_pinned(&self, _uri: &str, _pinned: bool) -> Result<PinOutcome> {
+        anyhow::bail!("pinning is not supported")
     }
 
-    /// The provider's mixed library, including pins and its recent-play ordering.
-    /// None means this provider exposes only the separate saved collections.
-    async fn library_items(&self, _order: LibraryOrder) -> Result<Option<Vec<LibraryItem>>> {
+    /// What the provider can pin, each saying whether it is pinned now. A provider may list
+    /// only its pinned items and answer `pin_uri` for the rest. `None` means the provider
+    /// keeps no pins of its own.
+    async fn pin_targets(&self) -> Result<Option<Vec<PinTarget>>> {
         Ok(None)
+    }
+
+    /// The uri `set_pinned` takes for an item `pin_targets` does not list. `None` means only
+    /// a listed item can be pinned on the provider's side.
+    fn pin_uri(&self, _kind: PinTargetKind, _id: &str) -> Option<String> {
+        None
     }
     async fn create_playlist(&self, name: &str) -> Result<String>;
     async fn rename_playlist(&self, playlist_id: &str, name: &str) -> Result<()>;
@@ -207,7 +231,16 @@ pub trait MusicApi: Send + Sync {
 
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>>;
     async fn playlist_covers(&self, playlist_id: &str, wanted: usize) -> Result<Vec<String>>;
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>>;
+    /// The station seeded by `track_id`, from its start or from `from`, a continuation an
+    /// earlier call answered with. The continuation that comes back fetches the next stretch,
+    /// and `None` means the provider has no more. A provider that serves a station in one go
+    /// ignores `from` and answers `None`, which it is then never handed.
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)>;
+
     async fn search(&self, query: &str) -> Result<Vec<Track>>;
 
     async fn search_albums(&self, _query: &str) -> Result<Vec<Album>> {
@@ -382,15 +415,15 @@ pub struct Capabilities {
     /// put into and taken out of through `set_in_library`. Off where the library is the
     /// favorites, as on Spotify, and where it is fixed, as on a self-hosted server.
     pub library: bool,
-    /// The provider keeps sidebar pins of its own, listed by `library_items` and changed
-    /// through `set_library_item_pinned`. Off, a pin lives in Sonora's settings alone.
+    /// The provider keeps sidebar pins of its own, listed by `pin_targets` and changed
+    /// through `set_pinned`. Off, a pin lives in Sonora's settings alone.
     pub pins: bool,
 }
 
 impl Capabilities {
     /// What a full streaming service offers. A library apart from favorites is not among
     /// them: on most services the two are one thing. We love Apple Music. Pins of the
-    /// provider's own are not either, since only Spotify keeps any.
+    /// provider's own are not either, since only Spotify and Apple Music keep any.
     pub const ALL: Self = Self {
         follow_artists: true,
         radio: true,

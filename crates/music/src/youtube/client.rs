@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use tokio::task::JoinSet;
 use ytmusic::YtMusic;
 
-use crate::youtube::{genres, subscriptions, wire};
+use crate::youtube::{genres, radio, subscriptions, wire};
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Feed, Genre, GenreDetail, HomeFeed, MediaKind,
-    MusicApi, Playlist, PlaylistDetail, SavedArtist, Track, UserProfile,
+    MusicApi, Playlist, PlaylistDetail, SavedArtist, Track, UserProfile, escape,
 };
 
 const PORTRAIT_LIMIT: usize = 24;
@@ -56,6 +56,7 @@ impl YouTubeClient {
 #[async_trait]
 impl MusicApi for YouTubeClient {
     fn share_url(&self, kind: MediaKind, id: &str) -> Option<String> {
+        let id = escape::component(id);
         let url = match kind {
             MediaKind::Track => format!("https://music.youtube.com/watch?v={id}"),
             MediaKind::Album => format!("https://music.youtube.com/browse/{id}"),
@@ -304,15 +305,12 @@ impl MusicApi for YouTubeClient {
         Ok(crate::distinct_covers(&tracks, wanted))
     }
 
-    async fn track_radio(&self, track_id: &str) -> Result<Vec<Track>> {
-        Ok(self
-            .api
-            .track_radio(track_id)
-            .await?
-            .into_iter()
-            .enumerate()
-            .map(|(index, track)| wire::track(track, index as u32))
-            .collect())
+    async fn track_radio(
+        &self,
+        track_id: &str,
+        from: Option<&str>,
+    ) -> Result<(Vec<Track>, Option<String>)> {
+        radio::station(&self.api, track_id, from).await
     }
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +14,9 @@ use music::{
 use ui::{Pin, PinKind};
 
 type Fetch = std::pin::Pin<Box<dyn Future<Output = Result<Vec<Track>>> + Send>>;
+/// A collection fetched to become the queue, with the continuation a station goes on from.
+type Gathered =
+    std::pin::Pin<Box<dyn Future<Output = Result<(Vec<Track>, Option<String>)>> + Send>>;
 
 /// Why the provider will play nothing more this session. Every later load fails the same way
 /// without asking the engine again.
@@ -105,6 +109,11 @@ const SIMILAR_LIMIT: usize = 20;
 /// How few tracks may be left to play before radio asks for the next batch of suggestions.
 /// Asking this early keeps the wait for the station off the gap between two tracks.
 const RADIO_LOOKAHEAD: usize = 10;
+
+/// How many continuations in a row may bring nothing the queue has not heard before the station
+/// is dropped. An empty stretch lands with the queue still short, which asks for the next one
+/// straight away, so a provider serving the same tracks over would otherwise never be let go of.
+const STATION_DRY_LIMIT: u8 = 3;
 
 /// The position shown between the engine's reports. It runs on wall time from `reset` and is
 /// nudged toward each report by `correct`, spread over a moment so the progress bar and the
@@ -333,6 +342,12 @@ pub struct Playback {
     radio: bool,
     /// The track the current similar-tracks suggestions were drawn from.
     seeded: Option<String>,
+    /// Where the station the queue is playing goes on from, while the provider has more of it.
+    station: Option<String>,
+    /// The fetch of the station's next stretch; done once it lands, so one runs at a time.
+    topping: Option<Task<()>>,
+    /// Continuations in a row that brought no track the queue had not already heard.
+    dry: u8,
     /// The streaming engine's event pump; dropping it stops listening.
     task: Option<Task<()>>,
     local_task: Option<Task<()>>,
@@ -414,8 +429,11 @@ impl Playback {
             }
         })
         .detach();
-        cx.observe(&queue, |this, _, cx| this.suggest_similar(cx))
-            .detach();
+        cx.observe(&queue, |this, _, cx| {
+            this.continue_station(cx);
+            this.suggest_similar(cx);
+        })
+        .detach();
 
         let level = settings.read(cx).volume();
         let normalisation = settings.read(cx).normalisation();
@@ -445,6 +463,9 @@ impl Playback {
             repeat,
             radio,
             seeded: None,
+            station: None,
+            topping: None,
+            dry: 0,
             task: None,
             local_task: None,
             load: None,
@@ -666,15 +687,15 @@ impl Playback {
         let io = Io::global(cx);
         self.fetch = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let mut tracks = client.track_radio(&id).await?;
+                let (mut tracks, next) = client.track_radio(&id, None).await?;
                 tracks.retain(|track| track.id != seed_id && track.playable);
-                fastrand::shuffle(&mut tracks);
-                Ok(tracks)
+                Ok((tracks, next))
             }))
             .await;
 
             this.update(cx, |this, cx| match loaded {
-                Ok(tracks) if this.origin.as_ref() == Some(&origin) => {
+                Ok((tracks, next)) if this.origin.as_ref() == Some(&origin) => {
+                    this.station = next;
                     this.queue
                         .update(cx, |queue, cx| queue.extend_context(tracks, cx));
                 }
@@ -688,13 +709,15 @@ impl Playback {
         }));
     }
 
+    /// Starts a station from its seed alone, the way a pinned radio is played: its first
+    /// stretch is the queue, the seed at the front, and its continuation is kept.
     fn play_radio_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let id = origin.id.clone();
         self.gather(origin, cx, move |client| {
             Box::pin(async move {
-                let mut tracks = client.track_radio(&id).await?;
+                let (mut tracks, next) = client.track_radio(&id, None).await?;
                 tracks.retain(|track| track.playable);
-                Ok(tracks)
+                Ok((tracks, next))
             })
         });
     }
@@ -895,14 +918,24 @@ impl Playback {
     fn play_album_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let album = origin.id.clone();
         self.gather(origin, cx, move |client| {
-            Box::pin(async move { client.album_tracks(&album).await })
+            Box::pin(async move {
+                client
+                    .album_tracks(&album)
+                    .await
+                    .map(|tracks| (tracks, None))
+            })
         });
     }
 
     fn play_artist_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let artist = origin.id.clone();
         self.gather(origin, cx, move |client| {
-            Box::pin(async move { client.artist(&artist).await.map(|found| found.top_tracks) })
+            Box::pin(async move {
+                client
+                    .artist(&artist)
+                    .await
+                    .map(|found| (found.top_tracks, None))
+            })
         });
     }
 
@@ -957,7 +990,12 @@ impl Playback {
     fn play_playlist_of(&mut self, origin: Origin, cx: &mut Context<Self>) {
         let playlist = origin.id.clone();
         self.gather(origin, cx, move |client| {
-            Box::pin(async move { client.playlist_tracks(&playlist).await })
+            Box::pin(async move {
+                client
+                    .playlist_tracks(&playlist)
+                    .await
+                    .map(|tracks| (tracks, None))
+            })
         });
     }
 
@@ -1034,9 +1072,18 @@ impl Playback {
         (self.origin.as_ref() == Some(origin)).then(|| self.state.clone())
     }
 
+    /// Drops the station the queue was playing, continuation and fetch alike, once the queue
+    /// is something else.
+    fn leave_station(&mut self) {
+        self.station = None;
+        self.topping = None;
+        self.dry = 0;
+    }
+
     /// Forgets the collection the queue came from. Radio calls this as it takes over, so a page
     /// or a card only shows itself as playing while one of its own tracks is.
     fn leave_origin(&mut self, cx: &mut Context<Self>) {
+        self.leave_station();
         if self.origin.take().is_none() {
             return;
         }
@@ -1060,6 +1107,7 @@ impl Playback {
         else {
             return;
         };
+        self.leave_station();
         self.origin = origin;
         let stored = self.origin.clone();
         self.settings
@@ -1067,11 +1115,12 @@ impl Playback {
         self.play(&track, cx);
     }
 
-    /// Fetches a collection and starts the queue from it. Shows Loading only when nothing
-    /// plays yet, so a failure mid-playback is logged rather than shown.
+    /// Fetches a collection and starts the queue from it, keeping the continuation if it is a
+    /// station. Shows Loading only when nothing plays yet, so a failure mid-playback is logged
+    /// rather than shown.
     fn gather<F>(&mut self, origin: Origin, cx: &mut Context<Self>, tracks: F)
     where
-        F: FnOnce(Arc<dyn MusicApi>) -> Fetch + Send + 'static,
+        F: FnOnce(Arc<dyn MusicApi>) -> Gathered + Send + 'static,
     {
         let Some(client) = self.client_for(&origin.id, cx) else {
             return;
@@ -1087,9 +1136,10 @@ impl Playback {
             let loaded = join(io.spawn(async move { tracks(client).await })).await;
 
             this.update(cx, |this, cx| match loaded {
-                Ok(tracks) => {
+                Ok((tracks, next)) => {
                     let index = this.opener(&tracks, cx).unwrap_or_default();
-                    this.begin(tracks, index, Some(origin), cx)
+                    this.begin(tracks, index, Some(origin), cx);
+                    this.station = next;
                 }
                 Err(error) if this.has_active_playback() => {
                     log::error!("playback: cannot load context: {error:#}");
@@ -1204,10 +1254,83 @@ impl Playback {
         self.queue.read(cx).current().cloned()
     }
 
+    /// Fetches the station's next stretch once fewer than `RADIO_LOOKAHEAD` tracks are left to
+    /// play, so the queue never reaches its end while the provider has more. What the queue
+    /// has already heard is left out. The station is the queue itself, so it goes on whether
+    /// or not radio suggestions are on; a fetch that fails drops the continuation and hands the
+    /// end of the queue back to `advance` through `stranded`.
+    fn continue_station(&mut self, cx: &mut Context<Self>) {
+        if self.topping.is_some() || self.queue.read(cx).upcoming().len() >= RADIO_LOOKAHEAD {
+            return;
+        }
+        let Some(continuation) = self.station.clone() else {
+            return;
+        };
+        let Some(seed) = self.origin.as_ref().map(|origin| origin.id.clone()) else {
+            return;
+        };
+        let Some(client) = self.client_for(&seed, cx) else {
+            return;
+        };
+
+        let heard = self.queue.read(cx).ids();
+        let io = Io::global(cx);
+        self.topping = Some(cx.spawn(async move |this, cx| {
+            let token = continuation.clone();
+            let loaded = join(io.spawn(async move {
+                let (mut tracks, next) = client.track_radio(&seed, Some(&token)).await?;
+                unheard(&mut tracks, &heard);
+                anyhow::Ok((tracks, next))
+            }))
+            .await;
+
+            this.update(cx, |this, cx| {
+                this.topping = None;
+                if this.station.as_ref() != Some(&continuation) {
+                    return;
+                }
+                match loaded {
+                    Ok((tracks, next)) => {
+                        this.dry = match tracks.is_empty() {
+                            true => this.dry.saturating_add(1),
+                            false => 0,
+                        };
+                        this.station = next.filter(|_| this.dry < STATION_DRY_LIMIT);
+                        let idle = this.track.is_none() && !this.queue.read(cx).has_next();
+                        this.queue
+                            .update(cx, |queue, cx| queue.extend_context(tracks, cx));
+                        if idle {
+                            this.follow_queue(Start::Segue, cx);
+                        }
+                    }
+                    Err(error) => {
+                        this.station = None;
+                        log::warn!("playback: cannot continue the station: {error:#}");
+                    }
+                }
+                if this.station.is_none() {
+                    this.stranded(cx);
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// Picks playback back up when the station that was covering the end of the queue stops
+    /// answering, by putting the track that ended through `advance` again, which is where radio
+    /// takes over. Does nothing while anything is still playing or waiting to.
+    fn stranded(&mut self, cx: &mut Context<Self>) {
+        if self.track.is_some() || self.queue.read(cx).has_next() {
+            return;
+        }
+        let ended = self.seed(cx);
+        self.advance(ended, cx);
+    }
+
     /// Fills the suggestions from the current track's radio when radio is on and there are
     /// none, and tops them up once fewer than `RADIO_LOOKAHEAD` tracks are left to play, so the
     /// next batch has arrived long before the queue reaches it. What is already queued is left
-    /// out.
+    /// out, and the provider's best `SIMILAR_LIMIT` of the rest are kept.
     fn suggest_similar(&mut self, cx: &mut Context<Self>) {
         if !self.radio {
             return;
@@ -1234,15 +1357,8 @@ impl Playback {
         let io = Io::global(cx);
         self.suggest = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let mut tracks = client.track_radio(&id).await?;
-                tracks.retain(|track| {
-                    track.playable
-                        && track
-                            .id
-                            .as_ref()
-                            .is_some_and(|id| !queued.contains(id.as_str()))
-                });
-                fastrand::shuffle(&mut tracks);
+                let (mut tracks, _) = client.track_radio(&id, None).await?;
+                unheard(&mut tracks, &queued);
                 tracks.truncate(SIMILAR_LIMIT);
                 anyhow::Ok(tracks)
             }))
@@ -1307,6 +1423,10 @@ impl Playback {
                     self.follow_after(track, Start::Segue, cx);
                 }
             }
+            // The station's next stretch is on its way; playing resumes when it lands.
+            _ if self.topping.is_some() && !self.queue.read(cx).has_next() => {
+                self.fetch = None;
+            }
             _ if self.radio && !self.queue.read(cx).has_next() => {
                 let seed = ended
                     .or_else(|| self.track.clone())
@@ -1335,12 +1455,11 @@ impl Playback {
         };
 
         let io = Io::global(cx);
-        let heard = seed.id.clone();
+        let heard = self.queue.read(cx).ids();
         self.fetch = Some(cx.spawn(async move |this, cx| {
             let loaded = join(io.spawn(async move {
-                let mut tracks = client.track_radio(&id).await?;
-                tracks.retain(|track| track.id != heard && track.playable);
-                fastrand::shuffle(&mut tracks);
+                let (mut tracks, _) = client.track_radio(&id, None).await?;
+                unheard(&mut tracks, &heard);
                 anyhow::Ok(tracks)
             }))
             .await;
@@ -2141,6 +2260,7 @@ impl Playback {
             self.enqueue = None;
             self.suggest = None;
             self.seeded = None;
+            self.leave_station();
             self.preloaded = None;
             self.skipped = None;
             self.blocked_until = None;
@@ -2228,6 +2348,17 @@ impl Playback {
         Toasts::show(Outcome::Failed, "toast-keys-refused", cx);
         cx.notify();
     }
+}
+
+/// Keeps the playable tracks that are not among `heard`, the ids a queue already holds.
+fn unheard(tracks: &mut Vec<Track>, heard: &HashSet<String>) {
+    tracks.retain(|track| {
+        track.playable
+            && track
+                .id
+                .as_ref()
+                .is_some_and(|id| !heard.contains(id.as_str()))
+    });
 }
 
 fn song_target(track: &Track) -> Option<Target> {

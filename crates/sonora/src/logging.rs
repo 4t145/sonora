@@ -34,8 +34,30 @@ pub fn init() {
     if log::set_boxed_logger(logger).is_ok() {
         log::set_max_level(level);
     }
+    catch_panics();
 
     log::debug!("logging: sonora {} started", env!("CARGO_PKG_VERSION"));
+}
+
+/// Writes a panic to the log before the default hook prints it. A Sonora started from a
+/// desktop entry or a tray has no terminal to lose it to, so this is the only place a crash
+/// leaves a trace. `RUST_BACKTRACE` still decides whether there is a backtrace to write.
+fn catch_panics() {
+    let default = std::panic::take_hook();
+
+    std::panic::set_hook(Box::new(move |panic| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("unnamed");
+        let backtrace = std::backtrace::Backtrace::capture();
+        match backtrace.status() {
+            std::backtrace::BacktraceStatus::Captured => {
+                log::error!("panic: {panic} on the {name} thread\n{backtrace}")
+            }
+            _ => log::error!("panic: {panic} on the {name} thread"),
+        }
+        log::logger().flush();
+        default(panic);
+    }));
 }
 
 /// The log file under the size limit: a write that would carry it past `LIMIT` rotates it

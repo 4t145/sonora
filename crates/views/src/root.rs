@@ -84,6 +84,8 @@ pub struct Root {
     background: Option<gpui::WindowBackgroundAppearance>,
     #[cfg(target_os = "windows")]
     rounded: Option<ui::Rounding>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    decorations: gpui::WindowDecorations,
 }
 
 impl Root {
@@ -271,6 +273,8 @@ impl Root {
             background: None,
             #[cfg(target_os = "windows")]
             rounded: None,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            decorations: Sonora::global(cx).settings.read(cx).window_decorations(),
         };
         root.show(start, cx);
         root
@@ -652,7 +656,7 @@ impl Render for Root {
 
         let theme = *cx.theme();
         window.set_rem_size(theme.font_size);
-        let appearance = ui::backdrop(theme.blur, theme.transparent);
+        let appearance = ui::backdrop(theme.blur_window, theme.transparent);
         if self.background != Some(appearance) {
             self.background = Some(appearance);
             window.set_background_appearance(appearance);
@@ -670,6 +674,15 @@ impl Render for Root {
             }
         }
 
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        {
+            let decorations = Sonora::global(cx).settings.read(cx).window_decorations();
+            if self.decorations != decorations {
+                self.decorations = decorations;
+                window.request_decorations(decorations);
+            }
+        }
+
         // GPUI can't clip a subtree to a rounded parent (its content mask is a plain
         // rectangle), so on Linux/FreeBSD each edge of the chrome that actually touches a
         // corner rounds itself to match — see `chrome::window_radius`, and `TitleBar` /
@@ -680,6 +693,11 @@ impl Render for Root {
         #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
         let radius: Option<gpui::Pixels> = None;
 
+        // The ambient field covers the window whole and carries the window's own opacity, so
+        // the page colour under it would only stack a second alpha beneath that and leave a
+        // see-through fullscreen reading nearly solid.
+        let ambient = matches!(self.view, RootView::Fullscreen) && ambient::shown(cx);
+
         let root = div()
             .relative()
             .flex()
@@ -689,7 +707,7 @@ impl Render for Root {
             .when_some(radius, |this, radius| {
                 this.rounded(radius).overflow_hidden()
             })
-            .bg(theme.background)
+            .when(!ambient, |this| this.bg(theme.background))
             .text_color(theme.foreground)
             .capture_any_mouse_down(|_, window, cx| {
                 if ui::cancel_middle_scroll(cx) {
@@ -744,10 +762,7 @@ impl Render for Root {
                 cx.listener(|this, _: &ToggleLyrics, _, cx| this.show_side(SideTab::Lyrics, cx)),
             )
             // The ambient background sits behind everything, title bar included.
-            .when(
-                matches!(self.view, RootView::Fullscreen) && ambient::shown(cx),
-                |this| this.child(self.ambient.clone()),
-            )
+            .when(ambient, |this| this.child(self.ambient.clone()))
             .child(self.title_bar.clone())
             .when_else(
                 show_sign_in,

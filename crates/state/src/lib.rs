@@ -14,6 +14,7 @@ mod mosaic;
 mod network;
 mod pins;
 mod playback;
+mod potoken;
 mod profile;
 mod queue;
 mod remote;
@@ -52,8 +53,8 @@ pub use scrobble::{ScrobbleRow, ScrobbleState, Scrobbling};
 pub use search::{AlbumHit, ArtistHit, Hit, Kind, PlaylistHit, Search};
 pub use session::{Failure, ProviderInfo, Session, SessionEvent, SessionState};
 pub use settings::{
-    AppSettings, DiscordName, FilterValue, FullscreenControlsAutohide, RomanizationScripts,
-    SYSTEM_FONT, SideTab, remember_window, window_placement,
+    AppSettings, DiscordName, FilterValue, FullscreenControlsAutohide, Reloaded,
+    RomanizationScripts, SYSTEM_FONT, SideTab, remember_window, window_placement,
 };
 pub use song::SongDetail;
 pub use tags::{TagState, Tags};
@@ -161,6 +162,9 @@ pub struct Sonora {
     pub network: Entity<Network>,
     pub pins: Entity<Pins>,
     pub playback: Entity<Playback>,
+    /// The window that mints YouTube's proof-of-origin token. Nothing reads it; it is held so
+    /// that it keeps ticking.
+    pub potoken: Entity<potoken::PoToken>,
     pub queue: Entity<Queue>,
     pub scan: Entity<Scan>,
     pub scrobbling: Entity<Scrobbling>,
@@ -186,7 +190,12 @@ pub fn init(
     lyrics_providers: Vec<Arc<dyn LyricsProvider>>,
 ) {
     cx.set_global(io.clone());
-    let settings = cx.new(|_| AppSettings::load(database.clone()));
+    let settings = cx.new(|cx| {
+        let mut settings = AppSettings::load(database.clone());
+        settings.watch_file(cx);
+        settings.report_broken(cx);
+        settings
+    });
     let session =
         cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
     let network = cx.new(|_| Network::new(session.clone(), io.clone()));
@@ -230,6 +239,7 @@ pub fn init(
     let updates = cx.new(|cx| Updates::new(settings.clone(), io.clone(), cx));
     let usage = cx.new(|cx| Usage::new(session.clone(), database, io.clone(), cx));
     let pins = cx.new(|cx| Pins::new(settings.clone(), library.clone(), session.clone(), cx));
+    let potoken = potoken::attach(cx);
     discord::attach(
         playback.clone(),
         settings.clone(),
@@ -249,6 +259,7 @@ pub fn init(
         network,
         pins,
         playback,
+        potoken,
         queue,
         scan,
         scrobbling,
