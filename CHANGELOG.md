@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-09-24
+
 ### Added
 
 - The Add to playlist menu has a search field at the top. Type to narrow the list, then use the
@@ -23,7 +25,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Albanian (Shqip) interface language.
 - Guest mode now serves recommendations from your local music collection on the Home screen,
   including Quick picks, recently added albums, local playlists, and artists.
-
 
 ### Changed
 
@@ -1800,7 +1801,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Initial release: a native Spotify client with playback, an interactive queue, the saved library,
 search, album, playlist, artist and song pages, context menus and adaptive theming.
 
-[unreleased]: https://github.com/sonorahq/sonora/compare/v0.38.0...HEAD
+[unreleased]: https://github.com/sonorahq/sonora/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/sonorahq/sonora/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/sonorahq/sonora/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/sonorahq/sonora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sonorahq/sonora/compare/v0.35.0...v0.36.0
