@@ -6,6 +6,7 @@ pub mod deezer;
 pub mod drm;
 pub mod engine;
 pub mod equalizer;
+pub mod escape;
 pub mod kugou;
 #[cfg(test)]
 mod live_tests;

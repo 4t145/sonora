@@ -18,7 +18,7 @@ use crate::deezer::{decrypt, wire};
 use crate::engine::Loudness;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, HomeFeed, MediaKind, MusicApi, Playlist,
-    PlaylistDetail, SavedArtist, Track, UserProfile, distinct_covers,
+    PlaylistDetail, SavedArtist, Track, UserProfile, distinct_covers, escape,
 };
 
 const GATEWAY: &str = "https://www.deezer.com/ajax/gw-light.php";
@@ -214,7 +214,9 @@ impl DeezerClient {
             .map(|at| at.subsec_nanos())
             .unwrap_or(0);
         let url = format!(
-            "{GATEWAY}?method={method}&input=3&api_version=1.0&api_token={api_token}&cid={cid}"
+            "{GATEWAY}?method={}&input=3&api_version=1.0&api_token={}&cid={cid}",
+            escape::component(method),
+            escape::component(api_token)
         );
         let sid = self.inner.session.read().await.sid.clone();
         let text = self
@@ -457,7 +459,10 @@ impl MusicApi for DeezerClient {
             MediaKind::Artist => "artist",
             MediaKind::Playlist => "playlist",
         };
-        Some(format!("https://www.deezer.com/{kind}/{id}"))
+        Some(format!(
+            "https://www.deezer.com/{kind}/{}",
+            escape::component(id)
+        ))
     }
 
     async fn profile(&self) -> Result<UserProfile> {
@@ -469,9 +474,10 @@ impl MusicApi for DeezerClient {
     }
 
     async fn artist(&self, artist_id: &str) -> Result<Artist> {
-        let detail_path = format!("/artist/{artist_id}");
-        let top_path = format!("/artist/{artist_id}/top?limit=20");
-        let albums_path = format!("/artist/{artist_id}/albums?limit=50");
+        let artist = escape::component(artist_id);
+        let detail_path = format!("/artist/{artist}");
+        let top_path = format!("/artist/{artist}/top?limit=20");
+        let albums_path = format!("/artist/{artist}/albums?limit=50");
         let (detail, top, albums) = tokio::join!(
             self.public(&detail_path),
             self.public(&top_path),
@@ -506,7 +512,7 @@ impl MusicApi for DeezerClient {
 
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile> {
         let detail = self
-            .public(&format!("/artist/{artist_id}"))
+            .public(&format!("/artist/{}", escape::component(artist_id)))
             .await
             .context("cannot load the artist")?;
         Ok(ArtistProfile {
@@ -540,7 +546,10 @@ impl MusicApi for DeezerClient {
             }
         }
         for id in missing {
-            let Ok(detail) = self.public(&format!("/artist/{id}")).await else {
+            let Ok(detail) = self
+                .public(&format!("/artist/{}", escape::component(&id)))
+                .await
+            else {
                 continue;
             };
             let Some(cover) = detail
@@ -696,7 +705,7 @@ impl MusicApi for DeezerClient {
 
     async fn album(&self, album_id: &str) -> Result<AlbumDetail> {
         let detail = self
-            .public(&format!("/album/{album_id}"))
+            .public(&format!("/album/{}", escape::component(album_id)))
             .await
             .with_context(|| format!("cannot load the album {album_id}"))?;
         let tracks = detail
@@ -781,7 +790,7 @@ impl MusicApi for DeezerClient {
 
     async fn search(&self, query: &str) -> Result<Vec<Track>> {
         let page = self
-            .public(&format!("/search?q={}&limit=50", urlencoded(query)))
+            .public(&format!("/search?q={}&limit=50", escape::component(query)))
             .await
             .context("cannot search deezer")?;
         Ok(wire::track_list(&page))
@@ -789,7 +798,10 @@ impl MusicApi for DeezerClient {
 
     async fn search_albums(&self, query: &str) -> Result<Vec<Album>> {
         let page = self
-            .public(&format!("/search/album?q={}&limit=30", urlencoded(query)))
+            .public(&format!(
+                "/search/album?q={}&limit=30",
+                escape::component(query)
+            ))
             .await
             .context("cannot search deezer albums")?;
         Ok(page
@@ -806,7 +818,7 @@ impl MusicApi for DeezerClient {
         let page = self
             .public(&format!(
                 "/search/playlist?q={}&limit=30",
-                urlencoded(query)
+                escape::component(query)
             ))
             .await
             .context("cannot search deezer playlists")?;
@@ -830,18 +842,4 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-/// Minimal percent-encoding for a search query, without growing the dependency tree.
-fn urlencoded(query: &str) -> String {
-    let mut encoded = String::with_capacity(query.len());
-    for byte in query.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char);
-            }
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    encoded
 }

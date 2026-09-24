@@ -27,7 +27,7 @@ use crate::engine::Loudness;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
     HomeFeed, MediaKind, MusicApi, Page, Pages, PinOutcome, PinTarget, PinTargetKind, Playlist,
-    PlaylistDetail, SavedArtist, Track, UserProfile,
+    PlaylistDetail, SavedArtist, Track, UserProfile, escape,
 };
 
 /// The API the web player calls.
@@ -240,7 +240,7 @@ impl AppleClient {
     }
 
     fn catalog(&self, path: &str) -> String {
-        format!("/catalog/{}{path}", self.storefront)
+        format!("/catalog/{}{path}", escape::component(&self.storefront))
     }
 
     /// One request against the API, sent again with a growing wait while the gateway is what
@@ -636,7 +636,7 @@ impl AppleClient {
     /// The library id of a catalog resource, if the listener has it. Apple only answers this one
     /// way round, which is why removing something takes two requests.
     async fn mine(&self, kind: &str, id: &str) -> Result<Option<String>> {
-        let path = self.catalog(&format!("/{kind}/{id}/library"));
+        let path = self.catalog(&format!("/{kind}/{}/library", escape::component(id)));
         match self.get(&path, &[]).await {
             Ok(answered) => Ok(answered
                 .pointer("/data/0/id")
@@ -661,7 +661,7 @@ impl AppleClient {
     async fn library_artist(&self, id: &str) -> Result<Option<String>> {
         let artist = self
             .get(
-                &self.catalog(&format!("/artists/{id}")),
+                &self.catalog(&format!("/artists/{}", escape::component(id))),
                 &[("fields[artists]", "name")],
             )
             .await?;
@@ -688,7 +688,7 @@ impl AppleClient {
     async fn song(&self, id: &str) -> Result<Value> {
         let answered = self
             .get(
-                &self.catalog(&format!("/songs/{id}")),
+                &self.catalog(&format!("/songs/{}", escape::component(id))),
                 &[("include[songs]", "artists,albums")],
             )
             .await?;
@@ -708,7 +708,7 @@ impl AppleClient {
     pub async fn playback_details(&self, id: &str) -> Details {
         let answered = self
             .get(
-                &self.catalog(&format!("/songs/{id}")),
+                &self.catalog(&format!("/songs/{}", escape::component(id))),
                 &[
                     ("include[songs]", "audio-analysis"),
                     ("fields[songs]", "durationInMillis"),
@@ -824,7 +824,7 @@ impl AppleClient {
         let limit = STATION.to_string();
         let answered = self
             .post(
-                &format!("/me/stations/next-tracks/{station}"),
+                &format!("/me/stations/next-tracks/{}", escape::component(station)),
                 &[("limit", &limit), ("include[songs]", "artists,albums")],
                 None,
             )
@@ -912,8 +912,9 @@ impl MusicApi for AppleClient {
         match Self::is_mine(id) {
             true => None,
             false => Some(format!(
-                "https://music.apple.com/{}/{part}/{id}",
-                self.storefront
+                "https://music.apple.com/{}/{part}/{}",
+                escape::component(&self.storefront),
+                escape::component(id)
             )),
         }
     }
@@ -1160,8 +1161,11 @@ impl MusicApi for AppleClient {
             }
             false => match self.mine(kind, id).await? {
                 Some(mine) => {
-                    self.delete(&format!("/me/library/{kind}/{mine}"), &[])
-                        .await
+                    self.delete(
+                        &format!("/me/library/{kind}/{}", escape::component(&mine)),
+                        &[],
+                    )
+                    .await
                 }
                 None => Ok(()),
             },
@@ -1171,11 +1175,11 @@ impl MusicApi for AppleClient {
     async fn album(&self, album_id: &str) -> Result<AlbumDetail> {
         let (path, query): (String, Vec<(&str, &str)>) = match Self::is_mine(album_id) {
             true => (
-                format!("/me/library/albums/{album_id}"),
+                format!("/me/library/albums/{}", escape::component(album_id)),
                 vec![("include", "tracks,catalog")],
             ),
             false => (
-                self.catalog(&format!("/albums/{album_id}")),
+                self.catalog(&format!("/albums/{}", escape::component(album_id))),
                 vec![
                     ("include", "tracks,artists"),
                     ("include[songs]", "artists,albums"),
@@ -1217,7 +1221,7 @@ impl MusicApi for AppleClient {
         let id = match Self::is_mine(artist_id) {
             true => self
                 .get(
-                    &format!("/me/library/artists/{artist_id}"),
+                    &format!("/me/library/artists/{}", escape::component(artist_id)),
                     &[("include", "catalog")],
                 )
                 .await?
@@ -1231,7 +1235,7 @@ impl MusicApi for AppleClient {
         };
         let answered = self
             .get(
-                &self.catalog(&format!("/artists/{id}")),
+                &self.catalog(&format!("/artists/{}", escape::component(&id))),
                 &[
                     ("views", "top-songs,full-albums,singles"),
                     ("include[songs]", "artists,albums"),
@@ -1246,7 +1250,10 @@ impl MusicApi for AppleClient {
 
     async fn artist_profile(&self, artist_id: &str) -> Result<ArtistProfile> {
         let answered = self
-            .get(&self.catalog(&format!("/artists/{artist_id}")), &[])
+            .get(
+                &self.catalog(&format!("/artists/{}", escape::component(artist_id))),
+                &[],
+            )
             .await?;
         answered
             .pointer("/data/0")
@@ -1294,8 +1301,8 @@ impl MusicApi for AppleClient {
     async fn playlist(&self, playlist_id: &str) -> Result<PlaylistDetail> {
         let mine = Self::is_mine(playlist_id);
         let path = match mine {
-            true => format!("/me/library/playlists/{playlist_id}"),
-            false => self.catalog(&format!("/playlists/{playlist_id}")),
+            true => format!("/me/library/playlists/{}", escape::component(playlist_id)),
+            false => self.catalog(&format!("/playlists/{}", escape::component(playlist_id))),
         };
         let answered = self.get(&path, &[]).await?;
         let found = answered
@@ -1323,8 +1330,14 @@ impl MusicApi for AppleClient {
     /// `next` link at a time: a long playlist is hundreds of rows, and each page is a wait.
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>> {
         let path = match Self::is_mine(playlist_id) {
-            true => format!("/me/library/playlists/{playlist_id}/tracks"),
-            false => self.catalog(&format!("/playlists/{playlist_id}/tracks")),
+            true => format!(
+                "/me/library/playlists/{}/tracks",
+                escape::component(playlist_id)
+            ),
+            false => self.catalog(&format!(
+                "/playlists/{}/tracks",
+                escape::component(playlist_id)
+            )),
         };
         let walked = self
             .walk(
@@ -1354,8 +1367,14 @@ impl MusicApi for AppleClient {
 
     async fn playlist_covers(&self, playlist_id: &str, wanted: usize) -> Result<Vec<String>> {
         let path = match Self::is_mine(playlist_id) {
-            true => format!("/me/library/playlists/{playlist_id}/tracks"),
-            false => self.catalog(&format!("/playlists/{playlist_id}/tracks")),
+            true => format!(
+                "/me/library/playlists/{}/tracks",
+                escape::component(playlist_id)
+            ),
+            false => self.catalog(&format!(
+                "/playlists/{}/tracks",
+                escape::component(playlist_id)
+            )),
         };
         let (tracks, _, _) = self.playlist_page(&path).await?;
         Ok(crate::distinct_covers(&tracks, wanted))
@@ -1378,20 +1397,23 @@ impl MusicApi for AppleClient {
 
     async fn rename_playlist(&self, playlist_id: &str, name: &str) -> Result<()> {
         self.patch(
-            &format!("/me/library/playlists/{playlist_id}"),
+            &format!("/me/library/playlists/{}", escape::component(playlist_id)),
             serde_json::json!({ "attributes": { "name": name } }),
         )
         .await
     }
 
     async fn delete_playlist(&self, playlist_id: &str) -> Result<()> {
-        self.delete(&format!("/me/library/playlists/{playlist_id}"), &[])
-            .await
+        self.delete(
+            &format!("/me/library/playlists/{}", escape::component(playlist_id)),
+            &[],
+        )
+        .await
     }
 
     async fn set_playlist_public(&self, playlist_id: &str, public: bool) -> Result<()> {
         self.patch(
-            &format!("/me/library/playlists/{playlist_id}"),
+            &format!("/me/library/playlists/{}", escape::component(playlist_id)),
             serde_json::json!({ "attributes": { "isPublic": public } }),
         )
         .await
@@ -1410,8 +1432,11 @@ impl MusicApi for AppleClient {
         };
         match id {
             Some(id) => {
-                self.delete(&format!("/me/library/playlists/{id}"), &[])
-                    .await
+                self.delete(
+                    &format!("/me/library/playlists/{}", escape::component(&id)),
+                    &[],
+                )
+                .await
             }
             None => Ok(()),
         }
@@ -1419,7 +1444,10 @@ impl MusicApi for AppleClient {
 
     async fn add_track_to_playlist(&self, playlist_id: &str, track_id: &str) -> Result<()> {
         self.post(
-            &format!("/me/library/playlists/{playlist_id}/tracks"),
+            &format!(
+                "/me/library/playlists/{}/tracks",
+                escape::component(playlist_id)
+            ),
             &[],
             Some(serde_json::json!({
                 "data": [{ "id": track_id, "type": "songs" }]
@@ -1438,7 +1466,10 @@ impl MusicApi for AppleClient {
             let offset = (page * PAGE).to_string();
             let answered = self
                 .get(
-                    &format!("/me/library/playlists/{playlist_id}/tracks"),
+                    &format!(
+                        "/me/library/playlists/{}/tracks",
+                        escape::component(playlist_id)
+                    ),
                     &[("limit", &limit), ("offset", &offset)],
                 )
                 .await?;
@@ -1465,7 +1496,10 @@ impl MusicApi for AppleClient {
             bail!("that track is not in the playlist any more");
         };
         self.delete(
-            &format!("/me/library/playlists/{playlist_id}/tracks"),
+            &format!(
+                "/me/library/playlists/{}/tracks",
+                escape::component(playlist_id)
+            ),
             &[("ids[library-songs]", &row), ("mode", "all")],
         )
         .await
@@ -1532,7 +1566,10 @@ impl MusicApi for AppleClient {
 
     async fn genre(&self, genre_id: &str) -> Result<GenreDetail> {
         let answered = self
-            .get(&self.catalog(&format!("/genres/{genre_id}")), &[])
+            .get(
+                &self.catalog(&format!("/genres/{}", escape::component(genre_id))),
+                &[],
+            )
             .await?;
         let name = answered
             .pointer("/data/0/attributes/name")
