@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::Read as _;
 use std::path::Path;
 use std::time::Duration;
 
@@ -218,29 +219,66 @@ pub fn write_year(path: &Path, value: &str) -> Result<()> {
     update(path, |tag| set_year(tag, value))
 }
 
-fn update(path: &Path, change: impl FnOnce(&mut Tag)) -> Result<()> {
+/// Applies `change` to every tag the file holds, adding its primary tag when it has none, so a
+/// player that reads a secondary tag such as ID3v1 sees the edit too. A leading ID3v2.3 tag is
+/// saved as ID3v2.3 again, since players that cannot read ID3v2.4 fall back to the stale ID3v1.
+fn update(path: &Path, change: impl Fn(&mut Tag)) -> Result<()> {
     let mut tagged = Probe::open(path)
         .with_context(|| format!("cannot open {}", path.display()))?
         .read()
         .with_context(|| format!("cannot read the tags in {}", path.display()))?;
-    if tagged.primary_tag().is_none() && tagged.first_tag().is_none() {
+    if tagged.primary_tag().is_none() {
         let kind = tagged.primary_tag_type();
         tagged.insert_tag(Tag::new(kind));
     }
-    let held = tagged.primary_tag_mut().is_some();
-    let tag = match held {
-        true => tagged.primary_tag_mut(),
-        false => tagged.first_tag_mut(),
-    };
-    let Some(tag) = tag else {
+    let kinds: Vec<_> = tagged.tags().iter().map(Tag::tag_type).collect();
+    if kinds.is_empty() {
         anyhow::bail!("{} cannot hold tags", path.display());
-    };
-    change(tag);
+    }
+    for kind in kinds {
+        if let Some(tag) = tagged.tag_mut(kind) {
+            change(tag);
+        }
+    }
 
+    let stacked = matches!(tagged.file_type(), FileType::Mpeg | FileType::Aac);
+    let options = WriteOptions::default().use_id3v23(stacked && leads_with_id3v23(path));
     tagged
-        .save_to_path(path, WriteOptions::default())
+        .save_to_path(path, options)
         .with_context(|| format!("cannot save the tags in {}", path.display()))?;
+    if stacked {
+        drop_stacked_id3v2(path)?;
+    }
     Ok(())
+}
+
+fn leads_with_id3v23(path: &Path) -> bool {
+    let mut header = [0; 4];
+    File::open(path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .is_ok_and(|()| header == *b"ID3\x03")
+}
+
+/// Removes every ID3v2 tag that directly follows the first one. Lofty reads stacked tags as one,
+/// letting the later ones win, but saves only the first, so a stale tag behind it would undo the
+/// edit on the next read. The saved tag already holds every frame merged from the others.
+fn drop_stacked_id3v2(path: &Path) -> Result<()> {
+    let bytes = std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))?;
+    let Some(first) = id3v2_len(&bytes) else {
+        return Ok(());
+    };
+    let mut end = first;
+    while let Some(len) = bytes.get(end..).and_then(id3v2_len) {
+        end += len;
+    }
+    if end == first {
+        return Ok(());
+    }
+    let mut kept = Vec::with_capacity(bytes.len() - (end - first));
+    kept.extend_from_slice(&bytes[..first]);
+    kept.extend_from_slice(&bytes[end..]);
+    std::fs::write(path, kept)
+        .with_context(|| format!("cannot drop the stacked tags in {}", path.display()))
 }
 
 /// Writes the year, leaving the date alone while its year reads the same, so a month and day
@@ -288,6 +326,22 @@ fn number(value: Option<u32>) -> String {
         .filter(|value| *value > 0)
         .map(|value| value.to_string())
         .unwrap_or_default()
+}
+
+/// The full length of the ID3v2 tag at the start of `bytes`, header and footer included.
+fn id3v2_len(bytes: &[u8]) -> Option<usize> {
+    let header = bytes.get(..10)?;
+    if &header[..3] != b"ID3" || header[6..].iter().any(|byte| *byte >= 0x80) {
+        return None;
+    }
+    let size = header[6..]
+        .iter()
+        .fold(0usize, |size, byte| (size << 7) | usize::from(*byte));
+    let footer = match header[5] & 0x10 != 0 {
+        true => 10,
+        false => 0,
+    };
+    Some(10 + size + footer).filter(|len| *len <= bytes.len())
 }
 
 fn year(value: &str) -> Option<u16> {

@@ -77,6 +77,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it, or overwrites one you made yourself.
 - Apple Music pins sync both ways: what is pinned on music.apple.com joins the sidebar,
   and pinning an album, artist or playlist in Sonora pins it there too.
+- Editing the track or disc number of a local MP3 now sticks, including in files that carry an
+  ID3v1 tag or an older tag stacked behind the first. An ID3v2.3 file stays ID3v2.3, so other
+  players and taggers see the new number too.
 
 ## [0.38.0] - 2026-09-20
 
