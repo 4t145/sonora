@@ -12,6 +12,7 @@ use lofty::probe::Probe;
 use lofty::tag::Tag;
 use lofty::tag::items::Timestamp;
 
+use crate::engine::Loudness;
 use crate::lyrics::lrc;
 use crate::{Lyrics, LyricsLine, LyricsWord, TrackTags, Voice};
 
@@ -46,6 +47,30 @@ pub fn read(path: &Path) -> Result<TrackTags> {
         isrc: held(tag, ItemKey::Isrc),
         comment: text(tag.comment()),
         lyrics: held(tag, ItemKey::Lyrics),
+    })
+}
+
+/// The ReplayGain a file's tags carry, from whichever of its tags has it. The track gain wins,
+/// and the album gain stands in when that is all the file was tagged with.
+pub fn loudness(path: &Path) -> Option<Loudness> {
+    let tagged = Probe::open(path)
+        .ok()?
+        .options(ParseOptions::new().read_cover_art(false))
+        .read()
+        .ok()?;
+    tagged.tags().iter().find_map(|tag| {
+        let read = |key| tag.get_string(key).and_then(decibels);
+        let (gain, peak) = match read(ItemKey::ReplayGainTrackGain) {
+            Some(gain) => (gain, ItemKey::ReplayGainTrackPeak),
+            None => (
+                read(ItemKey::ReplayGainAlbumGain)?,
+                ItemKey::ReplayGainAlbumPeak,
+            ),
+        };
+        let peak = tag
+            .get_string(peak)
+            .and_then(|peak| peak.trim().parse().ok());
+        Some(Loudness::replay_gain(gain, peak))
     })
 }
 
@@ -246,6 +271,16 @@ fn text(value: Option<std::borrow::Cow<'_, str>>) -> String {
 
 fn held(tag: &Tag, key: ItemKey) -> String {
     tag.get_string(key).map(str::to_owned).unwrap_or_default()
+}
+
+/// A ReplayGain value such as `-7.23 dB`, read as its number of decibels.
+fn decibels(value: &str) -> Option<f32> {
+    value
+        .trim()
+        .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn number(value: Option<u32>) -> String {
