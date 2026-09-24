@@ -21,6 +21,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   OpenSubsonic servers, using each service's own loudness figure and the tracks' ReplayGain
   tags. A quiet track is raised only as far as it can go without clipping.
 - Albanian (Shqip) interface language.
+- Guest mode now serves recommendations from your local music collection on the Home screen,
+  including Quick picks, recently added albums, local playlists, and artists.
+
 
 ### Changed
 
