@@ -77,8 +77,8 @@ begin
   Result := ExpandConstant('{param:relaunch|0}') = '1';
 end;
 
-; A silent run over an existing install is an update from the app or a package manager. It
-; leaves the desktop alone, so a shortcut the user deleted or replaced stays that way.
+// A silent run over an existing install is an update from the app or a package manager. It
+// leaves the desktop alone, so a shortcut the user deleted or replaced stays that way.
 function SilentUpgrade: Boolean;
 begin
   Result := WizardSilent and (WizardForm.PrevAppDir <> '');
