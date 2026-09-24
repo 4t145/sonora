@@ -459,9 +459,11 @@ pub enum PinTargetKind {
 }
 
 /// How a provider answered a pin change. `LimitReached` means it turned the pin away for
-/// holding too many already.
+/// holding too many already, and `Outside` that it can only pin what is in the listener's
+/// library. Either way the pin stays a local one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PinOutcome {
     Updated,
     LimitReached,
+    Outside,
 }

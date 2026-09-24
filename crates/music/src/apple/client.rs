@@ -25,8 +25,8 @@ use crate::apple::auth::{self, AGENT};
 use crate::apple::wire;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
-    HomeFeed, MediaKind, MusicApi, Page, Pages, PinOutcome, PinTarget, Playlist, PlaylistDetail,
-    SavedArtist, Track, UserProfile,
+    HomeFeed, MediaKind, MusicApi, Page, Pages, PinOutcome, PinTarget, PinTargetKind, Playlist,
+    PlaylistDetail, SavedArtist, Track, UserProfile,
 };
 
 /// The API the web player calls.
@@ -67,6 +67,20 @@ const SONGS_QUERY: &[(&str, &str)] = &[
     ("fields[library-albums]", "dateAdded"),
 ];
 const CATALOG_QUERY: &[(&str, &str)] = &[("include", "catalog")];
+
+/// The listener's pins with everything a sidebar row shows, as the web player asks for them.
+/// The resources come back as one map rather than inline, and a library artist's artwork only
+/// exists on the catalog artist behind it.
+const PINS: &str = "/me/library/pins";
+const PINS_QUERY: &[(&str, &str)] = &[
+    ("format[resources]", "map"),
+    ("include[library-albums]", "catalog"),
+    ("include[library-artists]", "catalog"),
+    ("fields[artists]", "artwork"),
+];
+
+/// How many pins Apple keeps, songs and videos included. It refuses the next one with a 400.
+const PIN_LIMIT: usize = 6;
 
 /// How long a fetched listing is kept for the next caller. Long enough for one library load,
 /// whose pages and favorites read the same listings within seconds of each other.
@@ -120,6 +134,9 @@ pub struct AppleClient {
     /// Listings fetched or being fetched, by path and query, so the library pages and the
     /// favorites drawn over them walk each listing once between them.
     listings: Arc<Mutex<HashMap<String, Listing>>>,
+    /// What the last pin list said, so an unpin needs no lookup and a pin past the limit is
+    /// not sent.
+    pinned: Arc<Mutex<Pinned>>,
 }
 
 /// Where a listing's pages go as they land, and how each row is read on the way: the channel
@@ -128,6 +145,14 @@ type Sink<'a, T> = (
     &'a tokio::sync::mpsc::Sender<Result<Page<T>>>,
     &'a (dyn Fn(&Value) -> Option<T> + Sync),
 );
+
+/// The last pin list as the client remembers it: the library id behind each pin Sonora shows,
+/// by uri, and how many pins Apple holds in all.
+#[derive(Default)]
+struct Pinned {
+    ids: HashMap<String, String>,
+    count: usize,
+}
 
 /// One listing fetched, or still being fetched, and when it was first asked for.
 struct Listing {
@@ -179,6 +204,7 @@ impl AppleClient {
             storefront: "us".into(),
             station: Arc::default(),
             listings: Arc::default(),
+            pinned: Arc::default(),
         };
         let answered = client.get("/me/storefront", &[]).await?;
         let storefront = answered
@@ -541,13 +567,6 @@ impl AppleClient {
         Ok(found.into_iter().next())
     }
 
-    /// The library ids of the listener's pins, in pin order.
-    async fn pin_ids(&self) -> Result<Vec<String>> {
-        let limit = PAGE.to_string();
-        let answered = self.get("/me/library/pins", &[("limit", &limit)]).await?;
-        Ok(wire::pin_ids(&answered))
-    }
-
     /// Keeps the library resources of one kind the listener has favorited, out of `items`
     /// paired with their library ids.
     ///
@@ -619,6 +638,42 @@ impl AppleClient {
             Err(error) if error.is::<Missing>() => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    /// The pin list last read. The lock is never held across an await.
+    fn remembered(&self) -> std::sync::MutexGuard<'_, Pinned> {
+        self.pinned
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The library id of a catalog artist, if the listener has one. A catalog artist has no
+    /// `library` relationship, so the library is searched for the artist's name and the hit
+    /// whose catalog artist is this one is kept.
+    async fn library_artist(&self, id: &str) -> Result<Option<String>> {
+        let artist = self
+            .get(
+                &self.catalog(&format!("/artists/{id}")),
+                &[("fields[artists]", "name")],
+            )
+            .await?;
+        let name = artist
+            .pointer("/data/0/attributes/name")
+            .and_then(Value::as_str)
+            .with_context(|| format!("apple music has no artist {id}"))?;
+        let limit = HITS.to_string();
+        let found = self
+            .get(
+                "/me/library/search",
+                &[
+                    ("term", name),
+                    ("types", "library-artists"),
+                    ("include[library-artists]", "catalog"),
+                    ("limit", &limit),
+                ],
+            )
+            .await?;
+        Ok(wire::library_artist(&found, id))
     }
 
     /// A catalog song, with its artists and album so both are somewhere to go.
@@ -950,51 +1005,30 @@ impl MusicApi for AppleClient {
         .await
     }
 
-    /// The library with Apple's own pins drawn over it: every playlist, album and artist,
-    /// the pinned ones first in pin order. The listings share the memo with the library
-    /// pages loading at the same time.
+    /// The listener's pins in pin order, all of them pinned. The rest of the library is left
+    /// out, and `pin_uri` names anything else that can be pinned.
     async fn pin_targets(&self) -> Result<Option<Vec<PinTarget>>> {
-        let (pins, playlists, albums, artists) = futures::try_join!(
-            self.pin_ids(),
-            self.walk(
-                "/me/library/playlists",
-                PAGE,
-                &[("extend[library-playlists]", "tags")],
-                |row| Some((library_id(row)?, wire::pin_target(row, OWNER)?))
-            ),
-            self.walk(ALBUMS, PAGE, CATALOG_QUERY, |row| {
-                Some((library_id(row)?, wire::pin_target(row, OWNER)?))
-            }),
-            self.walk(ARTISTS, PAGE, CATALOG_QUERY, |row| {
-                Some((library_id(row)?, wire::pin_target(row, OWNER)?))
-            })
-        )?;
-        let rank: HashMap<&str, usize> = pins
-            .iter()
-            .enumerate()
-            .map(|(at, id)| (id.as_str(), at))
-            .collect();
-        let mut seen = HashSet::new();
-        let mut items: Vec<(usize, PinTarget)> = playlists
-            .into_iter()
-            .chain(albums)
-            .chain(artists)
-            .filter(|(_, item)| seen.insert(item.uri.clone()))
-            .map(|(id, mut item)| match rank.get(id.as_str()) {
-                Some(&at) => {
-                    item.pinned = true;
-                    (at, item)
-                }
-                None => (usize::MAX, item),
-            })
-            .collect();
-        // Pinned items first in pin order; the stable sort keeps the rest in listing order.
-        items.sort_by_key(|(at, _)| *at);
-        Ok(Some(items.into_iter().map(|(_, item)| item).collect()))
+        let limit = PAGE.to_string();
+        let mut query = PINS_QUERY.to_vec();
+        query.push(("limit", &limit));
+        let answered = self.get(PINS, &query).await?;
+        let pins = wire::pins(&answered, OWNER);
+        *self.remembered() = Pinned {
+            ids: pins
+                .iter()
+                .map(|(id, target)| (target.uri.clone(), id.clone()))
+                .collect(),
+            count: answered
+                .get("data")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len),
+        };
+        Ok(Some(pins.into_iter().map(|(_, target)| target).collect()))
     }
 
-    /// Pins or unpins through Apple's own pins. A catalog id is resolved to its library
-    /// id first; a playlist already carries one.
+    /// Pins or unpins through Apple's own pins, which only hold what is in the library. A pin
+    /// already listed reuses its library id, and a catalog id is resolved to one. Anything not
+    /// in the library comes back as `Outside`, and a pin past Apple's limit as `LimitReached`.
     async fn set_pinned(&self, uri: &str, pinned: bool) -> Result<PinOutcome> {
         let (_, rest) = uri
             .split_once(':')
@@ -1002,26 +1036,42 @@ impl MusicApi for AppleClient {
         let (kind, id) = rest
             .split_once(':')
             .context("cannot pin an item without a kind")?;
-        let item = match kind {
-            "playlist" => id.to_owned(),
-            "album" => self
-                .mine("albums", id)
-                .await?
-                .context("that album is not in the library")?,
-            "artist" => self
-                .mine("artists", id)
-                .await?
-                .context("that artist is not in the library")?,
+        let kind = match kind {
+            "playlist" => "playlists",
+            "album" => "albums",
+            "artist" => "artists",
             _ => bail!("that kind of item cannot be pinned"),
         };
-        let path = format!("/me/library/pins/{item}");
-        match pinned {
-            true => self
-                .post(&path, &[], None)
-                .await
-                .map(|_| PinOutcome::Updated),
-            false => self.delete(&path, &[]).await.map(|_| PinOutcome::Updated),
+        if pinned && self.remembered().count >= PIN_LIMIT {
+            return Ok(PinOutcome::LimitReached);
         }
+        let listed = self.remembered().ids.get(uri).cloned();
+        let item = match (listed, Self::is_mine(id), kind) {
+            (Some(item), _, _) => Some(item),
+            (None, true, _) => Some(id.to_owned()),
+            (None, false, "artists") => self.library_artist(id).await?,
+            (None, false, _) => self.mine(kind, id).await?,
+        };
+        let Some(item) = item else {
+            return Ok(PinOutcome::Outside);
+        };
+        let path = format!("{PINS}/{item}");
+        if !pinned {
+            return self.delete(&path, &[]).await.map(|_| PinOutcome::Updated);
+        }
+        match self.post(&path, &[], None).await {
+            Ok(_) => Ok(PinOutcome::Updated),
+            // A pin made elsewhere since the last look can fill the list, so a refusal is
+            // measured against a fresh one.
+            Err(error) => match self.pin_targets().await {
+                Ok(_) if self.remembered().count >= PIN_LIMIT => Ok(PinOutcome::LimitReached),
+                _ => Err(error),
+            },
+        }
+    }
+
+    fn pin_uri(&self, kind: PinTargetKind, id: &str) -> Option<String> {
+        wire::pin_uri(kind, id)
     }
 
     async fn set_track_saved(&self, track_id: &str, saved: bool) -> Result<()> {
