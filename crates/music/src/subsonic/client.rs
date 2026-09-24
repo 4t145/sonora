@@ -9,6 +9,7 @@ use opensubsonic::{Auth, Client};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use tokio::task::JoinSet;
 
+use crate::engine::Loudness;
 use crate::subsonic::auth::Signature;
 use crate::subsonic::wire;
 use crate::{
@@ -34,6 +35,15 @@ pub struct SubsonicClient {
     /// every url afresh, which would give one cover a new url on every conversion and defeat
     /// every image cache between here and the screen.
     covers: String,
+}
+
+/// What the server records about a track that playback wants before the decoder can tell.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Details {
+    pub duration: Option<Duration>,
+    /// The track's ReplayGain, which OpenSubsonic servers such as Navidrome report and plain
+    /// Subsonic servers do not.
+    pub loudness: Option<Loudness>,
 }
 
 impl SubsonicClient {
@@ -745,11 +755,26 @@ impl SubsonicClient {
             .context("the server refused the stream")
     }
 
-    /// The length the server records for a track, when it has one.
-    pub async fn duration(&self, track_id: &str) -> Option<Duration> {
-        let song = self.client.get_song(track_id).await.ok()?;
-        let seconds = song.duration?;
-        Some(Duration::from_secs(u64::try_from(seconds).unwrap_or(0)))
+    /// The length and ReplayGain the server records for a track, whichever it has. The track
+    /// gain wins, and the album gain stands in when that is all the server knows.
+    pub async fn details(&self, track_id: &str) -> Details {
+        let Ok(song) = self.client.get_song(track_id).await else {
+            return Details::default();
+        };
+        let duration = song
+            .duration
+            .map(|seconds| Duration::from_secs(u64::try_from(seconds).unwrap_or(0)));
+        let loudness = song.replay_gain.and_then(|gain| {
+            let (gain, peak) = match gain.track_gain {
+                Some(track) => (track, gain.track_peak),
+                None => (gain.album_gain?, gain.album_peak),
+            };
+            Some(Loudness::replay_gain(
+                gain as f32,
+                peak.map(|peak| peak as f32),
+            ))
+        });
+        Details { duration, loudness }
     }
 }
 
