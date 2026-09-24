@@ -47,8 +47,8 @@ const BOOST_CAP: f32 = 4.0;
 pub struct Loudness {
     /// Integrated loudness in LUFS.
     pub lufs: f32,
-    /// The sample peak as a fraction of full scale. Without one a quiet track is never raised,
-    /// since nothing says how far it can go before it clips.
+    /// The peak as a fraction of full scale, sample or true peak. Without one a quiet track is
+    /// never raised, since nothing says how far it can go before it clips.
     pub peak: Option<f32>,
 }
 

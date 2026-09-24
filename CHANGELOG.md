@@ -17,9 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sonora plays every track at its own sample rate rather than resampling it to the device
   default, so a 96 kHz FLAC leaves the app at 96 kHz. Moving between tracks of different rates
   leaves a short pause.
-- Normalize loudness now works for local files and for Navidrome and other OpenSubsonic
-  servers, using the tracks' ReplayGain tags. A quiet track is raised only as far as it can go
-  without clipping.
+- Normalize loudness now works for Apple Music, local files, and Navidrome and other
+  OpenSubsonic servers, using Apple's own loudness analysis and the tracks' ReplayGain tags. A
+  quiet track is raised only as far as it can go without clipping.
 - Albanian (Shqip) interface language.
 
 ### Changed

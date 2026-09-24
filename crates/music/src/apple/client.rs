@@ -23,6 +23,7 @@ use serde_json::Value;
 
 use crate::apple::auth::{self, AGENT};
 use crate::apple::wire;
+use crate::engine::Loudness;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, Genre, GenreDetail, GenreItem, GenreSection,
     HomeFeed, MediaKind, MusicApi, Page, Pages, PinTarget, Playlist, PlaylistDetail, SavedArtist,
@@ -123,6 +124,13 @@ pub struct AppleClient {
     /// Listings fetched or being fetched, by path and query, so the library pages and the
     /// favorites drawn over them walk each listing once between them.
     listings: Arc<Mutex<HashMap<String, Listing>>>,
+}
+
+/// What the catalog says about a song that playback wants before the decoder can tell.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Details {
+    pub duration: Option<Duration>,
+    pub loudness: Option<Loudness>,
 }
 
 /// Where a listing's pages go as they land, and how each row is read on the way: the channel
@@ -629,6 +637,52 @@ impl AppleClient {
             .pointer("/data/0")
             .cloned()
             .with_context(|| format!("apple music has no song {id}"))
+    }
+
+    /// The catalog's length and loudness for a song, from one lookup that asks for nothing
+    /// else. Either is missing when the catalog does not say, and a failed lookup leaves both
+    /// missing.
+    ///
+    /// The loudness is the catalog's own audio analysis: integrated LUFS and a true peak in
+    /// dBFS. The same figures sit in the `ludt` box of Apple's enhanced HLS encodes, but the
+    /// Widevine encode this path plays carries no `udta` at all.
+    pub async fn playback_details(&self, id: &str) -> Details {
+        let answered = self
+            .get(
+                &self.catalog(&format!("/songs/{id}")),
+                &[
+                    ("include[songs]", "audio-analysis"),
+                    ("fields[songs]", "durationInMillis"),
+                    ("omit[resource]", "autos"),
+                ],
+            )
+            .await;
+        let song = match answered {
+            Ok(answered) => answered.pointer("/data/0").cloned().unwrap_or_default(),
+            Err(error) => {
+                log::debug!("apple: cannot read the details of {id}: {error:#}");
+                return Details::default();
+            }
+        };
+        let duration = song
+            .pointer("/attributes/durationInMillis")
+            .and_then(Value::as_u64)
+            .filter(|millis| *millis > 0)
+            .map(Duration::from_millis);
+        let main = song.pointer("/relationships/audio-analysis/data/0/attributes/loudness/main");
+        let lufs = main
+            .and_then(|main| main.get("value"))
+            .and_then(Value::as_f64)
+            .filter(|lufs| (-70.0..0.0).contains(lufs));
+        let peak = main
+            .and_then(|main| main.get("peak"))
+            .and_then(Value::as_f64)
+            .map(|dbfs| 10f64.powf(dbfs / 20.0) as f32);
+        let loudness = lufs.map(|lufs| Loudness {
+            lufs: lufs as f32,
+            peak,
+        });
+        Details { duration, loudness }
     }
 
     /// The tracks of a playlist, from the first page or from a continuation, with the
