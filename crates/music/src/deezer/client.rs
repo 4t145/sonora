@@ -15,6 +15,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::deezer::{decrypt, wire};
+use crate::engine::Loudness;
 use crate::{
     Album, AlbumDetail, Artist, ArtistProfile, HomeFeed, MediaKind, MusicApi, Playlist,
     PlaylistDetail, SavedArtist, Track, UserProfile, distinct_covers,
@@ -91,6 +92,18 @@ struct Inner {
     /// Artist portraits already looked up, so a search that ranks the same artists on
     /// every keystroke does not spend the quota on them again.
     portraits: Mutex<HashMap<String, String>>,
+}
+
+/// A track's audio as it starts to arrive, with the key that decrypts it and what the gateway
+/// said about its length and loudness.
+pub struct Opened {
+    pub response: reqwest::Response,
+    pub key: decrypt::Secret,
+    pub duration: Option<Duration>,
+    /// The gateway's `GAIN`. Despite the name it is the track's integrated loudness rather than
+    /// an adjustment, and it lands within about a decibel of Apple's LUFS for the same
+    /// recording.
+    pub loudness: Option<Loudness>,
 }
 
 impl DeezerClient {
@@ -354,11 +367,8 @@ impl DeezerClient {
     }
 
     /// Opens the audio of a track: track token, then a stream url from `get_url`, then the
-    /// GET itself. Answers the response, the key that decrypts it, and the track's length.
-    pub async fn open_stream(
-        &self,
-        track_id: &str,
-    ) -> Result<(reqwest::Response, decrypt::Secret, Option<Duration>)> {
+    /// GET itself.
+    pub async fn open_stream(&self, track_id: &str) -> Result<Opened> {
         let data = self.track_data(track_id).await?;
         let effective_id = wire::id(&data["SNG_ID"])
             .with_context(|| format!("the deezer track {track_id} names no id"))?;
@@ -366,6 +376,12 @@ impl DeezerClient {
             .filter(|token| !token.is_empty())
             .with_context(|| format!("the deezer track {track_id} is not playable"))?;
         let duration = wire::number(&data, &["DURATION"]).map(Duration::from_secs);
+        let loudness = wire::decimal(&data, &["GAIN"])
+            .filter(|lufs| (-70.0..0.0).contains(lufs))
+            .map(|lufs| Loudness {
+                lufs: lufs as f32,
+                peak: None,
+            });
 
         let license = self.inner.session.read().await.license_token.clone();
         let formats: &[&str] = match effective_id.starts_with('-') {
@@ -388,7 +404,12 @@ impl DeezerClient {
                         .context("the deezer cdn refused the stream")?;
                     let secret = self.inner.secret.get().copied().unwrap_or_default();
                     let key = decrypt::track_key(&effective_id, &secret);
-                    return Ok((response, key, duration));
+                    return Ok(Opened {
+                        response,
+                        key,
+                        duration,
+                        loudness,
+                    });
                 }
                 Ok(None) => last = anyhow::anyhow!("format {format} is not licensed"),
                 Err(error) => last = error,
