@@ -390,6 +390,12 @@ fn take<T>(
     })
 }
 
+/// Whether the provider lists `uri` as pinned. A provider may leave unpinned items out
+/// entirely, so a missing item reads as unpinned.
+fn holds_pin(items: &[music::PinTarget], uri: &str) -> bool {
+    items.iter().any(|item| item.uri == uri && item.pinned)
+}
+
 impl Library {
     fn toggle_saved<S: Savable>(&mut self, mut item: S, cx: &mut Context<Self>) {
         let Some(id) = item.id().map(str::to_owned) else {
@@ -925,8 +931,8 @@ impl Library {
 
     /// Changes the provider's own pin for `uri` and calls `done` with whether it stuck. A second
     /// change replaces the one in flight, so the last one wins and only its `done` runs. A pin
-    /// the provider turns away for being past its limit counts as stuck too, since Sonora keeps
-    /// the pin itself and the sidebar has no limit of its own.
+    /// the provider turns away for being past its limit or outside the library counts as stuck
+    /// too, since Sonora keeps the pin itself and the sidebar has no limit of its own.
     pub fn set_pinned(
         &mut self,
         uri: String,
@@ -937,8 +943,7 @@ impl Library {
         if self
             .pin_targets
             .as_ref()
-            .and_then(|items| items.iter().find(|item| item.uri == uri))
-            .is_some_and(|item| item.pinned == pinned)
+            .is_some_and(|items| holds_pin(items, &uri) == pinned)
         {
             return;
         }
@@ -951,15 +956,15 @@ impl Library {
         self.pin_task = Some(cx.spawn(async move |this, cx| {
             let result = join(io.spawn(async move {
                 let result = client.set_pinned(&uri, pinned).await?;
-                if result == music::PinOutcome::LimitReached {
+                if result != music::PinOutcome::Updated {
                     return Ok((result, None));
                 }
                 let items = client.pin_targets().await?;
                 anyhow::ensure!(
-                    items.as_ref().is_some_and(|items| items
-                        .iter()
-                        .any(|item| item.uri == uri && item.pinned == pinned)),
-                    "Spotify did not confirm the updated library pin"
+                    items
+                        .as_ref()
+                        .is_some_and(|items| holds_pin(items, &uri) == pinned),
+                    "the provider did not confirm the updated library pin"
                 );
                 Ok((result, items))
             }))
@@ -975,6 +980,10 @@ impl Library {
                         log::debug!(
                             "library: the provider's pin limit is reached, pinning locally"
                         );
+                        done(true, cx);
+                    }
+                    Ok((music::PinOutcome::Outside, _)) => {
+                        log::debug!("library: the item is not in the library, pinning locally");
                         done(true, cx);
                     }
                     Err(error) => {

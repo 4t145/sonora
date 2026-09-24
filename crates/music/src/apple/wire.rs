@@ -412,44 +412,102 @@ pub fn view<'a>(value: &'a Value, name: &str) -> &'a [Value] {
         .unwrap_or_default()
 }
 
-/// One row of the library landing as a pin target, whatever kind of thing it is.
+/// The listener's pins in pin order, each with its library id, read from an answer that sent
+/// its resources as a map.
 ///
-/// The uri is Spotify-shaped on purpose: a sidebar pin is built by taking what follows the last
-/// colon, so an id on its own could never become one.
-pub fn pin_target(value: &Value, owner: &str) -> Option<PinTarget> {
+/// Every pin in `data` is only a reference, looked up in `resources`. Its catalog reference is
+/// swapped for the catalog item there too, since a library artist has no artwork of its own.
+/// A pinned song or video has no sidebar row and is left out.
+pub fn pins(value: &Value, owner: &str) -> Vec<(String, PinTarget)> {
+    let resource = |reference: &Value| {
+        let kind = reference.get("type")?.as_str()?;
+        let id = reference.get("id")?.as_str()?;
+        value.get("resources")?.get(kind)?.get(id).cloned()
+    };
+    let Some(references) = value.get("data").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    references
+        .iter()
+        .filter_map(|reference| {
+            let mut pin = resource(reference)?;
+            if let Some(found) = catalog(&pin).and_then(resource)
+                && let Some(slot) = pin.pointer_mut("/relationships/catalog/data/0")
+            {
+                *slot = found;
+            }
+            let mut target = pin_target(&pin, owner)?;
+            target.pinned = true;
+            Some((pin.get("id")?.as_str()?.to_owned(), target))
+        })
+        .collect()
+}
+
+/// The library id of the artist in a library search answer whose catalog artist is `id`. The
+/// rows are read whether the answer lists them inline or sends them as a resource map.
+pub fn library_artist(value: &Value, id: &str) -> Option<String> {
+    let inline = value
+        .pointer("/results/library-artists/data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
+    let mapped = value
+        .pointer("/resources/library-artists")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|rows| rows.values());
+    inline
+        .chain(mapped)
+        .find(|row| {
+            catalog(row)
+                .and_then(|found| found.get("id"))
+                .and_then(Value::as_str)
+                == Some(id)
+        })
+        .and_then(|row| row.get("id")?.as_str().map(str::to_owned))
+}
+
+/// The uri Sonora knows an Apple item by in the sidebar. It is Spotify-shaped on purpose: a
+/// sidebar pin is built by taking what follows the last colon.
+pub fn pin_uri(kind: PinTargetKind, id: &str) -> Option<String> {
+    let part = match kind {
+        PinTargetKind::Playlist => "playlist",
+        PinTargetKind::Album => "album",
+        PinTargetKind::Artist => "artist",
+        _ => return None,
+    };
+    Some(format!("apple:{part}:{id}"))
+}
+
+/// One library album, artist or playlist as an unpinned pin target. An album or artist needs
+/// the catalog item behind it, whose id is the one Sonora opens.
+fn pin_target(value: &Value, owner: &str) -> Option<PinTarget> {
     let kind = value.get("type")?.as_str()?;
     let attributes = value.get("attributes")?;
-    let (kind, uri, subtitle) = match kind {
+    let (kind, id, subtitle) = match kind {
         "library-albums" | "albums" => (
             PinTargetKind::Album,
             catalog(value)
                 .and_then(|found| found.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_owned),
+                .and_then(Value::as_str),
             text(attributes, "artistName").unwrap_or_default(),
         ),
         "library-playlists" | "playlists" => (
             PinTargetKind::Playlist,
-            value.get("id").and_then(Value::as_str).map(str::to_owned),
+            value.get("id").and_then(Value::as_str),
             text(attributes, "curatorName").unwrap_or_else(|| owner.to_owned()),
         ),
         "library-artists" | "artists" => (
             PinTargetKind::Artist,
             catalog(value)
                 .and_then(|found| found.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_owned),
+                .and_then(Value::as_str),
             String::new(),
         ),
         _ => return None,
     };
-    let part = match kind {
-        PinTargetKind::Album => "album",
-        PinTargetKind::Artist => "artist",
-        _ => "playlist",
-    };
     Some(PinTarget {
-        uri: format!("apple:{part}:{}", uri?),
+        uri: pin_uri(kind, id?)?,
         name: text(attributes, "name")?,
         subtitle,
         cover: artwork(attributes, ART)
