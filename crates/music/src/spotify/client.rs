@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{MediaKind, MusicApi};
+use crate::{MediaKind, MusicApi, escape};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use librespot_core::Session;
@@ -36,7 +36,7 @@ impl LibrespotClient {
         let body = self
             .session
             .spclient()
-            .get_user_profile(&profiles::escaped(username), None, None)
+            .get_user_profile(&escape::component(username), None, None)
             .await
             .inspect_err(|error| log::debug!("profiles: cannot read {username}: {error}"))
             .ok()?;
@@ -59,7 +59,10 @@ impl MusicApi for LibrespotClient {
             MediaKind::Artist => "artist",
             MediaKind::Playlist => "playlist",
         };
-        Some(format!("https://open.spotify.com/{kind}/{id}"))
+        Some(format!(
+            "https://open.spotify.com/{kind}/{}",
+            escape::component(id)
+        ))
     }
 
     async fn profile(&self) -> Result<UserProfile> {
@@ -240,11 +243,7 @@ impl MusicApi for LibrespotClient {
         let mut offset = 0;
         let mut seen = HashSet::new();
         loop {
-            let body = self
-                .session
-                .spclient()
-                .get_rootlist(offset, Some(300))
-                .await?;
+            let body = playlists::rootlist_page(&self.session, offset, 300).await?;
             let rootlist =
                 RootList::parse_from_bytes(&body).context("cannot decode the rootlist protobuf")?;
             let count = rootlist.contents.items.len();

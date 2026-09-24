@@ -45,6 +45,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The Playlists page loads for a Spotify account whose username has a letter outside plain
+  ASCII, such as ö, instead of failing with a 400 error.
 - Playback comes back on its own after your only output device disappears and returns, so a
   Bluetooth headset that drops its link and reconnects picks the track up again rather than
   leaving Sonora silent until you restart it.

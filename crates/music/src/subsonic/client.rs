@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use opensubsonic::api::lists::AlbumListType;
 use opensubsonic::data::{AlbumId3, AlbumWithSongsId3, Child, Genre as SourceGenre};
 use opensubsonic::{Auth, Client};
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use tokio::task::JoinSet;
 
 use crate::engine::Loudness;
+use crate::escape;
 use crate::subsonic::auth::Signature;
 use crate::subsonic::wire;
 use crate::{
@@ -59,9 +59,9 @@ impl SubsonicClient {
             .with_client_name(CLIENT_NAME);
         let covers = format!(
             "{server}/rest/getCoverArt?u={}&t={}&s={}&v={API_VERSION}&c={CLIENT_NAME}&f=json",
-            utf8_percent_encode(&username, NON_ALPHANUMERIC),
-            utf8_percent_encode(&signature.token, NON_ALPHANUMERIC),
-            utf8_percent_encode(&signature.salt, NON_ALPHANUMERIC),
+            escape::component(&username),
+            escape::component(&signature.token),
+            escape::component(&signature.salt),
         );
         Ok(Self {
             client,
@@ -75,7 +75,7 @@ impl SubsonicClient {
         Some(format!(
             "{}&id={}&size={size}",
             self.covers,
-            utf8_percent_encode(id, NON_ALPHANUMERIC)
+            escape::component(id)
         ))
     }
 
